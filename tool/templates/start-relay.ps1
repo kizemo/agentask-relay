@@ -12,8 +12,10 @@
     4. ledger bootstrap or compatibility check (append only, never rewrite)
     5. generation of the next relay prompt (full-path pointers only)
 
-  The caller then uses session_create with the printed prompt and adopts the
-  lock to the new session id.
+  The caller then starts the next link with whatever the runtime uses: the
+  built-in session_create tool on MCode, the spawn driver (relay-spawn.ps1) on a
+  CLI runtime. The runtime is read from docs\relay\relay-runtime.json, which the
+  installer stamps, or from -Runtime; without either, mcode is assumed.
 
 .EXAMPLE
   pwsh -NoProfile -File start-relay.ps1 -Target "Task 69 l10n batch" -MaxStages 6
@@ -35,6 +37,11 @@ param(
   [string]$WorkspaceDir = '',
   [string]$PromptOut = '',
   [int]$TtlSeconds = 1800,
+  # Runtime the chain runs on. Empty means "read it from the descriptor the
+  # installer stamped into docs\relay\relay-runtime.json"; when that file is
+  # absent too, the launcher falls back to mcode, which is exactly what this
+  # script did before the runtime adaptation layer existed.
+  [string]$Runtime = '',
   [switch]$DryRun
 )
 
@@ -63,6 +70,65 @@ Say "OK workspace=$($gitTop.Trim())"
 $head = (& git -C $WorkspaceDir rev-parse --short HEAD).Trim()
 $dirtyCount = @(& git -C $WorkspaceDir status --porcelain -uall).Count
 Say "OK head=$head dirty_files=$dirtyCount"
+
+# --- 1b. runtime resolution ----------------------------------------------------
+# The launcher writes the prompt that every link reads, so it has to know how the
+# NEXT link is started: MCode calls session_create, a CLI runtime runs the spawn
+# driver. The installer stamps that contract into docs\relay\relay-runtime.json
+# next to this script; an explicit -Runtime always wins.
+$descriptorPath = Join-Path $PSScriptRoot 'relay-runtime.json'
+$descriptor = $null
+if (Test-Path -LiteralPath $descriptorPath -PathType Leaf) {
+  try {
+    $descriptor = Get-Content -LiteralPath $descriptorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  } catch {
+    $descriptor = $null
+  }
+}
+$knownRuntimes = @('mcode', 'claude-code', 'codex', 'openclaw')
+$runtimeSource = 'default'
+if ([string]::IsNullOrWhiteSpace($Runtime)) {
+  if ($null -ne $descriptor -and -not [string]::IsNullOrWhiteSpace([string]$descriptor.runtime)) {
+    $Runtime = [string]$descriptor.runtime
+    $runtimeSource = 'descriptor'
+  } else {
+    $Runtime = 'mcode'
+  }
+} else {
+  $runtimeSource = 'parameter'
+}
+if ($knownRuntimes -notcontains $Runtime) {
+  Say "FAIL reason=runtime_unsupported runtime=$Runtime known=$($knownRuntimes -join ',')"
+  exit 2
+}
+Say "OK runtime=$Runtime source=$runtimeSource"
+
+# --- 1c. link mode and the chain session id ---------------------------------
+# The link mode decides HOW the next link is started, and therefore whether the
+# launcher has to allocate a session id up front. A CLI link has no session tool
+# that hands an id back, so the launcher allocates one, writes it into the ledger
+# and into the prompt: the link needs it to renew and to release the lock, and
+# the driver of the next link reads it from the ledger.
+$linkMode = 'session_tool'
+if ($Runtime -eq 'claude-code' -or $Runtime -eq 'codex') {
+  $linkMode = 'cli_driver'
+} elseif ($Runtime -eq 'openclaw') {
+  $linkMode = 'sessions_spawn_tool'
+}
+if ($null -ne $descriptor -and -not [string]::IsNullOrWhiteSpace([string]$descriptor.next_link_mode)) {
+  $linkMode = [string]$descriptor.next_link_mode
+}
+$cliRuntime = ($linkMode -eq 'cli_driver')
+$toolRuntime = ($linkMode -eq 'sessions_spawn_tool')
+$chainSessionId = ''
+if ($cliRuntime) {
+  $chainSessionId = [guid]::NewGuid().ToString()
+}
+if ($chainSessionId -eq '') {
+  Say "OK link_mode=$linkMode chain_session_id=none"
+} else {
+  Say "OK link_mode=$linkMode chain_session_id=$chainSessionId"
+}
 
 # --- 2. concurrency detection against the ledger ----------------------------
 $ledger = $null
@@ -177,7 +243,7 @@ if (-not $DryRun -and -not (Test-Path -LiteralPath $ledgerPath)) {
     auto_relay      = $true
     current_stage   = 1
     max_stages      = $MaxStages
-    next_session_id = $null
+    next_session_id = $(if ($chainSessionId -ne '') { $chainSessionId } else { $null })
     started_at      = $now
     started_by      = "start-relay.ps1"
     protocol        = 'docs\AGENT-RELAY.md'
@@ -224,8 +290,67 @@ $stageList = if ([string]::IsNullOrWhiteSpace($StageTitles)) {
 } else {
   $StageTitles
 }
+
+# --- 5a. runtime-specific fragments ---------------------------------------------
+# The mcode prompt stays byte-identical to the text that has been running
+# chains for months. Every other runtime gets a prompt that hands the chain over
+# with the spawn driver, because those runtimes have no session_create tool at
+# all: telling them to call session_create is what breaks a CLI chain on its
+# first hand-off.
+# How the NEXT link is started depends on the runtime, not on the launcher:
+#   session_tool         the runtime starts it with its own session tool (mcode)
+#   cli_driver           a headless CLI process (claude-code, codex)
+#   sessions_spawn_tool  a child session of the same workspace (openclaw)
+# The link mode was already resolved in section 1c, together with the chain
+# session id, because the ledger bootstrap in section 4 needs that id.
+$stageNo = 1
+if ($null -ne $ledger -and $null -ne $ledger.current_stage) { $stageNo = [int]$ledger.current_stage }
+$nextStageNo = $stageNo + 1
+
+$spawnCommand = ''
+if ($cliRuntime) {
+  $raw = ''
+  if ($null -ne $descriptor -and -not [string]::IsNullOrWhiteSpace([string]$descriptor.spawn_command)) {
+    $raw = [string]$descriptor.spawn_command
+  }
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    $raw = 'pwsh -NoProfile -ExecutionPolicy Bypass -File {REPO}\docs\relay\relay-spawn.ps1 -Runtime {RUNTIME} -PromptFile {REPO}\docs\relay\next-relay-prompt.txt -WorkspaceDir {REPO} -Execute -AdoptLock'
+  }
+  $spawnCommand = $raw.Replace('{REPO}', $repoRoot).Replace('{RUNTIME}', $Runtime)
+}
+
+$promptHeader = ''
+$readItem8 = ''
+$stageSentence = 'You are relay stage 1 of an unattended relay chain in this repository.'
+$sessionRule = 'Never pass an effort field to session_create (the schema has no such field).'
+$completionRule = 'On completion: write docs\relay\stage-1-inventory.md, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create), then start the next stage with session_create using the same recipe, then call relay-lock.ps1 -Action adopt -SessionId <new session id>.'
+$nextHint = 'NEXT call session_create with agent_name=me, title=relay-1-<short>, workspace_dir=<repoRoot backslashes>, content=<contents of the prompt file>'
+$nextHint2 = 'NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>'
+# The stop rule is the same sentence in every runtime, except that a CLI link
+# knows its own session id and must name it when it releases the lock.
+$stopRule = 'If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release, and explain in the final reply. Never start a next session in that case.'
+
+if ($cliRuntime) {
+  $promptHeader = "RELAY_STAGE=$stageNo`nRELAY_ARTIFACT=docs\relay\stage-$stageNo-inventory.md`nRELAY_SESSION_ID=$chainSessionId`n`n"
+  $readItem8 = "`n8. $repoRoot\docs\relay\relay-spawn.ps1 (spawn driver: starts the next link in this runtime)"
+  $stageSentence = "You are relay stage $stageNo of an unattended relay chain in this repository."
+  $sessionRule = 'This runtime has no session_create tool: never call it. The next link is started by the spawn driver, see the hand-off rule below. Command style for this runtime: run every relay script with the Bash tool, one command per call, plain relative paths, no chained commands and no quoted flag values, for example: pwsh -NoProfile -ExecutionPolicy Bypass -File docs\relay\relay-ledger.ps1 -Action status . A chained or quoted command is refused by the runtime permission layer and a headless link cannot approve it.'
+  $completionRule = 'On completion: write the file named in RELAY_ARTIFACT, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create) with THREE intents in ONE patch: stage_done=<your stage id>, bump_current_stage, and next_session_id=<a fresh UUID that you allocate for the next link>; then write the next-stage prompt: copy this prompt file over docs\relay\next-relay-prompt.txt, change RELAY_STAGE=' + $stageNo + ' to RELAY_STAGE=' + $nextStageNo + ', change the phrase "relay stage ' + $stageNo + '" to "relay stage ' + $nextStageNo + '", change RELAY_ARTIFACT=docs\relay\stage-' + $stageNo + '-inventory.md to RELAY_ARTIFACT=docs\relay\stage-' + $nextStageNo + '-inventory.md, change RELAY_SESSION_ID=' + $chainSessionId + ' to RELAY_SESSION_ID=<the fresh UUID you wrote into the ledger as next_session_id>, and change nothing else; then start the next link with: ' + $spawnCommand + ' (the driver reads next_session_id from the ledger and hands the lock over before the new link starts).'
+  $stopRule = 'If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release -SessionId <the RELAY_SESSION_ID value above>, and explain in the final reply. Never start a next session in that case.'
+  $nextHint = 'NEXT run this command to start the first link: ' + $spawnCommand
+  $nextHint2 = 'NEXT the driver hands the lock over to the new link before it starts'
+} elseif ($toolRuntime) {
+  $promptHeader = "RELAY_STAGE=$stageNo`nRELAY_ARTIFACT=docs\relay\stage-$stageNo-inventory.md`n`n"
+  $readItem8 = "`n8. $repoRoot\docs\relay\relay-runtime.json (runtime contract: how the next link is started)"
+  $stageSentence = "You are relay stage $stageNo of an unattended relay chain in this repository."
+  $sessionRule = 'This runtime has no session_create tool: never call it. The next link is started with the sessions_spawn tool of this workspace, see the hand-off rule below.'
+  $completionRule = 'On completion: write the file named in RELAY_ARTIFACT, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create) with THREE intents in ONE patch: stage_done=<your stage id>, bump_current_stage, and next_session_id=<the session id the spawn tool returns>; then write the next-stage prompt: copy this prompt file over docs\relay\next-relay-prompt.txt, change RELAY_STAGE=' + $stageNo + ' to RELAY_STAGE=' + $nextStageNo + ', change the phrase "relay stage ' + $stageNo + '" to "relay stage ' + $nextStageNo + '", change RELAY_ARTIFACT=docs\relay\stage-' + $stageNo + '-inventory.md to RELAY_ARTIFACT=docs\relay\stage-' + $nextStageNo + '-inventory.md, and change nothing else; then start the next link with the sessions_spawn tool (workspace = ' + $repoRoot + ', task = relay-' + $nextStageNo + '-<short stage name>, prompt = the full text of docs\relay\next-relay-prompt.txt), then run: pwsh -NoProfile -ExecutionPolicy Bypass -File ' + $repoRoot + '\docs\relay\relay-lock.ps1 -Action adopt -SessionId <the new session id>.'
+  $nextHint = 'NEXT spawn the first link with the sessions_spawn tool (workspace = ' + $repoRoot + ')'
+  $nextHint2 = 'NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>'
+}
+
 $prompt = @"
-You are relay stage 1 of an unattended relay chain in this repository.
+$promptHeader$stageSentence
 
 WORKSPACE: $repoRoot (absolute path, backslashes). Work only inside it.
 
@@ -236,7 +361,7 @@ READ FIRST (full paths, read in this order):
 4. $repoRoot\$PlanDoc                   (source of truth for the target batch)
 5. $repoRoot\docs\relay\start-relay.ps1 (this launcher, for the next stage)
 6. $repoRoot\docs\relay\relay-lock.ps1  (lock protocol)
-7. $repoRoot\docs\relay\relay-ledger.ps1 (ledger write gate)
+7. $repoRoot\docs\relay\relay-ledger.ps1 (ledger write gate)$readItem8
 
 TARGET: $Target
 
@@ -246,13 +371,13 @@ $stageList
 RULES:
 - Validate docs\relay.json before touching anything: status must be running, current_stage must equal your stage, current_stage must not exceed max_stages. If any check fails, commit status=blocked through the ledger gate (see RULES), explain what is missing, and stop.
 - Exactly one stage per session. A stage owns a declared write set; the controller never edits product code directly, dispatch a worker sub-session for code changes and state the single allowed write set in the dispatch brief.
-- Never pass an effort field to session_create (the schema has no such field).
+- $sessionRule
 - Concurrency: the lock file docs\relay\.relay.lock is owned by you. Call relay-lock.ps1 -Action renew every few turns. Do not create a second chain while the ledger has an in_progress stage.
 - Ledger writes go through the gate docs\relay\relay-ledger.ps1, never by hand. Recipe: (1) run pwsh -NoProfile -File docs\relay\relay-ledger.ps1 -Action status and read sha256 from its LEDGER_STATE line. (2) Write an ASCII JSON patch file under docs\relay\ using only append-only intent: stage_done, stage_fields, append_stage, sessions_append, notes_append, ledger_docs_append, blocked_on_append, set_status, bump_current_stage, next_session_id. (3) Validate it with -DryRun on the same command. (4) Commit it with -Action commit and that same sha256. A stale sha means the ledger moved under you: re-read status, rebuild the patch, retry once. Exit codes: 0 committed, 2 bad argument, 3 refused (CAS conflict or rule violation), 4 lock timeout, 5 unreadable patch. status=running is reserved for the human who starts the chain. If the gate refuses and you cannot satisfy it, stop and report rather than editing the ledger directly.
 - Git write operations (commit, push, tag, stash, checkout) are a human checkpoint: never perform them, stop and report instead.
 - Write intermediate artifacts to files. Keep the conversation to pointers and conclusions. Do not fabricate acceptance evidence.
-- On completion: write docs\relay\stage-1-inventory.md, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create), then start the next stage with session_create using the same recipe, then call relay-lock.ps1 -Action adopt -SessionId <new session id>.
-- If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release, and explain in the final reply. Never start a next session in that case.
+- $completionRule
+- $stopRule
 The gate holds its own lock docs\relay\.ledger.lock, separate from the chain lock, so a ledger write cannot interleave with another writer.
 "@
 
@@ -263,8 +388,8 @@ if ($DryRun) {
 } else {
   [IO.File]::WriteAllText($PromptOut, $prompt, [Text.UTF8Encoding]::new($false))
   Say "OK prompt_written path=$PromptOut bytes=$((Get-Item $PromptOut).Length)"
-  Say 'NEXT call session_create with agent_name=me, title=relay-1-<short>, workspace_dir=<repoRoot backslashes>, content=<contents of the prompt file>'
-  Say 'NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>'
+  Say $nextHint
+  Say $nextHint2
 }
 Say "DONE exit=0 target=$Target"
 exit 0

@@ -2,7 +2,8 @@
 
 > 通用协议见 `docs/AGENT-RELAY.md`（自包含、全部仓库相对路径）。
 > 本文件是**本项目专属裁决**：优先级高于通用协议，低于 `AGENTS.md` 其余家规。
-> 由 relay-port 安装器生成骨架；标了 `TODO` 的小节**必须在首次激活前补全**。
+> 由 relay-port 安装器生成：§3/§4/§5 的取值由安装器**首次运行即自动探测**，或在托管 agent 提问后按
+> `-AnswersFile` 直接落盘，本文件**不保留待填占位**。来源标成 `defaults` 时，起链前必须与用户确认。
 
 ## 1. 项目身份
 
@@ -20,27 +21,31 @@
 
 > 每阶段的 acceptance 判据写进计划文档（`{{PLAN_DOC}}`）；接力链每一环都把计划文档当真源读。
 
-## 3. 写集与并发检测（TODO，必填）
+## 3. 写集与并发检测（source: {{ADAPTATION_SOURCE}}）
 
 - 允许被 agent 修改的目录 / 文件（逐条列全，写死）：
-  - `TODO`
+{{WRITE_SET_ALLOW}}
 - 禁止触碰（发布脚本、CI、签名、密钥、用户数据、门禁阈值）：
-  - `TODO`
+{{WRITE_SET_DENY}}
 - 并发检测口径（先跑什么命令，看到什么就停）：
-  - `TODO`
+  - `{{CONCURRENCY_CHECK}}`
+  - 退出码 4 或输出含 `LOCK_HELD` ⇒ 立刻停链回写 `blocked`，**不要抢锁**。
 
-## 4. 验收门禁（TODO，必填）
+> `source=defaults` 表示本节三段是安装器的**探测值**，不是用户确认值：起链前必须按
+> `docs/relay/adaptation-questions.md` 向用户逐项发问，拿到答案后用 `-AnswersFile` 重跑安装器。
 
-- 门禁命令：`TODO`（例：`pwsh -NoProfile -File reports\<gate>.ps1 -ExpectDesktopTests <N>`）
-- 判绿口径：**只认产物文件里的结论字段**（例如 summary.txt 的 `GATE_VERDICT`），**不认管道末端的 `$LASTEXITCODE`**。
+## 4. 验收门禁（source: {{ADAPTATION_SOURCE}}）
+
+- 门禁命令：`{{GATE_COMMAND}}`
+- 判绿口径：**只认产物文件里的结论字段，不认管道末端的 `$LASTEXITCODE`**。当前口径：`{{GATE_VERDICT_FIELD}}`
 - 核数口径：`git status --porcelain` 一律带 `--untracked-files=all`。
 - 门禁脚本的阈值与白名单属**人工验收点**，agent 不得自行修改。
 
-## 5. 模型与额度策略（可沿用默认，勿传 effort）
+## 5. 模型与额度策略（source: {{ADAPTATION_SOURCE}}）
 
-- 首选：`minimax/MiniMax-M3`
-- 日间回退：`custom_provider:provider-aa5659/auto`（08:00-19:00 Asia/Shanghai）
-- 夜间回退：`custom_provider:provider-aa5659/deepseek-v4.1-flash-1017`（19:01-08:00 Asia/Shanghai）
+- 首选：`{{MODEL_PRIMARY}}`
+- 日间回退：`{{MODEL_FALLBACK_DAY}}`（08:00-19:00 Asia/Shanghai）
+- 夜间回退：`{{MODEL_FALLBACK_NIGHT}}`（19:01-08:00 Asia/Shanghai）
 - 上面两条 `custom_provider:provider-*` 是**本机 provider 注册 id**，属 device-specific, refill 项：换机器或换
   profile 必须重填，否则回退那一环会指向不存在的 provider，白烧一轮才暴露。`tool\scripts\install-relay.ps1`
   不会替你校验它（静态审计见 `tool\references\portability-audit-2026-11-25.md`）。

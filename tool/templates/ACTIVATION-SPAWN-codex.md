@@ -2,18 +2,21 @@
 Codex CLI has no `session_create` tool: start the next link with `docs\relay\relay-spawn.ps1 -Runtime codex -PromptFile docs\relay\next-relay-prompt.txt -WorkspaceDir <repo root> -Execute -AdoptLock` (the next link is a headless `codex exec` process).
 <!-- SPAWN_RULE_END -->
 
+<!-- SPAWN_COMMAND_BEGIN -->
+pwsh -NoProfile -ExecutionPolicy Bypass -File {{REPO}}\docs\relay\relay-spawn.ps1 -Runtime codex -PromptFile {{REPO}}\docs\relay\next-relay-prompt.txt -WorkspaceDir {{REPO}} -Execute -AdoptLock
+<!-- SPAWN_COMMAND_END -->
+
 --- STEP 2: start the first link (runtime = codex) ---
 
 Codex CLI has no session_create tool, so the next link is a headless `codex exec` process.
 The launcher already wrote the prompt to {{REPO}}\docs\relay\next-relay-prompt.txt.
 
-Dry run first (prints the exact command, runs nothing):
-
-pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-spawn.ps1" -Runtime codex -PromptFile "{{REPO}}\docs\relay\next-relay-prompt.txt" -WorkspaceDir "{{REPO}}"
+Dry run first (prints the exact command, runs nothing): run the command below without
+`-Execute -AdoptLock`.
 
 Then run it for real:
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-spawn.ps1" -Runtime codex -PromptFile "{{REPO}}\docs\relay\next-relay-prompt.txt" -WorkspaceDir "{{REPO}}" -Execute -AdoptLock
+{{SPAWN_COMMAND}}
 
 The line `RELAY_SPAWN_OK runtime=codex session_id=<id>` is the success marker.
 The link runs to completion as a child process; it advances the chain itself by running

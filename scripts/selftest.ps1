@@ -638,6 +638,206 @@ Check 'spawn_rejects_non_cli_runtime' ($s16g.Code -eq 2 -and $s16g.Text -match '
 $s16h = Run $spawnTpl16 @('-Runtime', 'claude-code', '-PromptFile', (Join-Path $script:root 'no-such-prompt-16.txt'))
 Check 'spawn_missing_prompt_file' ($s16h.Code -eq 2 -and $s16h.Text -match 'reason=prompt_file_missing') ('exit=' + $s16h.Code)
 
+# --- case 17: runtime contract end to end (B10) -------------------------------
+# B9 gave the kit a runtime adaptation layer, but the launcher still wrote an
+# MCode-only hand-off prompt: a CLI chain was assembled correctly and then died
+# at the first hand-off. Case 17 checks the contract that closes that gap: the
+# installer stamps how the next link starts, the launcher reads that stamp back,
+# and the prompt of a CLI runtime names the spawn driver instead of session_create.
+$r17a = New-Repo 'repo-runtime-contract'
+Set-Content -LiteralPath (Join-Path $r17a 'docs\plan-17.md') -Value '# plan 17' -Encoding utf8
+$c17a = Run $installer @('-RepoRoot', $r17a, '-Target', 'contract batch', '-PlanDoc', 'docs\plan-17.md', '-MaxStages', '2', '-Runtime', 'claude-code')
+Check 'contract_cc_install_exit_zero' ($c17a.Code -eq 0) ('exit=' + $c17a.Code)
+$descPath17 = Join-Path $r17a 'docs\relay\relay-runtime.json'
+Check 'contract_descriptor_present' (Test-Path $descPath17) ('path=' + $descPath17)
+$desc17 = $null
+if (Test-Path $descPath17) { $desc17 = Get-Content -LiteralPath $descPath17 -Raw -Encoding UTF8 | ConvertFrom-Json }
+Check 'contract_descriptor_runtime' ($null -ne $desc17 -and $desc17.runtime -eq 'claude-code') ''
+Check 'contract_descriptor_mode' ($null -ne $desc17 -and $desc17.next_link_mode -eq 'cli_driver') ''
+Check 'contract_descriptor_command_portable' ($null -ne $desc17 -and ([string]$desc17.spawn_command).Contains('{REPO}') -and -not ([string]$desc17.spawn_command).Contains('{{REPO}}')) ('cmd=' + [string]$desc17.spawn_command)
+Check 'contract_descriptor_rule_files' ($null -ne $desc17 -and @($desc17.rule_files).Count -eq 2) ('files=' + (@($desc17.rule_files) -join ','))
+$start17 = Join-Path $r17a 'docs\relay\start-relay.ps1'
+$s17a = Run $start17 @('-Target', 'contract batch', '-DryRun')
+Check 'contract_launcher_reads_descriptor' ($s17a.Text -match 'OK runtime=claude-code source=descriptor') ('line=' + ((($s17a.Text -split "`n") | Where-Object { $_ -match 'OK runtime=' } | Select-Object -First 1)))
+Check 'contract_prompt_has_stage_header' ($s17a.Text -match 'RELAY_STAGE=1') ''
+Check 'contract_prompt_names_spawn_driver' ($s17a.Text -match 'relay-spawn\.ps1') ''
+Check 'contract_prompt_has_spawn_command' ($s17a.Text -match 'relay-spawn\.ps1 -Runtime claude-code') ''
+Check 'contract_prompt_no_session_create_call' (-not ($s17a.Text -match 'start the next stage with session_create')) ''
+Check 'contract_prompt_forbids_session_create' ($s17a.Text -match 'never call it') ''
+$s17d = Run $start17 @('-Target', 'bad runtime', '-Runtime', 'gemini-cli', '-DryRun')
+Check 'contract_launcher_rejects_unknown_runtime' ($s17d.Code -eq 2 -and $s17d.Text -match 'reason=runtime_unsupported') ('exit=' + $s17d.Code)
+
+$r17b = New-Repo 'repo-runtime-contract-mcode'
+Set-Content -LiteralPath (Join-Path $r17b 'docs\plan-17m.md') -Value '# plan 17m' -Encoding utf8
+$c17b = Run $installer @('-RepoRoot', $r17b, '-Target', 'contract mcode', '-PlanDoc', 'docs\plan-17m.md', '-MaxStages', '2')
+Check 'contract_mcode_install_exit_zero' ($c17b.Code -eq 0) ('exit=' + $c17b.Code)
+$desc17m = Get-Content -LiteralPath (Join-Path $r17b 'docs\relay\relay-runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Check 'contract_mcode_mode' ($desc17m.next_link_mode -eq 'session_tool') ''
+Check 'contract_mcode_no_spawn_command' ([string]::IsNullOrWhiteSpace([string]$desc17m.spawn_command)) ('cmd=' + [string]$desc17m.spawn_command)
+$s17b = Run (Join-Path $r17b 'docs\relay\start-relay.ps1') @('-Target', 'contract mcode', '-DryRun')
+Check 'contract_mcode_launcher_runtime' ($s17b.Text -match 'OK runtime=mcode source=descriptor') ''
+Check 'contract_mcode_prompt_uses_session_create' ($s17b.Text -match 'start the next stage with session_create using the same recipe') ''
+Check 'contract_mcode_prompt_has_no_stage_header' (-not ($s17b.Text -match 'RELAY_STAGE=')) ''
+
+$r17c = New-Repo 'repo-runtime-contract-oc'
+Set-Content -LiteralPath (Join-Path $r17c 'docs\plan-17o.md') -Value '# plan 17o' -Encoding utf8
+$c17c = Run $installer @('-RepoRoot', $r17c, '-Target', 'contract oc', '-PlanDoc', 'docs\plan-17o.md', '-MaxStages', '2', '-Runtime', 'openclaw')
+Check 'contract_oc_install_exit_zero' ($c17c.Code -eq 0) ('exit=' + $c17c.Code)
+$desc17o = Get-Content -LiteralPath (Join-Path $r17c 'docs\relay\relay-runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Check 'contract_oc_mode' ($desc17o.next_link_mode -eq 'sessions_spawn_tool') ''
+$s17c = Run (Join-Path $r17c 'docs\relay\start-relay.ps1') @('-Target', 'contract oc', '-DryRun')
+Check 'contract_oc_prompt_uses_sessions_spawn' ($s17c.Text -match 'sessions_spawn') ''
+Check 'contract_oc_prompt_no_cli_driver' (-not ($s17c.Text -match 'relay-spawn\.ps1 -Runtime')) ''
+
+$spawnInst17 = Join-Path $r17a 'docs\relay\relay-spawn.ps1'
+$prompt17 = Join-Path $script:root 'relay-prompt-17.txt'
+[IO.File]::WriteAllText($prompt17, ("stage two prompt`n"), (New-Object Text.UTF8Encoding($false)))
+$s17e = Run $spawnInst17 @('-Runtime', 'claude-code', '-PromptFile', $prompt17, '-WorkspaceDir', $r17a, '-SessionId', 'not-a-uuid')
+Check 'contract_spawn_rejects_bad_session_id' ($s17e.Code -eq 2 -and $s17e.Text -match 'reason=session_id_not_uuid') ('exit=' + $s17e.Code)
+$uuid17 = '11111111-2222-3333-4444-555555555555'
+$ledger17 = [ordered]@{ goal = 'contract batch'; status = 'running'; current_stage = 1; max_stages = 2; next_session_id = $uuid17; stages = @(); sessions = @() }
+[IO.File]::WriteAllText((Join-Path $r17a 'docs\relay.json'), (($ledger17 | ConvertTo-Json -Depth 4) -replace "`r`n", "`n"), (New-Object Text.UTF8Encoding($false)))
+$s17f = Run $spawnInst17 @('-Runtime', 'claude-code', '-PromptFile', $prompt17, '-WorkspaceDir', $r17a)
+Check 'contract_spawn_reads_ledger_session_id' ($s17f.Text -match ('SPAWN_SESSION_ID id=' + $uuid17 + ' source=ledger')) ('line=' + ((($s17f.Text -split "`n") | Where-Object { $_ -match 'SPAWN_SESSION_ID' } | Select-Object -First 1)))
+Check 'contract_spawn_dryrun_no_pre_adopt' (-not ($s17f.Text -match 'SPAWN_LOCK_PRE_ADOPTED')) ''
+
+$spawnTpl17 = Join-Path $tplDir 'relay-spawn.ps1'
+Check 'contract_device_start_matches_template' ((Hash16 (Join-Path $tplDir 'start-relay.ps1')) -eq (Hash16 (Join-Path $repoRoot 'device\start-relay.ps1'))) ''
+Check 'contract_device_spawn_matches_template' ((Hash16 $spawnTpl17) -eq (Hash16 (Join-Path $repoRoot 'device\relay-spawn.ps1'))) ''
+$bad17 = @()
+foreach ($f17 in @((Join-Path $repoRoot 'device\start-relay.ps1'), (Join-Path $repoRoot 'device\relay-spawn.ps1'))) {
+  $b17 = [IO.File]::ReadAllBytes($f17); $na17 = 0; $bom17 = $false
+  foreach ($x17 in $b17) { if ($x17 -gt 127) { $na17++ } }
+  if ($b17.Length -ge 3 -and $b17[0] -eq 239 -and $b17[1] -eq 187 -and $b17[2] -eq 191) { $bom17 = $true }
+  if ($na17 -gt 0 -or $bom17) { $bad17 += (Split-Path -Leaf $f17) }
+}
+Check 'contract_device_files_ascii_no_bom' ($bad17.Count -eq 0) ('bad=' + ($bad17 -join ','))
+
+# --- case 17b: unattended link invariants (B10 live chain findings) ---------
+# The first real Claude Code link of B10 exposed three defects that no dry run
+# could see: the driver started the runtime in the wrong working directory, the
+# permission mode asked a question that nobody was there to answer, and the
+# prompt of a CLI link carried no session id, so the link could not release the
+# lock it owned. Case 17b locks those three down.
+Check 'contract_launcher_allocates_chain_session_id' ($s17a.Text -match 'OK link_mode=cli_driver chain_session_id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') ('line=' + ((($s17a.Text -split "`n") | Where-Object { $_ -match 'OK link_mode=' } | Select-Object -First 1)))
+Check 'contract_prompt_carries_session_id' ($s17a.Text -match 'RELAY_SESSION_ID=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') ''
+Check 'contract_prompt_stop_rule_names_session_id' ($s17a.Text -match 'relay-lock\.ps1 -Action release -SessionId') ''
+Check 'contract_spawn_permission_mode_never_asks' ($s17f.Text -match '--permission-mode bypassPermissions') ''
+Check 'contract_spawn_disables_question_box' ($s17f.Text -match 'autoQuestion') ''
+Check 'contract_mcode_prompt_has_no_session_id' (-not ($s17b.Text -match 'RELAY_SESSION_ID=')) ''
+$s17g2 = Run $spawnInst17 @('-Runtime', 'claude-code', '-PromptFile', $prompt17, '-WorkspaceDir', (Join-Path $script:root 'no-such-workspace-17'))
+Check 'contract_spawn_rejects_missing_workspace' ($s17g2.Code -eq 2 -and $s17g2.Text -match 'reason=workspace_missing') ('exit=' + $s17g2.Code)
+
+# --- case 17c: headless permission rules travel in a settings file -------------
+# The second real Claude Code link of B10 showed the truth about permissions: on
+# claude 999.0.0-local the CLI flags --permission-mode and --allowedTools are
+# ignored, so every non read-only call came back as "This command requires
+# approval" and the link could not run a single relay script. The same rules
+# inside a --settings FILE are honoured. Case 17c locks that down, and it also
+# keeps the mcode prompt free of the cli-only command style rule.
+Check 'contract_spawn_settings_json_disables_question_box' ($s17f.Text -match 'SPAWN_SETTINGS_JSON .*autoQuestion') ''
+Check 'contract_spawn_settings_json_bypass_mode' ($s17f.Text -match '"defaultMode":"bypassPermissions"') ''
+Check 'contract_spawn_settings_json_allows_pwsh' ($s17f.Text -match 'Bash\(pwsh:\*\)') ''
+Check 'contract_spawn_uses_settings_file' ($s17f.Text -match '--settings .*relay-settings\.json') ''
+Check 'contract_spawn_no_inline_settings_json' (-not ($s17f.Text -match '--settings \{')) ''
+Check 'contract_cli_prompt_command_style' ($s17a.Text -match 'Command style for this runtime' -and $s17a.Text -match 'one command per call') ''
+Check 'contract_mcode_prompt_has_no_command_style' (-not ($s17b.Text -match 'Command style for this runtime')) ''
+
+$r17d = New-Repo 'repo-runtime-contract-live'
+Set-Content -LiteralPath (Join-Path $r17d 'docs\plan-17l.md') -Value '# plan 17l' -Encoding utf8
+$c17d = Run $installer @('-RepoRoot', $r17d, '-Target', 'live contract', '-PlanDoc', 'docs\plan-17l.md', '-MaxStages', '2', '-Runtime', 'claude-code')
+Check 'contract_live_install_exit_zero' ($c17d.Code -eq 0) ('exit=' + $c17d.Code)
+$live17 = Run (Join-Path $r17d 'docs\relay\start-relay.ps1') @('-Target', 'live contract', '-MaxStages', '2')
+Check 'contract_live_launcher_exit_zero' ($live17.Code -eq 0) ('exit=' + $live17.Code)
+$led17d = $null
+$ledPath17 = Join-Path $r17d 'docs\relay.json'
+if (Test-Path -LiteralPath $ledPath17) { $led17d = Get-Content -LiteralPath $ledPath17 -Raw -Encoding UTF8 | ConvertFrom-Json }
+Check 'contract_live_ledger_carries_session_id' ($null -ne $led17d -and ([string]$led17d.next_session_id) -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') ('id=' + [string]$led17d.next_session_id)
+$promptLive17 = ''
+$promptPath17 = Join-Path $r17d 'docs\relay\next-relay-prompt.txt'
+if (Test-Path -LiteralPath $promptPath17) { $promptLive17 = [IO.File]::ReadAllText($promptPath17) }
+Check 'contract_live_prompt_session_id_matches_ledger' ($promptLive17 -match ('RELAY_SESSION_ID=' + [regex]::Escape([string]$led17d.next_session_id))) ''
+
+# --- case 17d: the command line the CLI really parses (B10 live chain findings) ---
+# The third real Claude Code link of B10 was stopped by the permission layer again,
+# and the cause was in the command line, not in the rules: on claude 999.0.0-local
+# the argument parser stops at the first positional argument, so every flag that
+# followed the prompt was dropped. --settings included, which left the link in
+# default mode where every pwsh call waits for an approval that never comes.
+# The rules inside the settings file also need the key inside "permissions".
+# Case 17d locks both down: no other check in this suite can see the order of
+# the arguments, and the order is the whole bug.
+$spawnLine17 = ''
+foreach ($x17 in ($s17f.Text -split "`n")) { if ($x17 -match 'SPAWN_COMMAND claude ') { $spawnLine17 = $x17.Trim() } }
+Check 'contract_spawn_prompt_is_last_argument' ($spawnLine17 -match '-p <prompt from file>$') ('line=' + $spawnLine17)
+Check 'contract_spawn_settings_flag_before_prompt' ($spawnLine17 -match '--settings .*relay-settings\.json' -and $spawnLine17.IndexOf('--settings') -lt $spawnLine17.IndexOf('-p <prompt from file>')) ('line=' + $spawnLine17)
+Check 'contract_spawn_permission_mode_flag_before_prompt' ($spawnLine17 -match '--permission-mode bypassPermissions' -and $spawnLine17.IndexOf('--permission-mode') -lt $spawnLine17.IndexOf('-p <prompt from file>')) ('line=' + $spawnLine17)
+Check 'contract_spawn_settings_json_nested_default_mode' ($s17f.Text -match '"permissions":\{"defaultMode":"bypassPermissions"') ''
+
+# --- case 18: first run asks the project's three rulings (B11) -----------------
+# Until B11 the kit shipped docs\RELAY-ADAPTATION.md with TODO in the write set,
+# the gate and the model policy, and a human had to fill them in after the
+# install. The install now probes usable defaults, renders them with a source
+# mark, writes a question packet, and refuses to sound confirmed until an
+# answers file lands. Case 18 locks all of that down: the pending state, the
+# packet contents, the answers overlay and the failure code for a missing file.
+$r18 = New-Repo 'repo-adapt-questions'
+Set-Content -LiteralPath (Join-Path $r18 'docs\plan-18.md') -Value '# plan 18' -Encoding utf8
+$c18a = Run $installer @('-RepoRoot', $r18, '-Target', 'adapt batch', '-PlanDoc', 'docs\plan-18.md', '-MaxStages', '2')
+Check 'adapt_first_run_exit_zero' ($c18a.Code -eq 0) ('exit=' + $c18a.Code)
+Check 'adapt_first_run_verdict_pass' ($c18a.Text -match 'INSTALL_VERDICT=PASS') ''
+Check 'adapt_status_pending' ($c18a.Text -match 'ADAPTATION_STATUS=pending') ''
+Check 'adapt_source_defaults' ($c18a.Text -match 'ADAPTATION_SOURCE=defaults') ''
+Check 'adapt_questions_line' ($c18a.Text -match 'ADAPTATION_QUESTIONS=docs\\relay\\adaptation-questions\.md') ''
+Check 'adapt_warns_unconfirmed' ($c18a.Text -match 'WARN adaptation_defaults_unconfirmed') ''
+Check 'adapt_check_zero_placeholders' ($c18a.Text -match 'ADAPT_CHECK doc=docs\\RELAY-ADAPTATION\.md placeholders=0 source=defaults') ''
+$adaptDoc18 = Join-Path $r18 'docs\RELAY-ADAPTATION.md'
+$adaptTxt18a = ''
+if (Test-Path -LiteralPath $adaptDoc18) { $adaptTxt18a = [IO.File]::ReadAllText($adaptDoc18) }
+Check 'adapt_doc_no_todo_left' (-not ($adaptTxt18a -match 'TODO')) ''
+Check 'adapt_doc_no_brace_tokens' (-not ($adaptTxt18a -match '\{\{[A-Z_]+\}\}')) ''
+Check 'adapt_doc_source_defaults_marks' ((([regex]::Matches($adaptTxt18a, 'source: defaults')).Count) -eq 3) ''
+$qMd18 = Join-Path $r18 'docs\relay\adaptation-questions.md'
+$qJs18 = Join-Path $r18 'docs\relay\adaptation-questions.json'
+$aTpl18 = Join-Path $r18 'docs\relay\adaptation-answers.template.json'
+Check 'adapt_packet_md_present' (Test-Path -LiteralPath $qMd18) ''
+Check 'adapt_packet_json_present' (Test-Path -LiteralPath $qJs18) ''
+Check 'adapt_answers_template_present' (Test-Path -LiteralPath $aTpl18) ''
+$qObj18 = $null
+if (Test-Path -LiteralPath $qJs18) { $qObj18 = Get-Content -LiteralPath $qJs18 -Raw -Encoding UTF8 | ConvertFrom-Json }
+Check 'adapt_packet_json_questions_8' ($null -ne $qObj18 -and @($qObj18.questions).Count -eq 8) ''
+Check 'adapt_packet_json_repo_filled' ($null -ne $qObj18 -and -not [string]::IsNullOrWhiteSpace([string]$qObj18.repo)) ''
+Check 'adapt_packet_json_all_answer_keys' ($null -ne $qObj18 -and ((@($qObj18.questions | ForEach-Object { [string]$_.answer_key } | Sort-Object) -join ',')) -eq 'concurrency_check,gate_command,gate_verdict_field,model_fallback_day,model_fallback_night,model_primary,write_set_allow,write_set_deny') ''
+$qMdTxt18 = ''
+if (Test-Path -LiteralPath $qMd18) { $qMdTxt18 = [IO.File]::ReadAllText($qMd18) }
+Check 'adapt_packet_md_names_every_key' ($null -ne $qObj18 -and @($qObj18.questions | Where-Object { $qMdTxt18 -notmatch [regex]::Escape([string]$_.answer_key) }).Count -eq 0) ''
+Check 'adapt_packet_md_says_batch_of_2_3' ($qMdTxt18 -match '2-3') ''
+$ans18Path = Join-Path $r18 'docs\relay\adaptation-answers.json'
+$ans18 = [ordered]@{
+  schema = 'relay-port/adaptation-answers@1'
+  write_set_allow = @('src/', 'tests/')
+  write_set_deny = @('secrets/')
+  gate_command = 'pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\gate-check.ps1'
+  gate_verdict_field = 'GATE_VERDICT=PASS'
+  model_primary = 'minimax/MiniMax-M3'
+}
+[IO.File]::WriteAllText($ans18Path, (($ans18 | ConvertTo-Json -Depth 4) -replace "`r`n", "`n"), (New-Object Text.UTF8Encoding($false)))
+$c18b = Run $installer @('-RepoRoot', $r18, '-Target', 'adapt batch', '-PlanDoc', 'docs\plan-18.md', '-MaxStages', '2', '-AnswersFile', 'docs\relay\adaptation-answers.json')
+Check 'adapt_answers_run_exit_zero' ($c18b.Code -eq 0) ('exit=' + $c18b.Code)
+Check 'adapt_answers_applied' ($c18b.Text -match 'ADAPT answers=docs\\relay\\adaptation-answers\.json applied=5/8') ''
+Check 'adapt_answers_patches_three_sections' ($c18b.Text -match 'PATCH RELAY-ADAPTATION\.md sections=3,4,5 missing= answers=') ''
+Check 'adapt_status_confirmed' ($c18b.Text -match 'ADAPTATION_STATUS=confirmed') ''
+Check 'adapt_answers_source_answers' ($c18b.Text -match 'ADAPTATION_SOURCE=answers') ''
+Check 'adapt_questions_line_cleared' (-not ($c18b.Text -match 'ADAPTATION_QUESTIONS=docs')) ''
+Check 'adapt_answers_no_unconfirmed_warn' (-not ($c18b.Text -match 'WARN adaptation_defaults_unconfirmed')) ''
+$adaptTxt18b = ''
+if (Test-Path -LiteralPath $adaptDoc18) { $adaptTxt18b = [IO.File]::ReadAllText($adaptDoc18) }
+Check 'adapt_answers_wrote_values' ($adaptTxt18b -match 'GATE_VERDICT=PASS' -and $adaptTxt18b -match 'secrets/' -and $adaptTxt18b -match 'tests/') ''
+Check 'adapt_answers_source_marked' ((([regex]::Matches($adaptTxt18b, 'source: answers')).Count) -eq 3) ''
+Check 'adapt_answers_kept_later_sections' ($adaptTxt18b -match '## 6\.' -and $adaptTxt18b -match '## 9\.') ''
+$c18c = Run $installer @('-RepoRoot', $r18, '-Target', 'adapt batch', '-PlanDoc', 'docs\plan-18.md', '-MaxStages', '2', '-AnswersFile', 'docs\relay\missing-answers.json')
+Check 'adapt_missing_answers_exit_two' ($c18c.Code -eq 2 -and $c18c.Text -match 'reason=answers_file_missing') ('exit=' + $c18c.Code)
+
 # --- verdict -------------------------------------------------------------------
 Say ('SUITE_END pass=' + $script:pass + ' fail=' + $script:fail + ' root=' + $script:root)
 Say ('MANUAL_STEP real_session_activation: this suite never calls session_create. One live chain per changed ' +

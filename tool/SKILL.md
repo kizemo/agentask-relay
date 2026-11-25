@@ -14,10 +14,10 @@ description: Install the unattended relay (auto-advance) kit into any git projec
 | `<repo>\docs\relay\start-relay.ps1` | 启动器：工作区校验 + 并发闸门 + 取锁 + 台账初始化（只新建不覆写）+ 生成接力 prompt |
 | `<repo>\docs\relay\relay-ledger.ps1` | 台账写闸门：写锁 + CAS(`-ExpectSha256`) + 只追加不变式 + 写后回读；动作只有 `-Action status` / `-Action commit`，`-DryRun` 可先验 |
 | `<repo>\docs\relay\relay-lock.ps1` | 互斥锁：`FileMode.CreateNew` 原子创建，保证一个项目同时只有一个写会话 |
-| `<repo>\docs\relay\relay-spawn.ps1` | 起环驱动（**仅 CLI 运行时用**）：把接力 prompt 交给 `claude -p` / `codex exec` 无头子进程，取回会话 id 并转交锁；默认只干跑，加 `-Execute` 才真跑 |
+| `<repo>\docs\relay\relay-spawn.ps1` | 起环驱动（**仅 CLI 运行时用**）：把接力 prompt 交给 `claude -p` / `codex exec` 无头子进程，取回会话 id 并转交锁；默认只干跑，加 `-Execute` 才真跑。子进程在**链仓工作目录**内启动（`--add-dir` 只放宽权限、不改 cwd），权限模式默认 `bypassPermissions`（无人值守不提问），原始输出落盘 `docs\relay\relay-spawn-output\`。**铁律**：`claude` 的所有旗标必须写在 prompt **之前**，prompt 放最后，否则整批旗标被丢弃（拿不到 JSON、`session_id` 丢失、模式回落 `default`）；配方与实测见 `references/claude-code-permissions-2026-11-25.md` |
 | `<repo>\docs\AGENT-RELAY.md` | 通用协议（自包含、仓库相对路径，可直接搬） |
 | `<repo>\docs\RELAY-SOP.md` | 操作规程 |
-| `<repo>\docs\RELAY-ADAPTATION.md` | **本项目裁决骨架**（写集 / 门禁 / 模型策略，装完须补全 TODO） |
+| `<repo>\docs\RELAY-ADAPTATION.md` | **本项目裁决骨架**（写集 / 门禁 / 模型策略）；首次运行自动探测默认值 + 生成提问包，答案经 `-AnswersFile` 回填（见「装完之后必须做的两件事」） |
 | `<repo>\AGENTS.md` | 受管家规块 `<!-- BEGIN RELAY-PORT -->`（幂等注入，不重复、不覆盖项目自己写的规则） |
 | `<repo>\docs\plan-relay.md` | 计划文档（未指定 `-PlanDoc` 且未探测到既有计划时自动生成） |
 | `<repo>\docs\relay\ACTIVATION-PROMPT.txt` | **激活包**：起链的四步命令 + 一句话激活语 |
@@ -36,13 +36,15 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-rel
   [-PlanDoc "<仓库相对路径的计划文档>"] `
   [-StageTitles "1. xxx;2. yyy"] `
   [-MaxStages 6] [-WorkspaceDir "<仓库根>"] [-TtlSeconds 1800] [-Force] `
+  [-AnswersFile "<仓库相对路径的答案 JSON>"] `
   [-Runtime mcode|claude-code|codex|openclaw]
 ```
 
 - 退出码 `0` = 装好；`2` = 参数/工作区非法；`5` = 自检不过。装完会顺带跑一次启动器干跑，干跑结果只记录不拉低退出码（`3` 链已在跑 / 台账 blocked 或耗尽、`4` 锁被占 —— 都不影响安装本身）。
 - `-Runtime` 指定目标会话跑在哪个运行时上（默认 `mcode`）。它同时决定**家规落到哪些文件**与**下一环怎么起**，见下面「运行时适配」。不认识的运行时响亮失败（`FAIL reason=runtime_unsupported`，退出码 `2`），不静默退回默认。
 - `-PlanDoc` 省略时会自动探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`；探测到多份会告警（`WARN plan_doc_ambiguous`）并退回新建 `docs\plan-relay.md`。**安装器是唯一允许创建计划文档的地方**，启动器只解析、绝不创建（见「装置契约」）。
-- **幂等**：重复执行不产生重复家规块、不覆盖项目自己改过的文件（`SKIP ... kept`）。要强制覆盖用 `-Force`。
+- `-AnswersFile` 把用户对三项裁决（写集 / 门禁 / 模型）的答案回填进 `docs\RELAY-ADAPTATION.md`：解析答案 → 逐键覆盖探测值 → **只重写 §3/§4/§5**（§6 之后的手改内容不丢）→ 打印 `ADAPT_CHECK doc=… placeholders=N source=answers`。答案文件缺失 / 解析失败 / 为空分别 `FAIL reason=answers_file_missing|answers_file_unparsable|answers_file_empty`，退出码 `2`。
+- **幂等**：重复执行不产生重复家规块、不覆盖项目自己改过的文件（`SKIP ... kept`）。要强制覆盖用 `-Force`。装完看见 `ADAPT_CHECK ... placeholders=0` 即表示 §3/§4/§5 既无残留 `TODO`、也无未替换占位符。
 - 已有未受管的接力家规时**收编**（adopt）该段并加标记，不追加第二份。收编判据是双层的：
   1. 标记块已存在 → `present_kept`；
   2. 标题命中「接力 / relay / 自动推进」→ `reason=title` 包裹收编；
@@ -68,14 +70,29 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-rel
 - **CLI 运行时的链形态不同**：下一环是**跑完即退的无头子进程**，链靠「本环自己再跑一次 spawn 命令」推进；
   MCode 的下一环是常驻会话。
 - **锁转交只有一条路**：`relay-lock.ps1 -Action adopt -SessionId <id>`（`relay-spawn.ps1 -AdoptLock` 会自动调它）。
+- **CLI 链的 session id 由启动器分配**：MCode 的会话 id 是 `session_create` 返回的，CLI 运行时没有这种回传，所以启动器预先分配一个 UUID，同时写进台账 `next_session_id` 与 prompt 的 `RELAY_SESSION_ID=` 行；子环据此 renew / release 锁，驱动从台账读它（`source=ledger`）。`claude --session-id` 在部分版本上不被遵守，**别把运行时的内部会话 id 当成链的 session id**。
 - **换运行时必须重装**（`-Force`），否则家规块、`docs\RELAY-ADAPTATION.md`、激活包三处会各说各话。
 - 完整分析与各家踩坑见 `references\runtime-portability-2026-11-25.md`；
   逐家部署步骤见 `references\deployment-claude-code.md` / `deployment-codex.md` / `deployment-openclaw.md`。
 
 ## 装完之后必须做的两件事
 
-1. **补全 `docs\RELAY-ADAPTATION.md` 的 TODO**：写集（哪些目录可改、哪些禁止碰）、验收门禁命令与判绿口径、模型策略、并发检测口径。**这一步不补，接力链会在第一环就撞上「写集不明」而停链。**
-2. **在目标项目内激活**（起环权必须在目标项目内）：
+### 1. 把 `docs\RELAY-ADAPTATION.md` 的三项裁决问出来
+
+安装器**不交互提问**（无 TTY），它只做「探测 + 生成提问包」，发问由托管 agent 完成。
+
+| 首跑输出 | 含义 | 你要做的 |
+|---|---|---|
+| `ADAPTATION_STATUS=pending` | 文档里的三项是**探测默认值**，不是用户确认值 | 按 `docs\relay\adaptation-questions.md` 逐项问用户 → 写 `docs\relay\adaptation-answers.json` → 带 `-AnswersFile` 重跑 |
+| `ADAPTATION_STATUS=confirmed` | 三项已由答案文件落定 | 直接进第 2 步 |
+
+- **`pending` 不许起链。** 默认值是猜的，硬起会在第一环撞上「写集不明」而停链。重跑后必须看到 `ADAPTATION_STATUS=confirmed`（或 `ADAPTATION_SOURCE=answers`）才能激活。
+- 一次只问 **2-3 项**：按问题包的三组（写集 / 门禁 / 模型）分批，别把 8 项一次抛给用户。
+- 答案文件是**平铺键值**，键名与问题包里的「答案键」逐字一致；只写要覆盖的键，其余保留探测值。安装器只定点替换 §3/§4/§5。
+- 首跑落的三个文件：`docs\relay\adaptation-questions.md`（人读的问题包）、`docs\relay\adaptation-questions.json`（机读）、`docs\relay\adaptation-answers.template.json`（照着填）。
+- 三个状态行：`ADAPTATION_STATUS`（`pending`/`confirmed`）、`ADAPTATION_SOURCE`（`defaults`/`answers`）、`ADAPTATION_QUESTIONS`（只有 `pending` 时非空）。
+
+### 2. 在目标项目内激活（起环权必须在目标项目内）
 
 ```
 按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链

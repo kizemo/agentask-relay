@@ -1,5 +1,5 @@
 # MANIFEST.txt - agentask-relay relay corpus (content inventory, self-excluded)
-# generated: 2026-11-25 21:51:45
+# generated: 2026-11-25 23:44:55
 # format: sha16(sha256 first 16 hex) | bytes | relpath   [LF, no BOM]
 # refresh: pwsh -File scripts\refresh-manifest.ps1  (run last in any round)
 F411F9554EC9F026 | 378 | .gitattributes
@@ -8,9 +8,9 @@ CD06451AE2B8B4B9 | 1270 | .github\workflows\selftest.yml
 9A91B2B58BE0D23A | 3813 | AGENTS.md
 6068012759F0D0A6 | 15672 | device\relay-ledger.ps1
 23E51FB2619230DC | 6429 | device\relay-lock.ps1
-D267199D611CC109 | 6946 | device\relay-spawn.ps1
+438D5C375C7D92F4 | 16484 | device\relay-spawn.ps1
 FA2B59CCD1CF0A6D | 1219 | device\relay.json
-4A65572783501F9E | 13633 | device\start-relay.ps1
+D795D14DDAE16FCC | 22872 | device\start-relay.ps1
 44C7744F3A3037E8 | 3655 | examples\practilog\AGENTS-relay-section-extract.md
 63A309790F994BF2 | 8564 | examples\practilog\docs\AGENT-RELAY.md
 95297A3ED26EB263 | 917 | examples\practilog\docs\prompt-2026-11-08-relay-b1-task4.md
@@ -28,7 +28,7 @@ E0C4FCB8A430C339 | 33859 | examples\practilog\docs\relay\stage-4-implementation.
 29158782C8843588 | 9352 | examples\practilog\docs\relay\start-relay.ps1
 0317EC1D3467ABD1 | 6269 | examples\practilog\docs\relay\supervision-2026-11-24.md
 6B4093BF2AA506DA | 5747 | examples\practilog\docs\relay\supervision-2026-11-25.md
-EFBC0B473870C0FB | 75312 | HANDOFF.md
+74692877006E39D9 | 85052 | HANDOFF.md
 195EAB9E6AA15322 | 21489 | protocol\AGENT-RELAY.md
 7A9F0F01D624E1D0 | 1823 | protocol\practilog-agents-pointer.md
 1821AF57663BA1FD | 1336 | protocol\probe-ws\AGENTS.md
@@ -45,10 +45,15 @@ D53BE6CBB50B64DF | 6001 | reports\selftest-2026-11-25j.txt
 A0D77EED4B106F00 | 10347 | reports\selftest-2026-11-25k-console.txt
 EBD1CC4E2B2416EA | 13493 | scripts\publish-relay.ps1
 8A25614151D72CAD | 4598 | scripts\refresh-manifest.ps1
-096405866F6DDE72 | 51550 | scripts\selftest.ps1
+F6DF8D7591200C63 | 69701 | scripts\selftest.ps1
+63C04AB020331C8B | 7634 | tool\references\claude-code-permissions-2026-11-25.md
 476FC99B960576CF | 6784 | tool\references\deployment-claude-code.md
 6BBFB4FEBF8BE684 | 4859 | tool\references\deployment-codex.md
 A0700FA4945A256D | 5957 | tool\references\deployment-openclaw.md
+AEEC542D97F28E8A | 2386 | tool\references\live-chain-b10-stdout-2.txt
+581E41CD9C86593A | 906 | tool\references\live-chain-b10-stdout.txt
+74E77E3133FADB5B | 3549 | tool\references\live-chain-b10-transcript-1.txt
+63B3FEAD1DCF2C80 | 5480 | tool\references\live-chain-b10.md
 B6FBC07E5B4A4628 | 10001 | tool\references\portability-audit-2026-11-25.md
 07BCF9D614406156 | 10281 | tool\references\runtime-portability-2026-11-25.md
 3678BC92F85DD10F | 2674 | tool\references\selftest-2026-11-25-b2-next-prompt.txt
@@ -69,21 +74,31 @@ DB892369B0F687FC | 5614 | tool\references\selftest-2026-11-25l.md
 0221CBC3E3453171 | 11038 | tool\references\selftest-2026-11-25l.txt
 EBE9179103E3C23B | 7198 | tool\references\selftest-2026-11-25m.md
 0B8246FFDD9F17F9 | 12715 | tool\references\selftest-2026-11-25m.txt
+40A513C1EA3A0991 | 7499 | tool\references\selftest-2026-11-25n.md
+89E182F7FD10279F | 14783 | tool\references\selftest-2026-11-25n.txt
+6D63A4E0A40E8DFB | 3946 | tool\references\selftest-2026-11-25o.md
+65C1B10CE6643FC6 | 15577 | tool\references\selftest-2026-11-25o.txt
+F15FB69A5B1D0811 | 3899 | tool\references\selftest-2026-11-25p.md
+8A2E634100BADEE4 | 16000 | tool\references\selftest-2026-11-25p.txt
+F45FB3651BF3A041 | 17575 | tool\references\selftest-2026-11-25q.txt
+51217E496C460B4C | 6722 | tool\references\selftest-2026-11-25r.md
+B2BD694CD9A51441 | 18990 | tool\references\selftest-2026-11-25r.txt
 FEEE9372BE2F3FCD | 2585 | tool\references\selftest-activation-prompt.txt
 62BE637FDE94E8EA | 2667 | tool\references\selftest-install-dryrun.txt
 B4D4D44925FF99F6 | 1664 | tool\references\selftest-install-report.md
-028D5675F016E70C | 23823 | tool\scripts\install-relay.ps1
-48BA6B2F25BD5CFC | 15559 | tool\SKILL.md
+B2920A534305EBCC | 41486 | tool\scripts\install-relay.ps1
+E1FC61DAE02209DF | 18402 | tool\SKILL.md
 20AFA8D2878F719B | 1459 | tool\templates\ACTIVATION-PROMPT.md
-0ED722B2E05C9F97 | 1792 | tool\templates\ACTIVATION-SPAWN-claude-code.md
-6051A2DCD7668CEF | 1758 | tool\templates\ACTIVATION-SPAWN-codex.md
+BD5459360BA1A9D7 | 1727 | tool\templates\ACTIVATION-SPAWN-claude-code.md
+84A0DA19C8F13C4D | 1699 | tool\templates\ACTIVATION-SPAWN-codex.md
 37A7B5565858B2DE | 1274 | tool\templates\ACTIVATION-SPAWN-mcode.md
 231CA815CBF19375 | 1543 | tool\templates\ACTIVATION-SPAWN-openclaw.md
+7481AF514BB556FA | 7233 | tool\templates\ADAPTATION-QUESTIONS.json
 195EAB9E6AA15322 | 21489 | tool\templates\AGENT-RELAY.md
 C3EDE5CA458EFA47 | 3412 | tool\templates\AGENTS-RELAY-BLOCK.md
-71FA4B5C2D5A0E62 | 4691 | tool\templates\RELAY-ADAPTATION.md
+744A787517E7367C | 5124 | tool\templates\RELAY-ADAPTATION.md
 6068012759F0D0A6 | 15672 | tool\templates\relay-ledger.ps1
 23E51FB2619230DC | 6429 | tool\templates\relay-lock.ps1
 52630B579FB8CDBF | 7129 | tool\templates\RELAY-SOP.md
-D267199D611CC109 | 6946 | tool\templates\relay-spawn.ps1
-4A65572783501F9E | 13633 | tool\templates\start-relay.ps1
+438D5C375C7D92F4 | 16484 | tool\templates\relay-spawn.ps1
+D795D14DDAE16FCC | 22872 | tool\templates\start-relay.ps1

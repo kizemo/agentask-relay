@@ -45,6 +45,7 @@ param(
   [string]$WorkspaceDir = '',
   [int]$TtlSeconds = 1800,
   [string]$Runtime = 'mcode',
+  [string]$AnswersFile = '',
   [switch]$Force,
   [switch]$SkipVerify
 )
@@ -75,8 +76,11 @@ function Read-TextOrEmpty {
 }
 
 function Expand-Template {
-  param([string]$Text, [string]$RepoName, [string]$RepoPath, [string]$Plan, [string]$Goal, [int]$Stages, [string]$StagesText, [string]$RuntimeName, [string]$SpawnRule, [string]$RuleFiles)
+  param([string]$Text, [string]$RepoName, [string]$RepoPath, [string]$Plan, [string]$Goal, [int]$Stages, [string]$StagesText, [string]$RuntimeName, [string]$SpawnRule, [string]$RuleFiles, [string]$SpawnCommand, $Adapt = $null)
   $t = [string]$Text
+  # The spawn command is substituted FIRST on purpose: the block it carries still
+  # holds {{REPO}} placeholders, and the replacements below expand those too.
+  $t = $t.Replace('{{SPAWN_COMMAND}}', $SpawnCommand)
   $t = $t.Replace('{{REPO_ROOT}}', $RepoPath)
   $t = $t.Replace('{{REPO}}', $RepoPath)
   $t = $t.Replace('{{REPO_NAME}}', $RepoName)
@@ -88,6 +92,21 @@ function Expand-Template {
   $t = $t.Replace('{{SPAWN_RULE}}', $SpawnRule)
   $t = $t.Replace('{{RULE_FILES}}', $RuleFiles)
   $t = $t.Replace('{{DATE}}', (Get-Date -Format 'yyyy-MM-dd'))
+  # Sections 3/4/5 of the adjudication doc used to ship as TODO. They are now filled
+  # from a probe (or from an answers file). Every one of these placeholders is replaced
+  # unconditionally when a value set is supplied: a doc that still shows {{...}} is a
+  # kit bug, and the install check below fails loudly on it.
+  if ($null -ne $Adapt) {
+    $t = $t.Replace('{{WRITE_SET_ALLOW}}', (Format-BulletList -Items $Adapt['write_set_allow'] -Indent '  '))
+    $t = $t.Replace('{{WRITE_SET_DENY}}', (Format-BulletList -Items $Adapt['write_set_deny'] -Indent '  '))
+    $t = $t.Replace('{{CONCURRENCY_CHECK}}', [string]$Adapt['concurrency_check'])
+    $t = $t.Replace('{{GATE_COMMAND}}', [string]$Adapt['gate_command'])
+    $t = $t.Replace('{{GATE_VERDICT_FIELD}}', [string]$Adapt['gate_verdict_field'])
+    $t = $t.Replace('{{MODEL_PRIMARY}}', [string]$Adapt['model_primary'])
+    $t = $t.Replace('{{MODEL_FALLBACK_DAY}}', [string]$Adapt['model_fallback_day'])
+    $t = $t.Replace('{{MODEL_FALLBACK_NIGHT}}', [string]$Adapt['model_fallback_night'])
+    $t = $t.Replace('{{ADAPTATION_SOURCE}}', [string]$Adapt['ADAPTATION_SOURCE'])
+  }
   return $t
 }
 
@@ -122,6 +141,222 @@ function Install-File {
   return 'copied'
 }
 
+# --- adaptation probe ----------------------------------------------------------
+# Sections 3/4/5 of docs\RELAY-ADAPTATION.md used to ship as TODO placeholders, so
+# every install left the same three questions open. They are now PROBED here, rendered
+# into the doc, and re-rendered from an answers file (-AnswersFile). A probe value is a
+# guess, never a confirmation: the doc records the source and the packet below carries
+# the questions a managed agent has to ask before the chain may start.
+
+function Get-WriteSetProbe {
+  param([string]$Repo)
+  $skip = @('.github', 'node_modules', 'dist', 'build', 'out', 'bin', 'obj', '.venv', 'venv', '.idea', '.vscode', 'coverage', '.next', 'target', 'vendor')
+  $set = New-Object System.Collections.Generic.HashSet[string]
+  if (Test-Path -LiteralPath (Join-Path $Repo '.git')) {
+    $tracked = @()
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $tracked = @(git -C $Repo ls-files 2>$null) } catch { $tracked = @() } finally { $ErrorActionPreference = $prevEap }
+    if ($LASTEXITCODE -ne 0) { $tracked = @() }
+    foreach ($p in $tracked) {
+      if ([string]::IsNullOrWhiteSpace($p)) { continue }
+      $norm = ([string]$p).Replace('\', '/')
+      $i = $norm.IndexOf('/')
+      if ($i -lt 1) { continue }
+      $top = $norm.Substring(0, $i)
+      if ($skip -contains $top) { continue }
+      [void]$set.Add($top)
+    }
+  }
+  if ($set.Count -eq 0) { return @() }
+  $arr = @($set)
+  [Array]::Sort($arr, [System.StringComparer]::Ordinal)
+  return @($arr | ForEach-Object { $_ + '\' })
+}
+
+function Find-GateScript {
+  param([string]$Repo)
+  $roots = @(
+    @{ Dir = ''; Depth = 0 },
+    @{ Dir = 'scripts'; Depth = 2 },
+    @{ Dir = 'reports'; Depth = 2 },
+    @{ Dir = 'tools'; Depth = 2 },
+    @{ Dir = 'ci'; Depth = 2 }
+  )
+  $cand = New-Object System.Collections.Generic.List[object]
+  foreach ($r in $roots) {
+    $dir = if ($r.Dir -eq '') { $Repo } else { Join-Path $Repo $r.Dir }
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+    $items = @(Get-ChildItem -LiteralPath $dir -Recurse -Depth $r.Depth -Filter '*gate*.ps1' -File -ErrorAction SilentlyContinue)
+    foreach ($it in $items) {
+      $rel = Get-RelPath -Base $Repo -Full $it.FullName
+      $cand.Add([pscustomobject]@{ Rel = $rel; Depth = ($rel.Split('\').Count); Len = $rel.Length })
+    }
+  }
+  if ($cand.Count -gt 0) {
+    $best = @($cand | Sort-Object Depth, Len)[0]
+    return [string]$best.Rel
+  }
+  if (Test-Path -LiteralPath (Join-Path $Repo 'scripts\selftest.ps1') -PathType Leaf) { return 'scripts\selftest.ps1' }
+  return ''
+}
+
+function Get-AdaptationProbe {
+  param([string]$Repo)
+  $gate = Find-GateScript -Repo $Repo
+  if ([string]::IsNullOrWhiteSpace($gate)) { $gate = 'none' }
+  return [ordered]@{
+    write_set_allow      = @(Get-WriteSetProbe -Repo $Repo)
+    write_set_deny       = @(
+      '.github\workflows\'
+      '**\.env*'
+      '**\*.key'
+      '**\*.pem'
+      '**\*.pfx'
+      'scripts\publish-*'
+      'scripts\release-*'
+      'scripts\deploy-*'
+      'scripts\sign-*'
+      '**\gate*.ps1'
+      'docs\relay\*.ps1'
+    )
+    concurrency_check    = 'pwsh -NoProfile -ExecutionPolicy Bypass -File docs\relay\relay-lock.ps1 -Action status'
+    gate_command         = $gate
+    gate_verdict_field   = 'none'
+    model_primary        = 'minimax/MiniMax-M3'
+    model_fallback_day   = 'custom_provider:provider-aa5659/auto'
+    model_fallback_night = 'custom_provider:provider-aa5659/deepseek-v4.1-flash-1017'
+  }
+}
+
+function Format-BulletList {
+  param($Items, [string]$Indent)
+  $arr = @($Items)
+  if ($arr.Count -eq 0) { return ($Indent + '- `none` (nothing detected: fill this by hand)') }
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($i in $arr) { $out.Add($Indent + '- `' + [string]$i + '`') }
+  return (($out) -join "`n")
+}
+
+function Split-Section {
+  param([string]$Text, [int]$Number)
+  $m = [regex]::Match($Text, '(?m)^##\s+' + $Number + '\..*$')
+  if (-not $m.Success) { return '' }
+  $rest = $Text.Substring($m.Index + $m.Length)
+  $nm = [regex]::Match($rest, '(?m)^##\s')
+  $len = if ($nm.Success) { $m.Length + $nm.Index } else { $Text.Length - $m.Index }
+  return $Text.Substring($m.Index, $len)
+}
+
+function Update-AdaptationSections {
+  param([string]$Path, [string]$RenderedText, [int[]]$Numbers)
+  $cur = Read-TextOrEmpty -Path $Path
+  if ([string]::IsNullOrWhiteSpace($cur)) {
+    return [pscustomobject]@{ Applied = @(); Missing = @($Numbers) }
+  }
+  $eol = if ($cur.Contains("`r`n")) { "`r`n" } else { "`n" }
+  $out = $cur
+  $applied = New-Object System.Collections.Generic.List[int]
+  $missing = New-Object System.Collections.Generic.List[int]
+  foreach ($n in $Numbers) {
+    $new = Split-Section -Text $RenderedText -Number $n
+    if ([string]::IsNullOrWhiteSpace($new)) { $missing.Add($n); continue }
+    $m = [regex]::Match($out, '(?m)^##\s+' + $n + '\..*$')
+    if (-not $m.Success) { $missing.Add($n); continue }
+    $rest = $out.Substring($m.Index + $m.Length)
+    $nm = [regex]::Match($rest, '(?m)^##\s')
+    $len = if ($nm.Success) { $m.Length + $nm.Index } else { $out.Length - $m.Index }
+    $flat = (($new -replace "`r`n", "`n").TrimEnd()) -replace "`n", $eol
+    $out = $out.Substring(0, $m.Index) + $flat + $eol + $eol + $out.Substring($m.Index + $len)
+    $applied.Add($n)
+  }
+  if ($applied.Count -gt 0) { Write-Utf8NoBom -Path $Path -Content $out }
+  return [pscustomobject]@{ Applied = @($applied); Missing = @($missing) }
+}
+
+function Write-AdaptationAnswersTemplate {
+  param([string]$Path, $Defaults)
+  $obj = [ordered]@{
+    schema               = 'relay-port/adaptation-answers@1'
+    write_set_allow      = @($Defaults.write_set_allow)
+    write_set_deny       = @($Defaults.write_set_deny)
+    concurrency_check    = [string]$Defaults.concurrency_check
+    gate_command         = [string]$Defaults.gate_command
+    gate_verdict_field   = [string]$Defaults.gate_verdict_field
+    model_primary        = [string]$Defaults.model_primary
+    model_fallback_day   = [string]$Defaults.model_fallback_day
+    model_fallback_night = [string]$Defaults.model_fallback_night
+    confirmed_by         = 'REPLACE_WITH_USER_CONFIRMATION'
+    confirmed_at         = (Get-Date -Format 'yyyy-MM-dd')
+  }
+  Write-Utf8NoBom -Path $Path -Content ((($obj | ConvertTo-Json -Depth 5)) -replace "`r`n", "`n")
+}
+
+function Write-AdaptationQuestionPacket {
+  param([string]$Dir, [string]$SpecPath, $Defaults, [string]$Repo = '')
+  $relayPacket = Join-Path $Dir 'adaptation-questions.md'
+  $jsonPacket = Join-Path $Dir 'adaptation-questions.json'
+  $answersTpl = Join-Path $Dir 'adaptation-answers.template.json'
+  if (-not (Test-Path -LiteralPath $SpecPath -PathType Leaf)) {
+    return [pscustomobject]@{ Md = ''; Json = ''; Answers = ''; Questions = 0 }
+  }
+  $spec = (Read-TextOrEmpty -Path $SpecPath) | ConvertFrom-Json
+  $render = $spec.render
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('# ' + [string]$spec.title)
+  $lines.Add('')
+  foreach ($chunk in ([string]$spec.intro -split "`n")) { $lines.Add($chunk) }
+  $lines.Add('')
+  $questions = @($spec.questions)
+  foreach ($g in @($spec.groups)) {
+    $lines.Add('## ' + [string]$g.title)
+    $lines.Add('')
+    $lines.Add('> ' + [string]$g.ask_hint)
+    $lines.Add('')
+    foreach ($q in $questions) {
+      if ([string]$q.group -ne [string]$g.id) { continue }
+      $val = $Defaults[[string]$q.answer_key]
+      $lines.Add('### ' + [string]$q.label)
+      $lines.Add('')
+      $lines.Add('- ' + [string]$render.answer_key_label + ': `' + [string]$q.answer_key + '`')
+      $lines.Add('- ' + [string]$render.type_label + ': `' + [string]$q.type + '`')
+      $lines.Add('- ' + [string]$render.default_label + ':')
+      if ($q.type -eq 'list') {
+        foreach ($v in @($val)) { $lines.Add('  - `' + [string]$v + '`') }
+      } else {
+        $lines.Add('  - `' + [string]$val + '`')
+      }
+      $lines.Add('- ' + [string]$render.question_label + ': ' + [string]$q.prompt)
+      $lines.Add('- ' + [string]$render.hint_label + ': ' + [string]$q.hint)
+      $lines.Add('')
+    }
+  }
+  $lines.Add('---')
+  $lines.Add('')
+  foreach ($chunk in ([string]$render.footer -split "`n")) { $lines.Add($chunk) }
+  Write-Utf8NoBom -Path $relayPacket -Content ((($lines -join "`n")) + "`n")
+
+  $jsonObj = [ordered]@{
+    schema       = [string]$spec.schema
+    generated_at = (Get-Date).ToString('o')
+    repo         = $Repo
+    questions    = @($questions | ForEach-Object {
+      [ordered]@{
+        id         = [string]$_.id
+        group      = [string]$_.group
+        section    = [int]$_.section
+        answer_key = [string]$_.answer_key
+        type       = [string]$_.type
+        prompt     = [string]$_.prompt
+        default    = $Defaults[[string]$_.answer_key]
+      }
+    })
+  }
+  Write-Utf8NoBom -Path $jsonPacket -Content ((($jsonObj | ConvertTo-Json -Depth 8)) -replace "`r`n", "`n")
+  Write-AdaptationAnswersTemplate -Path $answersTpl -Defaults $Defaults
+  return [pscustomobject]@{ Md = $relayPacket; Json = $jsonPacket; Answers = $answersTpl; Questions = $questions.Count }
+}
+
 # --- 0. runtime selection ------------------------------------------------------
 # The runtime decides two things: which instruction files carry the managed rule
 # block, and how the next link is started. An unknown runtime is a loud failure,
@@ -143,6 +378,16 @@ if (-not $spawnRuleMatch.Success) {
   exit 2
 }
 $spawnRule = $spawnRuleMatch.Groups[1].Value.Trim()
+# The spawn command is the single source of truth for "how the next link starts".
+# It lives in the same shard as the rule text, so the two can never drift apart.
+# The descriptor keeps a portable form ({REPO}); the activation packet expands it.
+$spawnCommandMatch = [regex]::Match($spawnTplText, '(?s)<!-- SPAWN_COMMAND_BEGIN -->(.*?)<!-- SPAWN_COMMAND_END -->')
+$spawnCommand = ''
+$spawnCommandTpl = ''
+if ($spawnCommandMatch.Success) {
+  $spawnCommandTpl = $spawnCommandMatch.Groups[1].Value.Trim()
+  $spawnCommand = $spawnCommandTpl.Replace('{{REPO}}', '{REPO}')
+}
 
 # --- 1. resolve the target repository ----------------------------------------
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
@@ -273,18 +518,86 @@ if ($Runtime -eq 'claude-code') {
 $ruleFilesText = (($ruleTargets | ForEach-Object { Split-Path -Leaf $_.Path }) -join ', ')
 
 $adaptSrc = Join-Path $templateDir 'RELAY-ADAPTATION.md'
+$adaptDefaults = Get-AdaptationProbe -Repo $repo
+$adaptSource = 'defaults'
+$adaptAnswersRel = ''
+$adaptPacket = $null
+if (-not [string]::IsNullOrWhiteSpace($AnswersFile)) {
+  $ansPath = $AnswersFile
+  if (-not [IO.Path]::IsPathRooted($ansPath)) { $ansPath = Join-Path $repo $ansPath }
+  if (-not (Test-Path -LiteralPath $ansPath -PathType Leaf)) {
+    Write-Host "FAIL reason=answers_file_missing path=$ansPath"
+    exit 2
+  }
+  $ansPath = (Resolve-Path -LiteralPath $ansPath).Path
+  $ans = $null
+  try { $ans = (Read-TextOrEmpty -Path $ansPath) | ConvertFrom-Json } catch { $ans = $null }
+  if ($null -eq $ans) {
+    Write-Host "FAIL reason=answers_file_unparsable path=$ansPath"
+    exit 2
+  }
+  $overlaid = 0
+  foreach ($k in @($adaptDefaults.Keys)) {
+    $prop = $ans.PSObject.Properties[$k]
+    if ($null -eq $prop) { continue }
+    $val = $prop.Value
+    if ($null -eq $val) { continue }
+    if ($val -is [string] -and [string]::IsNullOrWhiteSpace([string]$val)) { continue }
+    if ($val -is [array] -and @($val).Count -eq 0) { continue }
+    $adaptDefaults[$k] = $val
+    $overlaid++
+  }
+  if ($overlaid -eq 0) {
+    Write-Host "FAIL reason=answers_file_empty path=$ansPath"
+    exit 2
+  }
+  $adaptSource = 'answers'
+  $adaptAnswersRel = Get-RelPath -Base $repo -Full $ansPath
+  Log ("ADAPT answers=" + $adaptAnswersRel + " applied=" + $overlaid + "/" + @($adaptDefaults.Keys).Count)
+}
+$adaptValues = [ordered]@{}
+foreach ($k in @($adaptDefaults.Keys)) { $adaptValues[$k] = $adaptDefaults[$k] }
+$adaptValues['ADAPTATION_SOURCE'] = $adaptSource
+$adaptStatus = 'pending'
+if ($adaptSource -eq 'answers') { $adaptStatus = 'confirmed' }
+
 if (Test-Path -LiteralPath $adaptSrc) {
-  $adaptText = Expand-Template -Text (Read-TextOrEmpty -Path $adaptSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText
-  if (Test-Path -LiteralPath $adaptPath) {
-    if ($Force) {
-      Write-Utf8NoBom -Path $adaptPath -Content $adaptText
-      Log "COPY RELAY-ADAPTATION.md replaced bytes=$((Get-Item -LiteralPath $adaptPath).Length)"
-    } else {
-      Log "SKIP RELAY-ADAPTATION.md exists kept (project edited it; fill the TODO sections in place)"
-    }
-  } else {
+  $adaptText = Expand-Template -Text (Read-TextOrEmpty -Path $adaptSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -Adapt $adaptValues
+  if (-not (Test-Path -LiteralPath $adaptPath)) {
     Write-Utf8NoBom -Path $adaptPath -Content $adaptText
-    Log "COPY RELAY-ADAPTATION.md bytes=$((Get-Item -LiteralPath $adaptPath).Length)"
+    Log ("WRITE RELAY-ADAPTATION.md created source=" + $adaptSource + " bytes=" + (Get-Item -LiteralPath $adaptPath).Length)
+  } elseif ($Force) {
+    Write-Utf8NoBom -Path $adaptPath -Content $adaptText
+    Log ("WRITE RELAY-ADAPTATION.md replaced source=" + $adaptSource + " bytes=" + (Get-Item -LiteralPath $adaptPath).Length)
+  } elseif ($adaptSource -eq 'answers') {
+    # A project edits its own adjudication doc. Only sections 3/4/5 belong to the
+    # installer, so an answers rerun patches exactly those and leaves the rest alone.
+    $sect = Update-AdaptationSections -Path $adaptPath -RenderedText $adaptText -Numbers @(3, 4, 5)
+    Log ("PATCH RELAY-ADAPTATION.md sections=" + (@($sect.Applied) -join ',') + " missing=" + (@($sect.Missing) -join ',') + " answers=" + $adaptAnswersRel)
+    if (@($sect.Missing).Count -gt 0) { Warn ("adaptation_sections_missing numbers=" + (@($sect.Missing) -join ',')) }
+  } else {
+    Log "SKIP RELAY-ADAPTATION.md exists kept (no -AnswersFile: the project adjudication stays authoritative)"
+  }
+  if (Test-Path -LiteralPath $adaptPath) {
+    $adaptNow = Read-TextOrEmpty -Path $adaptPath
+    $phLeft = ([regex]::Matches($adaptNow, '\{\{[A-Z_]+\}\}')).Count
+    Log ("ADAPT_CHECK doc=" + (Get-RelPath -Base $repo -Full $adaptPath) + " placeholders=" + $phLeft + " source=" + $adaptSource)
+    if ($phLeft -gt 0) { Warn "adaptation_placeholder_left count=$phLeft path=docs\RELAY-ADAPTATION.md" }
+  }
+} else {
+  Warn 'adaptation_template_missing section_3_4_5_not_rendered'
+}
+
+# The packet is the hand-off to the asking agent. It is only meaningful while the
+# values are unconfirmed: once an answers file is applied the doc itself is the record.
+if ($adaptStatus -eq 'pending' -and (Test-Path -LiteralPath $adaptPath)) {
+  $adaptPacket = Write-AdaptationQuestionPacket -Dir $relayDir -SpecPath (Join-Path $templateDir 'ADAPTATION-QUESTIONS.json') -Defaults $adaptDefaults -Repo $repo
+  if ($adaptPacket.Questions -gt 0) {
+    Log ("WRITE adaptation-questions.md questions=" + $adaptPacket.Questions + " path=" + (Get-RelPath -Base $repo -Full $adaptPacket.Md))
+    Log ("WRITE adaptation-answers.template.json path=" + (Get-RelPath -Base $repo -Full $adaptPacket.Answers))
+    Warn "adaptation_defaults_unconfirmed ask_the_user_before_starting_the_chain packet=docs\relay\adaptation-questions.md"
+  } else {
+    Warn 'adaptation_question_spec_missing packet_not_written'
   }
 }
 
@@ -419,11 +732,30 @@ foreach ($t in $ruleTargets) {
   Log ($t.Label + " action=" + $res.Action + " reason=" + $reasonText + " before=[" + $res.Before + "] after=[" + $res.After + "] bom=" + $res.Bom)
 }
 
+# --- 7b. runtime descriptor ----------------------------------------------------
+# The launcher reads this file to learn how the NEXT link is started. It is stamped
+# at install time so the launcher never has to guess, and it never holds an absolute
+# path: {REPO} is replaced with the launcher's own repo root when the prompt is built.
+$descriptorPath = Join-Path $relayDir 'relay-runtime.json'
+$nextLinkMode = 'session_tool'
+if ($Runtime -eq 'claude-code' -or $Runtime -eq 'codex') { $nextLinkMode = 'cli_driver' }
+elseif ($Runtime -eq 'openclaw') { $nextLinkMode = 'sessions_spawn_tool' }
+$descriptor = [ordered]@{
+  runtime        = $Runtime
+  next_link_mode = $nextLinkMode
+  spawn_rule     = $spawnRule
+  spawn_command  = $spawnCommand
+  rule_files     = @($ruleTargets | ForEach-Object { Split-Path -Leaf $_.Path })
+  installed_at   = (Get-Date).ToString('o')
+}
+Write-Utf8NoBom -Path $descriptorPath -Content (($descriptor | ConvertTo-Json -Depth 5) -replace "`r`n", "`n")
+Log "WRITE relay-runtime.json bytes=$((Get-Item -LiteralPath $descriptorPath).Length) mode=$nextLinkMode"
+
 # --- 8. activation packet -----------------------------------------------------
 $actSrc = Join-Path $templateDir 'ACTIVATION-PROMPT.md'
 if (Test-Path -LiteralPath $actSrc) {
-  $actText = Expand-Template -Text (Read-TextOrEmpty -Path $actSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText
-  $spawnText = Expand-Template -Text $spawnTplText -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText
+  $actText = Expand-Template -Text (Read-TextOrEmpty -Path $actSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
+  $spawnText = Expand-Template -Text $spawnTplText -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
   $actText = $actText.Replace('{{SPAWN_STEPS}}', ($spawnText -replace "`r`n", "`n"))
   Write-Utf8NoBom -Path $activationPath -Content ($actText -replace "`r`n", "`n")
   Log "WRITE ACTIVATION-PROMPT.txt bytes=$((Get-Item -LiteralPath $activationPath).Length)"
@@ -506,18 +838,50 @@ if ($warnLines.Count -gt 0) {
   foreach ($w in $warnLines) { $md.Add("- $w") }
 }
 $md.Add('')
+$md.Add('## Adaptation status')
+$md.Add('')
+$md.Add("- status: $adaptStatus")
+$md.Add("- source: $adaptSource")
+$md.Add('- doc: docs\RELAY-ADAPTATION.md')
+$adaptQuestionsRel = ''
+if ($null -ne $adaptPacket -and $adaptPacket.Questions -gt 0) {
+  $adaptQuestionsRel = Get-RelPath -Base $repo -Full $adaptPacket.Md
+  $md.Add("- questions: $adaptQuestionsRel")
+  $md.Add('- answers_template: docs\relay\adaptation-answers.template.json')
+}
+$md.Add('')
 $md.Add('## Next step')
 $md.Add('')
 $zhAct = -join [char[]](0x6309)
 $zhChain = -join [char[]](0x542F,0x52A8,0x63A5,0x529B,0x94FE)
-$md.Add('Open a session whose workspace IS this repo and say:')
+if ($adaptStatus -eq 'pending' -and $adaptQuestionsRel -ne '') {
+  $md.Add('Do NOT start the chain yet. Sections 3/4/5 of docs\RELAY-ADAPTATION.md currently hold')
+  $md.Add('probe defaults that nobody confirmed.')
+  $md.Add('')
+  $md.Add('1. Ask the user every question listed in ' + $adaptQuestionsRel + '.')
+  $md.Add('2. Record the answers in docs\relay\adaptation-answers.json')
+  $md.Add('   (same shape as docs\relay\adaptation-answers.template.json).')
+  $md.Add('3. Re-run this installer with -AnswersFile docs\relay\adaptation-answers.json.')
+  $md.Add('   Only sections 3/4/5 are rewritten; the rest of the doc is left alone. It prints')
+  $md.Add('   ADAPTATION_STATUS=confirmed when the answers landed.')
+  $md.Add('4. Open a session whose workspace IS this repo and say:')
+} elseif ($adaptStatus -eq 'pending') {
+  $md.Add('The adaptation values are unconfirmed and no question packet was written (template missing).')
+  $md.Add('Fill sections 3/4/5 of docs\RELAY-ADAPTATION.md by hand, then open a session')
+  $md.Add('whose workspace IS this repo and say:')
+} else {
+  $md.Add('The adaptation values were confirmed from ' + $adaptAnswersRel + '.')
+  $md.Add('Open a session whose workspace IS this repo and say:')
+}
 $md.Add('')
 $md.Add('    ' + $zhAct + ' docs\relay\ACTIVATION-PROMPT.txt ' + $zhChain)
-$md.Add('')
-$md.Add('Before that, fill the TODO sections of docs\RELAY-ADAPTATION.md (write set, gate, model policy).')
 Write-Utf8NoBom -Path $reportPath -Content ((($md -join "`n")) + "`n")
 
 Write-Host "INSTALL_VERDICT=$verdict"
+Write-Host "ADAPTATION_STATUS=$adaptStatus"
+Write-Host "ADAPTATION_SOURCE=$adaptSource"
+Write-Host "ADAPTATION_DOC=$(Get-RelPath -Base $repo -Full $adaptPath)"
+Write-Host "ADAPTATION_QUESTIONS=$adaptQuestionsRel"
 Write-Host "INSTALL_REPORT=$reportPath"
 Write-Host "ACTIVATION_PROMPT=$activationPath"
 Write-Host "INSTALL_RUNTIME=$Runtime"

@@ -714,3 +714,111 @@ push 授权在本轮给出（此前 B7/B8 轮**未** push）。本轮结束状�
   **清单跑在提交之前**（最后一次跑完立刻提交），跑在提交之后就会留下一条与内容无关的永久脏 diff（本轮 `git checkout -- MANIFEST.txt` 回退解决）。
   判据不看 `git status` 脏不脏，看**入库清单逐行与盘上文件的 sha16+字节数是否一致**。
 
+---
+
+## 批次 B10 实录（2026-11-25 22:0x → 23:0x）—— Claude Code 真链权限层：旧结论被证伪 + 命令行形状铁律
+
+### 背景与目标
+B9 交付运行时适配层后，`claude-code` 真链仍跑不动：子环起来后写文件 / 跑命令被拒，`--output-format json` 拿不到结构、`session_id` 丢失。
+旧文档（`tool\references\claude-code-permissions-2026-11-25.md` 初版）把原因归给「路径斜杠写法 / `--allowedTools` 不生效 / prompt 没送达」。
+本轮用实验矩阵逐条证伪并重建配方。**不含新功能**，只修「怎么把 claude CLI 正确地喊起来」。
+
+### 旧结论逐条证伪（已在参考文档开头做成更正表）
+| 旧结论 | 实测 |
+| --- | --- |
+| 只有 `--settings` 生效，其它旗标一律被忽略 | 伪：`--permission-mode`、`--allowedTools`、`--dangerously-skip-permissions` 单独也生效 |
+| `--permission-mode` 被忽略 | 伪（同上） |
+| `--allowedTools` 被忽略 | 伪（同上） |
+| 路径斜杠（`/` 与 `\`）是分水岭 | 伪：不是变量 |
+| prompt 未送达 | 伪：prompt 一直送达，问题在旗标位置 |
+
+### 铁律（本轮唯一真因）
+`claude` 的**所有旗标必须写在 prompt 之前**，prompt 放最后。
+- 错：`claude -p "<prompt>" --output-format json --session-id … --permission-mode …` ⇒ 旗标被整体丢弃：`json=False`、回读不到 `session_id`、模式回落 `default`。
+- 对：`claude --output-format json --session-id … --add-dir … --permission-mode … --allowedTools … --settings <file> --max-budget-usd 1.5 -p "<prompt>"` ⇒ `json=True`、`session_id` 命中、权限层生效。
+判据不是「命令有没有报错」，而是**输出是不是 JSON** 且 **`session_id` 与传入一致**。
+
+### 生效配方（settings 用嵌套键位）
+```json
+{"autoQuestion":{"enabled":false},"defaultMode":"bypassPermissions","permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Bash(pwsh:*)","Bash(powershell:*)","Read","Write","Edit","Glob","Grep"]}}
+```
+本机 `C:\Users\Duanyi\.claude\settings.json` 的**顶层** `defaultMode` 是「读而不施」的，必须写进 `permissions.defaultMode` 才算数。
+等效旗标（单独可用，仍须放在 prompt 之前）：`--permission-mode bypassPermissions`；`--dangerously-skip-permissions --allow-dangerously-skip-permissions`。
+
+### 落点
+- 只改 CLI 专用 `tool\templates\relay-spawn.ps1` 与安装器渲染；**MCode 路径的 prompt 生成块一字未动**（`start-relay.ps1` 保持原样，用户要求 prompt 逐字不变）。
+- 镜像一致（2026-11-25 盘上回读）：`relay-spawn.ps1` 双份 `438D5C375C7D92F4`（16484 B）、`start-relay.ps1` 双份 `D795D14DDAE16FCC`。
+
+### 验证到哪一步 / 没到哪一步
+- 已验证：命令行形状（`scripts\selftest.ps1` case 17d，3 条断言：`json=True`、`session_id` 命中、默认模式不再回落）；权限配方（实验矩阵 V1 / V3 / V4 三个会话）。
+- **未验证**：整链端到端 —— 干净真链仓里跑通「第 1 环 → 写产物 → 台账 `stage_done` → 推进 4 token → 自举第 2 环」。现有证据只到「单次 CLI 调用被正确喊起来」。
+- `codex` / `openclaw` 未安装 ⇒ 两条真链不可实测，只有静态审计。
+
+### 本轮工具坑
+1. 子环内用原生 PowerShell 工具跑命令恒报 malformed syntax ⇒ 必须用 Bash 工具。
+2. `--settings` 只吃文件路径，传内联 JSON 报 `Settings file not found`。
+3. `Start-Process -ArgumentList` 传含空格元素会拆散 argv（`too many arguments`）⇒ 用 `ProcessStartInfo.ArgumentList` 逐个 Add。
+4. `--model claude-haiku-4-5` 报 `API Error: 400 "Model not exist."` ⇒ 不指定 model；`--bare` 不可用。
+5. 实验调用要显式设 `WorkingDirectory`，且不要重定向 stdin。
+
+### 证据路径
+- `tool\references\claude-code-permissions-2026-11-25.md`（已重写：更正表 + 铁律 + 等效旗标 + 「已试过并确认无效」清单）
+- `tool\references\live-chain-b10.md`、`live-chain-b10-stdout.txt`、`live-chain-b10-stdout-2.txt`、`live-chain-b10-transcript-1.txt`
+- `scripts\selftest.ps1` case 17d
+
+---
+
+## 批次 B11 实录（2026-11-25 23:1x → 23:4x）—— 首次运行即发问：写集 / 门禁 / 模型三项裁决自动化
+
+### 用户指令（原文）
+> 当前工具要求，装完必做两件事
+> 补全 docs\RELAY-ADAPTATION.md 的 TODO —— 写集（哪些目录可改、哪些禁止碰）、验收门禁命令与判绿口径、模型策略。
+> 优化为：在一个项目中首次运行这个工具，要自动发起提问，来确定这些问题。
+
+### 设计结论（为什么是两段式）
+安装器**不能自己交互提问**：它跑在无 TTY 的子进程里，`Read-Host` 会挂死。
+所以拆两段：① 首跑 —— 探测默认值 → 渲染 `docs\RELAY-ADAPTATION.md`（§3/§4/§5 标 `source: defaults`）→ 落盘问题包 → stdout 输出 `ADAPTATION_STATUS=pending`；② 托管 agent 按问题包发问 → 写答案 JSON → 带 `-AnswersFile` 重跑 → 定点回填 §3/§4/§5，`ADAPTATION_STATUS=confirmed`。
+
+### 五条硬约束（全部来自实测撞墙）
+1. **退出码不可变**：待答**不**用非零退出码表达（会撞 `install_exit_zero` 与 `INSTALL_VERDICT=PASS` 断言），改用 `ADAPTATION_STATUS=` 行 + 问题包 + `tool\SKILL.md` 硬性要求。
+2. **Warn 不进 `$verdict`**：新增 `adaptation_defaults_unconfirmed` 只报警、不改判。
+3. **中文文案一律外置**：`.ps1` 必须纯 ASCII ⇒ 8 问文案全部放 `tool\templates\ADAPTATION-QUESTIONS.json`。
+4. **§3/§4/§5 永不残留 `TODO`**：要么填答案，要么填探测真值并标 `source=defaults`；写后自检 `placeholders=0`。
+5. **定点更新而非整篇覆盖**：只替换 §3/§4/§5，保护用户手改；无 `-AnswersFile` 且文档已存在 ⇒ `SKIP kept`；`-Force` 才整篇覆盖。
+
+### 改动清单（2026-11-25 盘上回读）
+| 文件 | 字节 | 行 | sha16（前 16） | 说明 |
+| --- | --- | --- | --- | --- |
+| `tool\scripts\install-relay.ps1` | 41486 | 891 | `B2920A534305EBCC` | 新增 `-AnswersFile` + 探测 + 问题包 + 定点回填；`PARSE_ERRORS=0`、`BOM=False`、`NONASCII=0`、`CR=0` |
+| `tool\templates\ADAPTATION-QUESTIONS.json` | 7233 | 125 | `7481AF514BB556FA` | schema `relay-port/adaptation-questions@1`；3 组 / 8 问 |
+| `tool\templates\RELAY-ADAPTATION.md` | 5124 | 93 | `744A787517E7367C` | `TODO=0`、`source` 槽位 3 处 |
+| `scripts\selftest.ps1` | 69701 | 859 | `F6DF8D7591200C63` | 新增 case 18（29 条断言） |
+
+问题包的 8 个 `answer_key`（顺序即 JSON 内顺序，实测回读全等）：
+`write_set_allow`、`write_set_deny`、`concurrency_check`、`gate_command`、`gate_verdict_field`、`model_primary`、`model_fallback_day`、`model_fallback_night`。
+
+### 实测（scratch 仓 `C:\Users\Duanyi\AppData\Local\Temp\relay-adapt-t1`）
+- 首跑：`INSTALL_VERDICT=PASS`、`ADAPTATION_STATUS=pending`、`ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=defaults`、问题包 8 问、1 条 WARN（`adaptation_defaults_unconfirmed`）。渲染出的文档 5834 B。
+- 二跑（`-AnswersFile docs\relay\adaptation-answers.json`）：`ADAPT answers=… applied=5/8`、`PATCH RELAY-ADAPTATION.md sections=3,4,5`、`ADAPTATION_STATUS=confirmed`、`WARN_COUNT=0`；文档断言 `has_src=True has_gatecmd=True has_verdict=True sec6_kept=True source_answers=True`。
+- 失败码：`-AnswersFile` 指向不存在 ⇒ `reason=answers_file_missing`、`EXIT=2`。
+
+### selftest case 18（29 条断言）
+覆盖五组：首跑 7 条 + 文档 3 条（无 `TODO`、无 `{{…}}` 残留、`source: defaults` 恰好 3 处）+ 问题包 6 条（含 8 个 `answer_key` 全等）+ 答案回填 9 条（含 §6、§9 未被顶掉）+ 失败码 1 条。
+套件：`SUITE_END pass=215 fail=0`、`EXIT=0`。证据 `tool\references\selftest-2026-11-25r.txt`（`18990 B / 219 行 / cr=0 / sha16=B2BD694CD9A51441`）。
+基线口径：`25p` 是上一个绿证据（182 条）；`25q` 是红证据且无法清除，**引证据只用 25p / 25r**，靠新后缀区隔。
+
+### 三道闸门（本轮收尾回读）
+- ① selftest：`pass=215 fail=0`、`EXIT=0`。
+- ② publish：`DIRECTION=publish STATUS=OK fail=0 warn=2`、`tracked_files=56`（两条 WARN 是 `examples\practilog` 的 `SNAPSHOT_DRIFT`，家规 8 不同步、不参与判定）。
+- ③ refresh-manifest：`verdict=PASS`、`FILE_COUNT=100`、`MD_TXT_CR_TOTAL=0`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`。
+
+### 本轮工具坑（新增）
+1. **CLI stdout 重定向留证默认带 CRLF**：`live-chain-b10-stdout.txt`（22 个 CR）+ `live-chain-b10-stdout-2.txt`（9 个）= 31 ⇒ 直接把闸门③的 `MD_TXT_CR_TOTAL` 顶成 31（当时 `verdict=PASS`，但违反家规「必须为 0」）。转 LF 后归零。**新留证 `.txt` 写完即转 LF，再跑清单**。
+2. **hook 残留会污染清单**：仓库根被 stop hook 写过 `handoff-2026-11-25.md`，清单把它计进 `FILE_COUNT`（101 而不是 100）⇒ 提交前必须清掉，否则入库清单里会有一条永不存在的文件。清除只能走家规允许的单条顶层删除式调用。
+3. `edit` 用 `old_string` 做替换时容易顺带顶掉相邻列表条目 ⇒ 改列表条目时新内容要自带旧条目原文（本轮 `tool\SKILL.md`「幂等」条目被顶掉后已补回）。
+
+### 未做 / 遗留
+- B10 的整链端到端复验仍未做（见 B10「验证到哪一步」）。
+- `codex` / `openclaw` 真链不可实测。
+- 本批默认**仅本地提交**，未 push（B9 的 push 授权不覆盖 B10 / B11）；是否推 `https://github.com/kizemo/agentask-relay` 的 `main` 需用户明确表态。
+

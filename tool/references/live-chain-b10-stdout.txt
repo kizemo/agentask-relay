@@ -1,0 +1,9 @@
+SPAWN_RUNTIME runtime=claude-code
+SPAWN_COMMAND claude -p <prompt from file> --output-format json --session-id 60d790e6-f208-4077-9660-758f315ffddc --add-dir C:\Users\Duanyi\AppData\Local\Temp\relay-b10-live\repo --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep --max-budget-usd 1.5
+SPAWN_PROMPT_FILE file=C:\Users\Duanyi\AppData\Local\Temp\relay-b10-live\repo\docs\relay\next-relay-prompt.txt chars=4882
+SPAWN_WORKSPACE dir=C:\Users\Duanyi\AppData\Local\Temp\relay-b10-live\repo
+SPAWN_SESSION_ID id=60d790e6-f208-4077-9660-758f315ffddc source=generated
+LOCK_ADOPTED holder=60d790e6-f208-4077-9660-758f315ffddc prev_holder=start-relay:32468 stage=1
+SPAWN_LOCK_PRE_ADOPTED session_id=60d790e6-f208-4077-9660-758f315ffddc
+SPAWN_LOCK_ADOPTED session_id=60d790e6-f208-4077-9660-758f315ffddc mode=pre
+RELAY_SPAWN_OK runtime=claude-code session_id=60d790e6-f208-4077-9660-758f315ffddc

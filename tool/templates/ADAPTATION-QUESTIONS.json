@@ -1,0 +1,125 @@
+{
+  "schema": "relay-port/adaptation-questions@1",
+  "title": "relay-port 首次安装：三项裁决待确认",
+  "intro": "安装器已经替你探测过一遍，下面每项都带一个 `default` 值。\n\n**`default` 不是用户确认值**：它是安装器按仓库现状猜出来的。把这三项（写集 / 验收门禁 / 模型策略）当成默认值直接起链，是 relay-port 最常见的翻车方式——链会改到你不想让它改的目录，或者把「命令退出码 0」当成门禁绿。\n\n确认流程：\n\n1. 逐项向用户提问（`ask_user`），一次 2-3 项，不要一次抛 8 项。\n2. 把确认结果写成一个 JSON 文件，键名照抄下面的 `answer_key`。\n3. 用 `-AnswersFile` 重跑安装器（幂等，只定点替换 §3/§4/§5，不动其它章节）。\n\n```\npwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\docs\\relay\\install-relay.ps1 -RepoRoot <repo> -AnswersFile <repo>\\docs\\relay\\adaptation-answers.json\n```\n\n用户明确说「就按探测值」时，才算 `source=defaults` 可接受，并把这句确认写进台账。",
+  "render": {
+    "answer_key_label": "答案键",
+    "type_label": "类型",
+    "default_label": "探测默认值（是安装器的猜测，不是用户确认值）",
+    "question_label": "要问用户",
+    "hint_label": "判定依据",
+    "footer": "填好答案后重跑安装器：\n\n```\npwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\docs\\relay\\install-relay.ps1 -RepoRoot <repo> -AnswersFile <repo>\\docs\\relay\\adaptation-answers.json\n```\n\n重跑是幂等的：只定点替换 `docs\\RELAY-ADAPTATION.md` 的 §3/§4/§5，其它章节与用户手改内容保持原样。"
+  },
+  "groups": [
+    {
+      "id": "write_set",
+      "title": "1. 写集与并发检测（§3）",
+      "ask_hint": "先问写集。允许集要具体到目录，禁止集按项目补充（发布/CI/密钥/门禁阈值是硬禁止）。"
+    },
+    {
+      "id": "gate",
+      "title": "2. 验收门禁（§4）",
+      "ask_hint": "问清「跑哪条命令」和「看哪个字段判绿」。判绿口径必须落在产物文件里，不能是 $LASTEXITCODE。"
+    },
+    {
+      "id": "models",
+      "title": "3. 模型与额度策略（§5）",
+      "ask_hint": "首选模型必问。回退模型含本机 provider 注册 id（`custom_provider:provider-*`），换机器必须重填。"
+    }
+  ],
+  "questions": [
+    {
+      "id": "write_set_allow",
+      "group": "write_set",
+      "section": 3,
+      "label": "允许被 agent 修改的目录 / 文件",
+      "answer_key": "write_set_allow",
+      "type": "list",
+      "prompt": "哪些目录或文件允许被接力链里的 agent 修改？请逐条列全，不要写「看情况」。",
+      "hint": "探测值来自 `git ls-files` 的顶层目录（已剔除 node_modules / dist / build / .venv 等依赖与产物目录）。探测为空时手填，例如 `src\\`、`tests\\`、`docs\\`。"
+    },
+    {
+      "id": "write_set_deny",
+      "group": "write_set",
+      "section": 3,
+      "label": "禁止触碰的路径",
+      "answer_key": "write_set_deny",
+      "type": "list",
+      "prompt": "哪些路径绝对禁止触碰？（发布/部署/签名脚本、CI、密钥、用户数据、门禁阈值）",
+      "hint": "默认清单已含 `.github/workflows/`、`.env*`、`*.key/*.pem/*.pfx`、`scripts/publish-*|release-*|deploy-*|sign-*`、`**/gate*.ps1`、`docs/relay/*.ps1`。按项目补充，别删默认项。"
+    },
+    {
+      "id": "concurrency_check",
+      "group": "write_set",
+      "section": 3,
+      "label": "并发检测命令",
+      "answer_key": "concurrency_check",
+      "type": "text",
+      "prompt": "起环前先跑哪条命令来判断有没有别的会话正在跑？看到什么就停？",
+      "hint": "默认是 relay 自己的锁状态查询：`pwsh -NoProfile -ExecutionPolicy Bypass -File docs\\relay\\relay-lock.ps1 -Action status`。退出 4 或输出 `LOCK_HELD` 即停链回写 blocked，不要抢锁。"
+    },
+    {
+      "id": "gate_command",
+      "group": "gate",
+      "section": 4,
+      "label": "门禁命令",
+      "answer_key": "gate_command",
+      "type": "text",
+      "prompt": "验收门禁跑哪条命令？请给可直接复制执行的完整命令。",
+      "hint": "探测口径：仓库内最浅的 `*gate*.ps1`，没有就退回 `scripts\\selftest.ps1`，两者都没有则填 `none` 并手填真命令。"
+    },
+    {
+      "id": "gate_verdict_field",
+      "group": "gate",
+      "section": 4,
+      "label": "判绿口径（产物字段）",
+      "answer_key": "gate_verdict_field",
+      "type": "text",
+      "prompt": "判绿看产物文件里的哪个结论字段？例如 `GATE_VERDICT`、`FAIL=0`、`SUMMARY 里的 verdict`。",
+      "hint": "**只认产物字段，不认管道末端的 `$LASTEXITCODE`**。默认值写的是这条口径本身；你的项目有具体字段名时请替换成真字段名 + 期望值。"
+    },
+    {
+      "id": "model_primary",
+      "group": "models",
+      "section": 5,
+      "label": "首选模型",
+      "answer_key": "model_primary",
+      "type": "text",
+      "prompt": "接力链首选哪个模型？（给 `<provider>/<model>` 全名）",
+      "hint": "默认 `minimax/MiniMax-M3`。`session_create` 没有 `effort` 字段，任何情况下都不传。"
+    },
+    {
+      "id": "model_fallback_day",
+      "group": "models",
+      "section": 5,
+      "label": "日间回退模型（08:00-19:00 Asia/Shanghai）",
+      "answer_key": "model_fallback_day",
+      "type": "text",
+      "prompt": "首选模型额度用尽时，日间回退到哪个模型？",
+      "hint": "默认 `custom_provider:provider-aa5659/auto`。`custom_provider:provider-*` 是本机 provider 注册 id，属 device-specific, refill 项：换机器或换 profile 必须重填，否则回退那一环会指向不存在的 provider，白烧一轮才暴露。"
+    },
+    {
+      "id": "model_fallback_night",
+      "group": "models",
+      "section": 5,
+      "label": "夜间回退模型（19:01-08:00 Asia/Shanghai）",
+      "answer_key": "model_fallback_night",
+      "type": "text",
+      "prompt": "首选模型额度用尽时，夜间回退到哪个模型？",
+      "hint": "默认 `custom_provider:provider-aa5659/deepseek-v4.1-flash-1017`。同样属 device-specific, refill 项。"
+    }
+  ],
+  "answers_example": {
+    "schema": "relay-port/adaptation-answers@1",
+    "write_set_allow": ["src/", "tests/", "docs/"],
+    "write_set_deny": [".github/workflows/", "**/.env*", "**/*.key", "**/*.pem", "**/*.pfx", "scripts/publish-*", "scripts/release-*", "scripts/deploy-*", "scripts/sign-*", "**/gate*.ps1", "docs/relay/*.ps1"],
+    "concurrency_check": "pwsh -NoProfile -ExecutionPolicy Bypass -File docs\\relay\\relay-lock.ps1 -Action status",
+    "gate_command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\selftest.ps1",
+    "gate_verdict_field": "GATE_VERDICT=PASS",
+    "model_primary": "minimax/MiniMax-M3",
+    "model_fallback_day": "custom_provider:provider-aa5659/auto",
+    "model_fallback_night": "custom_provider:provider-aa5659/deepseek-v4.1-flash-1017",
+    "confirmed_by": "user",
+    "confirmed_at": "2026-11-26"
+  }
+}
