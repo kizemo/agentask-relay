@@ -568,5 +568,15 @@ sha16=DB892369B0F687FC`（补写「时间线」节之后的复核值；`.txt` �
 **未验证 / 遗留**：`probe-multi` + 活跃度择优在本机**无第二候选**（C 盘 profile 存在但未装
 relay-port）⇒ 未实测；`profile_probe_disabled` 降级路径未实测；case 15 在 CI
 （`.github\workflows\selftest.yml`，`windows-latest` 无已装 skill ⇒ 走 `loud_fail` 分支）的
-稳定性未验证、本批未 push；套件仍不调 `session_create`（真实起链一跳属人工）；
-工作树**未 commit**（B7 收口问题里「是否提交这批改动」用户未答）。
+稳定性未验证、本批未 push；套件仍不调 `session_create`（真实起链一跳属人工）。
+
+**入库（用户 2026-11-25 裁决「提交这批改动」）**：`git add -A` 后单提交
+`473474a relay: fix F4 skill-root autodiscovery; land batches B7+B8 evidence`，
+提交后 `git status --porcelain -uall` 为空。**B7 与 B8 合为一次提交**：两批在
+`scripts\publish-relay.ps1`、`scripts\selftest.ps1`、`tool\references\portability-audit-2026-11-25.md`、
+`README.md`、`HANDOFF.md` 上互相覆盖，按文件拆不出批次（同一文件的两个批次改动无法非交互分离），
+强行拆分只会造出中间不可编译/不可判绿的树。**未 push**（CI 上 case 15 的 `loud_fail` 分支仍未线上验证）。
+`reports\` 两个散件**一并入库**是清单一致性的硬要求：`MANIFEST.txt` 按工作树全量统计，
+已含 `reports\selftest-2026-11-25j.txt` 与 `reports\selftest-2026-11-25k-console.txt` 两行
+（与 `tool\references\` 下的同名件同 hash），不入库则新克隆仓库跑 `refresh-manifest.ps1`
+必然报缺项而红。入库后回读 `TRACKED_FILES=74` = `MANIFEST_ROWS=73` + `MANIFEST.txt` 自身 ⇒ 逐件对得上。
