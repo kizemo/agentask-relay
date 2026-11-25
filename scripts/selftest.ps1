@@ -90,6 +90,14 @@ foreach ($need in @($installer, (Join-Path $tplDir 'start-relay.ps1'), (Join-Pat
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $script:root = Join-Path $env:TEMP ('relay-port-selftest\' + $stamp)
 New-Item -ItemType Directory -Path $script:root -Force | Out-Null
+# Canonicalise the temp root. A Windows logon name longer than 8 characters can make
+# %TEMP% itself an 8.3 short path (a GitHub runner reports C:\Users\RUNNER~1\...), and
+# then every path the launcher echoes back is the LONG form. Assertions that compare
+# path text would go red on a real kit that is fine, so resolve the short names once,
+# here. Long == short on a normal developer profile, so this changes nothing locally.
+$shortRoot = $script:root
+$script:root = (Get-Item -LiteralPath $script:root).FullName
+if ($script:root -ne $shortRoot) { Say ('NOTE root_canonicalised short=' + $shortRoot + ' -> long=' + $script:root) }
 Say ('SUITE_START root=' + $script:root + ' kit=' + $repoRoot)
 
 $beginMark = '<!-- BEGIN RELAY-PORT -->'

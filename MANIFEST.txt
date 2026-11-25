@@ -1,5 +1,5 @@
 # MANIFEST.txt - agentask-relay relay corpus (content inventory, self-excluded)
-# generated: 2026-11-25 17:26:12
+# generated: 2026-11-25 17:35:42
 # format: sha16(sha256 first 16 hex) | bytes | relpath   [LF, no BOM]
 # refresh: pwsh -File scripts\refresh-manifest.ps1  (run last in any round)
 F411F9554EC9F026 | 378 | .gitattributes
@@ -27,7 +27,7 @@ E0C4FCB8A430C339 | 33859 | examples\practilog\docs\relay\stage-4-implementation.
 29158782C8843588 | 9352 | examples\practilog\docs\relay\start-relay.ps1
 0317EC1D3467ABD1 | 6269 | examples\practilog\docs\relay\supervision-2026-11-24.md
 6B4093BF2AA506DA | 5747 | examples\practilog\docs\relay\supervision-2026-11-25.md
-8ABA302AB78B4FE2 | 40739 | HANDOFF.md
+5FAC1543CCDFDC9D | 43691 | HANDOFF.md
 EA9A9C3ED74466CB | 10715 | protocol\AGENT-RELAY.md
 7A9F0F01D624E1D0 | 1823 | protocol\practilog-agents-pointer.md
 1821AF57663BA1FD | 1336 | protocol\probe-ws\AGENTS.md
@@ -40,10 +40,10 @@ B57360DDE57953FB | 3237 | protocol\probe-ws\docs\stage-2.md
 52630B579FB8CDBF | 7129 | protocol\RELAY-SOP.md
 2018357291183CCE | 14879 | README.md
 AFD923E90E13339C | 13893 | README.zh-CN.md
-EDE99840A71AD369 | 5773 | reports\handoff-b6-draft.md
+D53BE6CBB50B64DF | 6001 | reports\selftest-2026-11-25j.txt
 BB8D0CB7CEA3285D | 9401 | scripts\publish-relay.ps1
 8A25614151D72CAD | 4598 | scripts\refresh-manifest.ps1
-4375CB370B32C657 | 23612 | scripts\selftest.ps1
+613A0A4F48ABD2F9 | 24246 | scripts\selftest.ps1
 3678BC92F85DD10F | 2674 | tool\references\selftest-2026-11-25-b2-next-prompt.txt
 63696A8EFF2975BF | 3945 | tool\references\selftest-2026-11-25-b2-run1.txt
 FFB546F60576B1D2 | 4569 | tool\references\selftest-2026-11-25-b2-run2.txt
@@ -53,8 +53,9 @@ FFB546F60576B1D2 | 4569 | tool\references\selftest-2026-11-25-b2-run2.txt
 E941FA582D850DD7 | 9356 | tool\references\selftest-2026-11-25-b3.md
 EA1F0A67E968C24E | 6001 | tool\references\selftest-2026-11-25-b3.txt
 AE4D9CC84548BC6D | 6001 | tool\references\selftest-2026-11-25-b3h.txt
-A13EF125049ED081 | 6244 | tool\references\selftest-2026-11-25.md
+7A2BE7D95C60B963 | 7561 | tool\references\selftest-2026-11-25.md
 68C3A2840D1073DD | 6001 | tool\references\selftest-2026-11-25i.txt
+D53BE6CBB50B64DF | 6001 | tool\references\selftest-2026-11-25j.txt
 FEEE9372BE2F3FCD | 2585 | tool\references\selftest-activation-prompt.txt
 62BE637FDE94E8EA | 2667 | tool\references\selftest-install-dryrun.txt
 B4D4D44925FF99F6 | 1664 | tool\references\selftest-install-report.md

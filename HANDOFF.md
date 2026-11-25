@@ -371,9 +371,15 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
 
 ## 未做 / 待下一轮
 
-- `scripts/publish-relay.ps1 -Direction publish` 把脱敏后的全局 skill 同步齐。
-- `scripts/refresh-manifest.ps1` 重算 `MANIFEST.txt`（本批改了 20+ 文件，必变）。
-- 提交 + push 到 `origin/main`。
+- **等本批修复后的 CI 复跑结论**（`root_canonicalised` 修法是否让 runner 转绿）。
+  若仍红，优先看 runner 上其它 8.3 影响面（`Run` 的 `-f` 短exe、`Get-Content -Raw` 无关）。
+- **真实起链一跳未做**：本批只跑了套件（套件不调 `session_create`）。
+  装置侧的「一次真激活 + 下一环自取锁」需在目标项目里人工发指令验证，历史留证见
+  `tool/references/selftest-2026-11-25*.txt` 里登记的实测轮次。
+- 全局 skill 已同步（`publish-relay -Direction publish -SkillRoot <E 盘根>` ⇒
+  `STATUS=OK fail=0 warn=1`，唯一 WARN = 预期内的 `examples/practilog` 历史快照 `SNAPSHOT_DRIFT`）。
+  **注意**：`-Direction publish` 不带 `-SkillRoot` 在本机也会 `exit 3`（见上文根因），
+  要么显式传参，要么在机器上设 `RELAY_PORT_SKILL_ROOT` / `MAVIS_DATA_DIR`。
 
 ## 证据路径
 
@@ -383,6 +389,33 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
 | 本批改动清单 | `git status --porcelain`（批前基线 = B5 收尾 HEAD） |
 | 硬不变式复核 | 上述三条 SHA256 比对，`identical=True` |
 | selftest 逐件断言原文 | `tool/references/selftest-2026-11-25i.txt` |
+| 修复后基线复跑（同套件、含 8.3 规范化） | `tool/references/selftest-2026-11-25j.txt` |
+
+## CI 首跑实录（本批最有价值的一条）
+
+推送 `4d939d5` 触发 Actions：`selftest | completed | failure`，
+步骤定位 = 「Run one-click regression suite」，日志
+**`SUITE_END pass=54 fail=1`**，红的那件是 `CASE_FAIL activate_prompt_absolute_plan`。
+同套件在本机是 55/0 ⇒ 不是装置坏了，是**套件自己的判据不具移植性**。
+
+根因（已坐实）：套件把工作区根取为**未规范化的 `$env:TEMP`**。runner 的登录名
+`runneradmin` 超过 8 字符，`%TEMP%` 直接是 8.3 短名 `C:\Users\RUNNER~1\AppData\Local\Temp\...`；
+启动器把 plan 文档绝对路径写进 next-prompt 时回显的是**长名**，
+而断言写成 `-match Escape($r5 + '\docs\...')`，`$r5` 携带短名 ⇒ 短名 vs 长名不等 ⇒ 假红。
+本地 profile 名短（长名==短名）所以永远看不出来。
+
+修法（`scripts/selftest.ps1`，根因层）：建目录后用 `(Get-Item -LiteralPath $script:root).FullName`
+规范化一次，短名与长名不同则打一行 `NOTE root_canonicalised` 留证。
+**没有**去放宽断言（放宽会把真缺陷一起放过）。
+
+→ 结论：CI 这轮**没白跑**，它抓到的正是「只在他人机器上才暴露」的判据缺陷；
+本仓库以前所有「本地绿」的经验对**路径形态**这一维不可信。
+
+**该修复无法本地合成判别性测试**：本机 `C:\Users\Duanyi` 没有 8.3 别名
+（`GetShortPathNameW` 原样返回），造不出「短名 TEMP」这个前置条件。所以**转绿与否只能看推送后
+那次 run**，不能用「本地也过」冒充验证。修复后本机基线复跑：`SELFTEST_EXIT=0`、
+`SUITE_END pass=55 fail=0`，留证 `tool/references/selftest-2026-11-25j.txt`
+（无 `root_canonicalised` 提示 = 本机路径本就是长名，规范化为 no-op，符合预期）。
 
 ## 本批工具坑（下一轮别再踩）
 
@@ -396,5 +429,8 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
   `([regex]::Matches($t,'(?<!\\)\\(?!\\)')).Count`，实测 `loneBefore=0 loneAfter=0` 三件全过。
 - **脱敏会把「只在单引号字符串里当文档注释用的路径」变成运行时字面量** —— 见第 5 条，
   扫完必须 grep 一遍 `%USERPROFILE%` 是否落进 `.ps1` 的单引号串里。
+- **Windows 的 `%TEMP%` 可能是 8.3 短名**（用户登录名 >8 字符的机器，如 GitHub runner 的
+  `runneradmin` ⇒ `C:\Users\RUNNER~1\...`）。凡「脚本生成路径文本 vs 断言里的路径文本」做相等/包含比较，
+  **必须先 `(Get-Path).FullName` 规范化**，否则本地永远绿、CI 假红。
 - 独立脚本 `-File` 执行时 `Test-Path` 判定与内联执行不一致（同一表达式内联命中、`-File` 全判 MISSING），
   本轮未能定位根因；最终走内联。**别把这种不一致当成脚本 bug 去改门禁。**
