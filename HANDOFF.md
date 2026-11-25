@@ -247,8 +247,13 @@ PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「�
   `%USERPROFILE%\.minimax\.minimax\skills\relay-port\`）。文档不是留证，泛化不算改证据（家规 5）。
 - 新增 `.gitignore`：排除 `.superpowers-tmp/` 与常见临时件；**明确不许**把 `docs` /
   `tool\references` 加进去（清单与留证要数得到）。
-- `git init` + `remote add origin` + 首推 `main`。家规原文「git 留给用户做」由用户的
-  push 指令取代，`README.md` 与 `AGENTS.md` 的「尚未 git init」表述随之订正。
+- `git init` + `remote add origin` + 首推 `main` 完成（远端 `https://github.com/kizemo/agentask-relay`，
+  分支 `main`，提交 `b039b60` 首提 / `1b61f1e` 补 `.gitattributes`）。家规原文「git 留给用户做」
+  由用户的 push 指令取代。**订正本文早先的一处假事实**：`AGENTS.md` 本无「尚未 git init」表述
+  （它只在规则 1 里提到自测会在临时目录建一次性 git 仓库），实际被订正的是 `README.md` 与本文 L69 / 候选 #2 / #6。
+- 新增 `.gitattributes`（`* text=auto eol=lf`、`*.ps1/*.md/*.txt/*.json eol=lf`、图片 `binary`）。根因：
+  本机全局 `core.autocrlf=true`，`git add` 时报「LF will be replaced by CRLF」⇒ 若不固定行尾，
+  新克隆会把 LF 写成 CRLF，直接打断 `MD_TXT_CR_TOTAL=0` 门禁与 `MANIFEST.txt` 的 sha256 对账口径。
 - 本轮**未触工具本体**（`tool\` / `device\` 的 `.ps1` 零改动）⇒ 依家规 1 不重跑 selftest；
   `publish-relay.ps1 -Direction verify` 只作一致性复核（预期 `fail=0 warn=1 SNAPSHOT_DRIFT`）。
 

@@ -1,5 +1,5 @@
 # MANIFEST.txt - agentask-relay relay corpus (content inventory, self-excluded)
-# generated: 2026-11-25 16:55:59
+# generated: 2026-11-25 16:57:54
 # format: sha16(sha256 first 16 hex) | bytes | relpath   [LF, no BOM]
 # refresh: pwsh -File scripts\refresh-manifest.ps1  (run last in any round)
 F411F9554EC9F026 | 378 | .gitattributes
@@ -26,7 +26,7 @@ EFB522D7E6B8352F | 31197 | examples\practilog\docs\relay\stage-6-report.md
 29158782C8843588 | 9352 | examples\practilog\docs\relay\start-relay.ps1
 D7B01BE174D4D513 | 6367 | examples\practilog\docs\relay\supervision-2026-11-24.md
 8909B308031244E4 | 5761 | examples\practilog\docs\relay\supervision-2026-11-25.md
-A646133C7987A4EA | 32176 | HANDOFF.md
+8D27BD040CBC2975 | 32835 | HANDOFF.md
 EA9A9C3ED74466CB | 10715 | protocol\AGENT-RELAY.md
 7A9F0F01D624E1D0 | 1823 | protocol\practilog-agents-pointer.md
 1821AF57663BA1FD | 1336 | protocol\probe-ws\AGENTS.md
