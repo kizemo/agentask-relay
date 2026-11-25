@@ -157,7 +157,8 @@ pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish   # 本目录
   全库 `BOM=0 / .ps1 非 ASCII=0 / md+txt 的 CR=0`，对账留证见 `MANIFEST.txt`。
 - 工具**已实现并通过端到端实测**：首批 14 项用例全 PASS
   （`tool\references\selftest-2026-11-25.md`）；批次 B2/B3 的断言集与 raw 日志见同目录
-  `-b2.md` / `-b3.md`。
+  `-b2.md` / `-b3.md`。最新一轮为 **cases 1-15 / 106 条断言 / 0 失败 / `EXIT=0`**，
+  留证 `tool\references\selftest-2026-11-25l.txt` 与 `selftest-2026-11-25l.md`。
 - 已修缺陷：**D1** 幂等分支输出变量未初始化 ⇒ 目标项目 `AGENTS.md` 被截断成 0 字节；
   **D2** 干跑证据 0 B；**D3** 安装器 `.ps1` 里写了汉字字面量 ⇒ 无 BOM 时在 Windows PowerShell 5.1
   下会变乱码，已改为码点构造并复测 `NON_ASCII=0 / PARSE_ERRORS=0 / 真实安装 PASS`；

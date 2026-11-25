@@ -69,7 +69,7 @@
      `{"stage_done":<阶段id>,"sessions_append":["<本环会话ID>"],"bump_current_stage":true,"next_session_id":"<下一环ID或null>"}`
      （键只有 10 个：`stage_done` / `stage_fields` / `append_stage` / `sessions_append` / `notes_append` /
      `ledger_docs_append` / `blocked_on_append` / `set_status` / `bump_current_stage` / `next_session_id`；
-     未知键直接 `exit 2`，防拼错静默失效）；
+     未知键直接 `exit 2`，防拼错静默失效；`*_append` 去重后追加 ⇒ 同环重跑幂等）；
      ③ 加 `-DryRun` 先验一次（`LEDGER_DRYRUN_OK`，不写盘、不留锁文件）；
      ④ `-Action commit -Patch <p.json> -ExpectSha256 <第①步的sha>` 正式提交。
      闸门内部保证四件事：**独占写锁**（`docs\relay\.ledger.lock`，`FileMode.CreateNew`，被占 5s 超时、
@@ -126,8 +126,8 @@ mcp_invoke(
 2. 只做 current_stage 阶段，做到 acceptance 判据成立并跑出证据；工具调用 >40 次未收敛就停下写「未完成」。
 3. 收尾三件事（顺序不得颠倒）：
    3.1 结论落盘 docs/handoff-*.md（续编现有编号，不新建跨项目指针）；
-   3.2 回写 docs/relay.json：只许走闸门 docs/relay/relay-ledger.ps1
-       （status 取 sha -> 写 patch -> commit -ExpectSha256），禁止裸写整文件；
+   3.2 回写 docs/relay.json：一律走闸门 `docs/relay/relay-ledger.ps1`
+      （status 取 sha -> 写 patch -> commit -ExpectSha256），禁止裸写整文件；
    3.3 调 session_create 开下一环：workspace_dir 沿用 relay.json.workspace_dir，
        title="relay-<N+1>-<阶段短名>"，content 用本段正文、<N> 换成 <N+1>，
        并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
@@ -181,3 +181,94 @@ mcp_invoke(
 > 不保证。所以 §4 的接力 prompt 里**显式要求读 `docs/agent-relay.md`**——这样无论注入与否，
 > 只要工作区指向仓库，协议就一定拿得到。AGENTS.md 那段的作用是让**人在新会话里随口说一句**
 > 也能接上链，以及防止有人误起链。
+
+---
+
+## 8. 计划文档解析链（`device/start-relay.ps1`）
+
+启动器要知道「本轮推进哪份计划」。它按**固定优先级**解析，**绝不**为了起链而创建计划文档 —— 计划内容属人工验收点（§6），装置只负责找到它。
+
+| 优先级 | 来源 | 采用条件 | 回显 `source=` |
+|---|---|---|---|
+| 1 | `-PlanDoc <路径>`（相对或绝对均可） | 非空即采用（存在性同样在下一步统一校验） | `argument` |
+| 2 | 台账 `plan_doc` | 非空即采用（存在性在下一步统一校验） | `ledger` |
+| 3 | 探测 `docs\plan-*.md`、`docs\plans\*.md`、`docs\superpowers\plans\*.md` | 恰好一个命中 | `probe` |
+
+四种情形的固定行为：
+
+1. `-PlanDoc` 指向不存在的文件 ⇒ `FAIL reason=plan_doc_not_found path=...`，**`exit 2`**（拒绝起链，不建空文档）。
+2. 台账 `plan_doc` **为空**（或压根没有台账）⇒ 静默继续走探测，**没有额外警告**。
+   台账 `plan_doc` **非空但文件不存在** ⇒ 走第 1 条同一个出口：`FAIL reason=plan_doc_not_found ... source=ledger`，
+   **`exit 2`**。也就是说存在性只有一处校验，来源只影响回显的 `source=`。
+3. 探测命中**多个** ⇒ **不拒绝起链**：取 `LastWriteTime` 最新的那个，同时打
+   `WARN plan_doc_ambiguous candidates=N picked=... by=newest_mtime pass_-PlanDoc_to_disambiguate`，
+   回显 `source=probe_newest_of_N`。理由：陈旧计划副本与历史留证常同时存在，卡死整条链的代价远高于选错一次；
+   警告把选择权交回人工，下一跳用 `-PlanDoc` 显式消歧即可。
+4. 探测**零命中** ⇒ `FAIL reason=plan_doc_missing`（附三条探测路径与 `pass -PlanDoc` 提示），**`exit 2`**。
+
+退出码口径：计划解析失败 = `2`；台账闸门拒绝 = `3`；取锁失败 = `4`（§2 的闸门表说的是**回写**闸门，别混）。
+计划解析排在并发闸门**之后**、取锁**之前**，所以闸门拒绝时台账原样保留、锁也没取。闸门各拒绝情形的机器可见判据：
+
+| 情形 | 判据行 | 退出码 |
+|---|---|---|
+| 台账存在但 `ConvertFrom-Json` 失败 | `FAIL reason=ledger_unparsable path=...` | `3` |
+| 有阶段 `in_progress`（一人一棒被占） | `CONFLICT stage=... session=... status=in_progress` + `FAIL reason=stage_in_progress rule=one_writer_per_project` | `3` |
+| `status=running` 且 `next_session_id` 非空 | `FAIL reason=chain_already_running next_session_id=...` | `3` |
+| `status=done` 且 `current_stage >= max_stages` | `FAIL reason=chain_exhausted ...` + `HINT=start a fresh chain...` | `3` |
+| `status=blocked` | `WARN reason=ledger_blocked blocked_on=...` + `HINT=blocked chains need a human decision first...` | `3` |
+| 无台账 | `OK ledger_absent path=... (will bootstrap)` | 继续 |
+
+计划解析成功行固定为 `OK plan_doc=<相对路径> source=<来源> bytes=<N>`；`-DryRun` 时打 `DRYRUN skip=lock_acquire skip=ledger_bootstrap skip=prompt_write`。
+
+前置校验排在计划解析**之前**，闸门脚本缺失与取锁排在**之后**，四者的失败字面量固定：
+
+| 情形 | 判据行 | 退出码 |
+|---|---|---|
+| 工作区路径不存在 | `FAIL reason=workspace_missing path=...` | `2` |
+| 工作区存在但不是 git 仓库 | `FAIL reason=not_a_git_repo path=...` | `2` |
+| 非 `-DryRun` 且回写闸门脚本 `relay-ledger.ps1` 缺失 | `FAIL reason=ledger_gate_missing path=...`（附 `re-run install-relay.ps1`） | `2` |
+| 取锁失败（透传 `relay-lock.ps1` 的退出码） | `FAIL reason=lock_unavailable exit=N` | `4` |
+
+取锁时启动器固定传 `-Action acquire -Stage 1 -Title 'relay-start' -TtlSeconds <TTL>`，**不传** `-SessionId`、
+**不传** `-LockPath`，于是 holder 取缺省值 `start-relay:$PID`。后果：**同一仓库第二次真跑即使台账闸门放行也会 `exit 4`**
+——这是「二次起链被拒」的第三种来源（闸门看状态、锁看进程）。只有锁的 TTL 到期才会走 `LOCK_TAKEOVER stale_holder=... kept=...`，
+过期锁文件被改名保留而不是删除。
+
+两条易踩的性质：
+
+- 解析结果转成**仓库相对路径**写入 prompt；首环 bootstrap 时同一相对路径写进台账。**台账已存在则 bootstrap 不执行**，
+  所以后续跳的 prompt 用「当场解析值」，台账仍留首环登记值 —— 二者可能不同。要把计划文档换位置，
+  用 `-PlanDoc` 显式传，或人工改台账；别指望重跑启动器改写台账。
+- 计划解析发生在**取锁之前**：因计划问题退出时不会残留 `docs\relay.lock`，无需手工清锁。
+
+---
+
+## 9. 收编项目 `AGENTS.md` 的双判据（`scripts/install-relay.ps1`）
+
+安装器要写目标项目的 `AGENTS.md`，先看托管标记对 `<!-- BEGIN RELAY-PORT -->` / `<!-- END RELAY-PORT -->`：
+
+| 现状 | 动作 | 回显 `AGENTS action=` |
+|---|---|---|
+| 标记对齐全 | 默认**不动**（保留项目手改）；带 `-Force` 才整块替换 | `present_kept` / `replaced` |
+| 标记对存在但块结构定位不出来 | **不动**，也不追加（避免双重托管块），交人工检查标记 | `present_unparsed` |
+| 只有单侧标记 | 先 `WARN agents_markers_corrupt stray_marker_removed` 清掉游离标记，再走下面的收编判定 | `adopted` / `appended` |
+| 无标记，但项目已有自己的接力节 | 把该节**原地包进**标记对，正文一字不动 | `adopted` |
+| 无标记、无接力节 | 末尾追加托管块 | `appended` |
+
+「项目已有自己的接力节」由两个判据**按序**认定（命中即止）：
+
+1. **标题判据** `reason=title`：`(?m)^##\s+.*(?:Relay|接力)` 命中某个二级标题；
+   节范围 = 该标题行到下一个 `## ` 标题（或文件末）。
+2. **内容签名判据** `reason=content_signature`（标题不命中时才跑）：按 `## ` 切节，逐节统计 11 个特征信号
+   （`relay.json` · `relay-lock.ps1` · `start-relay.ps1` · `relay-ledger.ps1` · `AGENT-RELAY` ·
+   `ACTIVATION-PROMPT` · `session_create` · `in_progress` · `max_stages` · `next_session_id` · `awaiting_user`），
+   命中数 **≥ 4** 的分节算候选：
+   - 恰好 1 个候选 ⇒ 收编它，判据串形如 `content_signature count=6 signals=relay.json+relay-lock+...`；
+   - **多于 1 个候选 ⇒ 不猜**：打 `WARN agents_relay_section_ambiguous matches=N appended_managed_block review=keep_a_single_relay_section`，
+     退回**追加**托管块。宁肯多一节（人一眼可见、可手工合并），也不冒「改错别人项目规则节」的风险。
+3. 两判据都不命中 ⇒ 追加。
+
+收编的边界：被收编的节原文**不重写、不改写、不删行**，只在其首尾加上标记对；此后重跑安装默认 `present_kept`，
+只有显式 `-Force` 会用最新模板替换标记对内的内容（标记对外的项目原文仍然保留）。
+安装器每次都会打一行机读复核判据 `AGENTS_MARKERS begin=<N> end=<N>`：收编成功应当是 `begin=1 end=1`，
+出现 `begin=2` 之类即托管块重叠，属于要人工处理的状态，别继续起链。

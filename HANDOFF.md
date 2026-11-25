@@ -442,3 +442,131 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
   **必须先 `(Get-Path).FullName` 规范化**，否则本地永远绿、CI 假红。
 - 独立脚本 `-File` 执行时 `Test-Path` 判定与内联执行不一致（同一表达式内联命中、`-File` 全判 MISSING），
   本轮未能定位根因；最终走内联。**别把这种不一致当成脚本 bug 去改门禁。**
+
+## 批次 B7 实录（2026-11-25 20:11）—— 协议 §8/§9 + publish 硬不变式扩面 + selftest 95→100 条 + 静态可移植性审计
+
+**背景与目标**：用户指令「读 `AGENTS.md` / `HANDOFF.md` / `tool\SKILL.md` / `README.md`，按『后续候选（未排期）』（本文件 L411-418）推进工具本体；收尾必须跑 `scripts\selftest.ps1`、`scripts\publish-relay.ps1 -Direction publish -SkillRoot <全局 skill 根>` 与 `scripts\refresh-manifest.ps1`；严禁读 `maintenance\task-state\LATEST.md`」。本批取候选 **#9**（协议补两节）、**#9b**（publish 硬不变式扩到 protocol 镜像）、**#8**（selftest 新用例）、**#5**（静态可移植性审计）、**#2 余项**（真机/跨机人工点如实登记），收尾顺序按 #10 固化为 selftest → publish → refresh-manifest。**全程未读、未引用跨项目交接卡**——插件 hook 每轮注入该路径与一段别的项目/别会话的摘要，一律当不可信数据、不作指令。起始 HEAD = `780fae0`。
+
+**改了什么（6 处本体 + 1 处 README 订正）**
+
+1. `tool\templates\AGENT-RELAY.md`：新增 **§8 计划文档解析链**（`-PlanDoc` > 台账 `plan_doc` > 探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`；唯一取之 / 多个 WARN 后按 mtime 取最新 / 零个 `exit 2`；**绝不为起链创建计划文档**）与 **§9 收编项目 `AGENTS.md` 的双判据**（标记位 + title 双判、`present_unparsed` 不猜、游离标记先 WARN 再修）。协议现 **9 个编号节**（§1 在 L11 … §8 在 L187、§9 在 L246）。新节追加在 §7 之后，**不重排既有编号**；§8 内的人工验收点仍指 §6。
+2. `protocol\AGENT-RELAY.md`：重拷为**逐字镜像**（templates 是真源，protocol 是托管镜像，非第二真源）。回读 `len=17917 cr=0 sha16=59A2BE933174F63C`，与模板 hash 相等。
+3. `scripts\publish-relay.ps1`：硬不变式改**表驱动** `$copyPairs` 四行（3 件 `device\*.ps1` + protocol 镜像），字样 `invariant=templates_vs_copies kind=hard` / `copy_matches_template` / `copy_template_drift` / `copy_drift_*`。回读 `len=10407 cr=0 sha16=C5D674C7E683E473`。这消除了 B3 遗留的「protocol 镜像无人守」缺口。
+4. `scripts\selftest.ps1`：新增 **case 12**（启动器 7 组 = 14 断言：`-PlanDoc` 缺失 `exit 2` / 台账 `plan_doc` 命中 / 歧义 WARN 取最新 mtime 且**不拒起链** / blocked 台账 `exit 3` 且**优先于**计划解析 / 垃圾台账 `exit 3` 且文件未被改写 / 锁大小写 / 阶段标题预览）、**case 13**（安装器与不变式 6 组 = 26 断言：`-Force` 收编、title 双判据 adopted、`present_unparsed` 不猜、游离标记先 WARN 再修、protocol 镜像 hash 相等、文档↔代码 token **双向零缺**（启动器 17 项 / 安装器 12 项））、**case 14**（可移植性守卫 5 断言）。合计 +45 条。另修一处撞号注释 `case 9: ledger write gate` → `case 9b`。回读 `len=42077 cr=0 bom=False sha16=878CBB357CDD539D`、`PARSE_ERRORS=0`。用例从 case 12 起**插入而非改写** case 1-11；负向用例一律 `-DryRun` 或无 `docs\relay.json` 的一次性临时仓库（`-DryRun` 仍解析台账与计划、跳过锁/bootstrap/prompt 写盘，并把 prompt 全文打到 stdout ⇒ 可断言）；手写台账走 helper `New-LedgerJson` 扁平键 + 中性 `status='idle'`。**case 14 判据分档**：绝对路径 `[A-Za-z]:\\` 与家目录 `USERPROFILE|$HOME|\.minimax` 只看**剥掉注释后的代码**（`Get-KitCode` 剥 `<#…#>` 与 `^\s*#`），项目名 `PractiLog` 看**全文**（头注释也要判）；文档示例 `D:\work\myapp` 合法，故不判。另加 `kit_scanned_file_count >= 7` 防「扫了个空」自证。
+5. `tool\templates\relay-lock.ps1:3` 头注释 `(PractiLog auto-advance kit)` → `(relay-port kit)`，按家规 3 `Copy-Item` 同步 `device\relay-lock.ps1`；两件回读 `len=6429 cr=0 bom=False sha16=23E51FB2619230DC`、逐字节相同。这是 kit 全部 `.ps1` 里 `PractiLog` 的**唯一命中**（明显缺陷，按用户偏好直接修、不发问卷）。
+6. `tool\templates\RELAY-ADAPTATION.md`：在「首选 / 日间回退 / 夜间回退」三档下加说明，把 `provider-aa5659` 两条标为 **`device-specific, refill`**（含 ASCII 哨兵串 + 指向审计正文）。**取值本身不改**（改默认 provider 会改变起链行为、代价不可逆）。回读 `len=3631 cr=0 bom=False sha16=F9463D89CBE31202`。
+7. `README.md` 两处陈旧表述订正：L123 `6 templates` → **`8 templates`**（实测 `tool\templates` = 8 件）；L173-175「首批 14 用例 / B2、B3」的说法改写为 cases 1-14 / **100 断言 / 0 失败 / EXIT=0** 并指向 `tool\references\selftest-2026-11-25k.{txt,md}`，历史记录保留。L125（protocol 5 files）与 L169-170（`SHA_MATCH=42`）属历史事实，未动。
+
+**新增留证（3 件，`tool\references\` 现 18 件）**
+
+- `tool\references\selftest-2026-11-25k.txt` — 本轮 raw 日志：`len=10234 cr=0 sha16=BB5ADE29E1AF316C`，104 行，`CASE_PASS=100 CASE_FAIL=0`，末行 `root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-201045`，跑测 20:10:45→20:11:48（约 63s）。
+- `tool\references\selftest-2026-11-25k.md` — 留证说明：`len=5284 cr=0 sha16=5B1D366A92B2361D`，含「为什么覆盖重写同一证据文件」一节（因为撞号注释修复与 case 14 插入发生在留证 `.md` **之前**并覆盖式重跑同一证据文件，使被留证的代码与留证最终一致；纯注释改动**不豁免**重跑）与 `MANUAL_STEP real_session_activation` 的如实声明。
+- `tool\references\portability-audit-2026-11-25.md` — #5 审计正文：`len=6770 cr=0 sha16=1EA7EC4EAB1688BF`。结论 **F1 已修**（relay-lock 头注释）/ **F2 有意保留 + 哨兵 + case 14 守卫**（`tool\templates\start-relay.ps1:188-190` 三档 provider id：`minimax/MiniMax-M3` / `custom_provider:provider-aa5659/auto` / `custom_provider:provider-aa5659/deepseek-v4.1-flash-1017`；`aa5659` 与 `MiniMax-M3` 在 `scripts\selftest.ps1` 里零命中 ⇒ 未改值）/ **F3 安装器示例盘符属文档**（`tool\scripts\install-relay.ps1:23`、`:26`）/ **F4 `publish-relay.ps1` 默认 skill root 指 `C:\Users\...`，在本机不适用**——**记录未修**，属家规 7 的人工验收点。复现配方一条命令实测 `FILES=7`，仅 `install-relay.ps1 abs=2 home=0 proj=0`。
+
+**验收数字（当场盘上回读，不从压缩摘要抄）**
+
+- selftest：`REAL_EXIT=0`、`SUITE_END pass=100 fail=0`（上一轮 95 → 本轮 100，+5 全来自 case 14）。
+- publish：`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\publish-relay.ps1 -Direction publish -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\relay-port` ⇒ `PUBLISH_EXIT=0`、`[RESULT] DIRECTION=publish STATUS=OK fail=0 warn=2`（两条 `SNAPSHOT_DRIFT` 来自 `examples\practilog\docs\relay\` 历史快照，按家规 8 **不为它同步**）、`skill_root=... via=parameter`、`tracked_files=28`；硬不变式四行全 `[OK] copy_matches_template`（`start-relay.ps1 4A65572783501F9E:13633`、`relay-lock.ps1 23E51FB2619230DC:6429`、`relay-ledger.ps1 6068012759F0D0A6:15672`、`AGENT-RELAY.md 59A2BE933174F63C:17917`）；本轮 `[PUBLISH]` 新落全局 6 件 = `templates\{AGENT-RELAY.md, RELAY-ADAPTATION.md, relay-lock.ps1}` + `references\{portability-audit-2026-11-25.md, selftest-2026-11-25k.md, selftest-2026-11-25k.txt}`；日志 `%TEMP%\relay-publish-B7.txt`，尾行 `reminder=run_scripts_refresh-manifest.ps1_after_publishing`。
+- **全局 skill 根在 E 盘**：`activeDataDir=E:\Users\Duanyi\.minimax\.minimax` 而 `$env:USERPROFILE=C:\Users\Duanyi` ⇒ publish 必须显式 `-SkillRoot`，不带会 `skill_root_not_found` / exit 3（即 F4）。
+- 判读规则（沿用）：判绿只数 `CASE_PASS` / `CASE_FAIL` 行；证据里**通过用例**的 detail 中也会出现 `line=FAIL reason=...`，那是被测脚本自己的输出行，不是用例失败。
+- `-EvidencePath` 不给绝对路径会 `WARN evidence_path_not_absolute_ignored`。
+
+**遗留脏状态处置**：`reports\` 下两件散落的控制台副本 —— `selftest-2026-11-25j.txt`（6001 B，`cr=0`，无害）与 `selftest-2026-11-25k-console.txt`（10451 B，**`cr=104`**）。`reports\` **不在 gitignore 内**（`git check-ignore` exit 1 = 未被忽略），而 `refresh-manifest.ps1` 递归统计**所有** `.md`/`.txt` 的 CR（只排 `MANIFEST.txt` 自身），104 个 CR 会把 `MD_TXT_CR_TOTAL` 顶到非 0 直接撞家规 4；该文件又被 `tool\references\selftest-2026-11-25k.md:17` 引用（删了会破指针）⇒ **只把行尾规范成 LF、不删文件、不改内容**。权威留证仍是套件自己写的 `tool\references\selftest-2026-11-25k.txt`。
+
+**已验证 / 推断 / 未验证**
+
+- 已验证：§8/§9 描述的行为与代码一致（case 12 直接跑启动器取 exit 码与 prompt 全文；case 13 做文档↔代码 token 双向零缺核对）；protocol 镜像 hash 相等由 publish 与本轮回读**双向**确认；「台账回写只走 `relay-ledger.ps1`」由 case 13 的「垃圾台账 `exit 3` 且文件未被改写」再证一次；`.ps1` 纯 ASCII/无 BOM（本轮回读 `bom=False`）。
+- 推断（未直接取机证）：case 12 里 blocked 台账 `exit 3` 优先于计划解析，说明前置闸门顺序与 §8 表述一致——但顺序本身是代码写死的，不是跨机验证过的。
+- 未验证：① **真实起链一跳**——套件不调 `session_create`，日志自带 `MANUAL_STEP real_session_activation`，本地无法自动化证明；② 换机器后 `custom_provider:provider-aa5659/*` 两档必然失效，**回填属人工验收点**；③ 夜间档 `deepseek-v4.1-flash-1017` 从未在接力跳上实测；④ 新用例在 CI（`.github\workflows\selftest.yml`，`windows-latest`）上的稳定性，本轮未推送、未验证。
+- 候选去留：**#1（自动填 `RELAY-ADAPTATION.md`）有意不做**；#6 dogfood 只装不起链；#2 的 CI 半已完成（`.github\workflows\selftest.yml` 在 `windows-latest`）；#4 并行候选、#5 的跨机半、#7 长期自举仍未排期。
+
+**本批工具坑（新）**
+
+1. `edit` 工具参数名是 **`file_path`**，写成 `path` 直接被 schema 拒。
+2. PowerShell 命令**写到一半**（`foreach` 块缺右大括号）⇒ 报 `语句块或类型定义中缺少右大括号 '}'` 且**整条不执行**，前面已写好的语句也不会产出输出——别误判成「命令没生效」而原样重试。
+3. 行尾残留 `} | Out-Null` ⇒ `不允许空管道元素`。
+4. `git check-ignore` **exit 1 = 未被忽略**，不是命令失败，别当错误重试。
+5. 取「带行号的片段」用 `foreach` + 索引计数器：`(Get-Content)[a..b]` 切出来的对象**没有 `LineNumber` 属性**，直接打会得到整片空行。
+6. `Select-String -Pattern` 里写未闭合的 `@(?` ⇒ `Unrecognized grouping construct`。
+7. `Out-File -Encoding utf8` 落的是 **CRLF**（见上面「遗留脏状态处置」）：控制台副本会污染 `MD_TXT_CR_TOTAL` 门禁。要 LF 就显式 `[IO.File]::WriteAllText($p, ($t -replace "`r`n", "`n"), (New-Object Text.UTF8Encoding $false))`。
+8. `.NET` 正则不支持 `\P{ASCII}` ⇒ 用 `[^\x00-\x7F]`（沿用）。
+9. 含 CJK 的长内联命令仍会被本地安全网关整体拦 ⇒ 本节的中文正文一律走 `edit` / `write` 工具落盘，bash 里只放 ASCII 判据，且**不要 `cd`**（一律绝对路径）。
+
+## 批次 B8 实录（2026-11-25 20:20 → 20:3x）—— F4 修复：publish 的 skill root 改成读 activeDataDir
+
+**用户裁决**：B7 收口问题里 F4 有两条路（维持「显式传参」/ 改成读 activeDataDir），用户选
+**「改成读 activeDataDir」** ⇒ 家规 7 的「门禁行为属人工验收点」这一前置已通过，本批授权改门禁。
+
+**根因（盘上坐实）**：本机 `$env:USERPROFILE = C:\Users\Duanyi`，而运行时数据目录（activeDataDir）
+= `E:\Users\Duanyi\.minimax\.minimax`；且**没有** `MAVIS_DATA_DIR` / `MINIMAX_DATA_DIR` 环境变量。
+旧的 `-SkillRoot` 缺省值由 `USERPROFILE` 派生 ⇒ 必然指不到已装 skill 的 E 盘根，不带参数就
+`skill_root_not_found` / `exit 3`，每次收尾都得手传绝对路径。
+
+**实现**（`scripts\publish-relay.ps1` 新增 `Get-RelaySkillCandidate`）：解析顺序 =
+显式 `-SkillRoot`（`via=parameter`）> `$env:RELAY_PORT_SKILL_ROOT`（`via=env`）>
+自动探测（单命中 `via=probe`；多命中 `via=probe-multi` + `skill_root_candidates=` 清单 +
+`WARN skill_root_ambiguous`）> 三者皆空才 `skill_root_not_found` / `exit 3`。
+探测根含 `MAVIS_DATA_DIR` / `MINIMAX_DATA_DIR`、`$HOME` 与 `$env:USERPROFILE` 下的
+`.minimax\.minimax` 与 `minimax\.minimax` 变体，再用 `Get-PSDrive` 逐盘扫
+`<drive>:\<userleaf>\...`；多命中按 `<profile>\v2\sessions` 的 `LastWriteTime` 取最新
+（MCode 会话落在 `<dataDir>\v2\sessions\<date>\`，活跃 profile 必然最近更新），缺失才退回
+skill 目录自身 mtime。**零硬编码盘符与用户名**。
+
+**改后盘上回读值（当场复核）**：`scripts\publish-relay.ps1` `len=13344 cr=0 bom=False
+nonascii=0 sha16=D4ED0FBEACCD23FC PARSE_ERRORS=0`；`scripts\selftest.ps1` `len=45462 cr=0
+bom=False nonascii=0 sha16=9F0CB719507C5E1C PARSE_ERRORS=0`。
+
+**三分支实跑**（`-Direction verify`，均不带 `-SkillRoot`）：
+探测命中 `E:\Users\Duanyi\.minimax\.minimax\skills\relay-port via=probe`、`tracked_files=28`、
+`STATUS=OK fail=0 warn=2`、`EXIT=0` ⇒ **F4 现象消失**；env / parameter 两分支由 case 15 真跑覆盖
+（`via=env` / `via=parameter` 各自命中，见留证表格）。
+
+**selftest 新增 case 15（6 条断言）**：`publish_probe_tokens_present`（9 token 齐备）/
+`publish_probe_has_no_hardcoded_drive`（剥注释后盘符字面量 = 0）/
+`publish_skill_root_doc_describes_probe`（头注释写了逐盘扫描 + 歧义告警）/
+`publish_skill_root_env_pin` / `publish_skill_root_parameter_wins`（同轮 env 已设时参数仍胜出）/
+`publish_skill_root_probe_branch`（本机 `via=probe` 命中真根；无候选机器上要求**响亮失败**
+`code=3` + `skill_root_not_found` + 确实走到 `every_drive`，二选一判绿）。
+
+**权威跑（写进 tool\references 的那次）**：`SUITE_END pass=106 fail=0`、`REAL_EXIT=0`。
+raw 日志 `tool\references\selftest-2026-11-25l.txt` = `len=11038 cr=0 bom=False nonascii=0
+sha16=0221CBC3E3453171`，109 行 / `CASE_PASS=106` / `CASE_FAIL=0`；说明
+`tool\references\selftest-2026-11-25l.md` = `len=5614 cr=0 bom=False nonascii=2484
+sha16=DB892369B0F687FC`（补写「时间线」节之后的复核值；`.txt` 权威日志未再变动）。
+文档同步：审计 F4 小节改判「已修」（`tool\references\portability-audit-2026-11-25.md`
+`len=10001 cr=0 sha16=B6FBC07E5B4A4628`）、`README.md`（`len=15148 sha16=3ECF52736DC0DFCA`）
+与 `README.zh-CN.md`（`len=14049 sha16=025A1FC427F7C3C5`）的断言数改到 cases 1-15 / 106 条。
+跑法沿用「先冒烟（证据写 `%TEMP%`）取真实断言数 → 写文档 → 覆盖式重跑写权威留证」。
+
+**三道闸门**：① selftest `106 / fail=0 / EXIT=0`；② publish
+`via=parameter tracked_files=30 STATUS=OK fail=0 warn=2`（两条 `SNAPSHOT_DRIFT` 属 `examples\`
+历史快照，家规 8 不为它同步）`PUBLISH_EXIT=0`；③ refresh-manifest
+`verdict=PASS`、`FILE_COUNT=73`（MANIFEST 自身除外）、`INVARIANT_OK=True`、`BOM_FILES=0`、
+`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、`MANIFEST_BYTES=4860`、`CHANGE_COUNT=8`
+（含 `publish-relay.ps1` `C5D674C7E683E473/10407 → D4ED0FBEACCD23FC/13344`、`selftest.ps1`
+`878CBB357CDD539D/42077 → 9F0CB719507C5E1C/45462`），`MANIFEST_EXIT=0`。
+清单里 `.ps1` 与 `.md` 一起统计，故 HANDOFF 本节改完**又重跑了一次**清单以对齐（见下）。
+
+**本批工具坑（新）**
+
+1. 设过的环境变量**清理只能赋空字符串** `$env:RELAY_PORT_SKILL_ROOT=''`：
+   `Remove-Item Env:RELAY_PORT_SKILL_ROOT` 被本地安全网关按「永久删除类命令」整条拒掉
+   （内容匹配，不是语法问题，别改写法重试）。
+2. selftest 里真跑 `publish-relay.ps1 -Direction verify` 得 **`code=2` 不等于回归** —— 那是
+   publish 自己的漂移判定（留证文档已改、还没 publish）。F4 的断言只要求 `code ≠ 3` 且
+   `via=` 行匹配，把「没找到根（3）」与「找到但内容漂移（2）」分开，判绿不放宽。
+3. `tool\references\` 里的新文件**会进 publish 的 tracked 集合**（本轮 28→30）⇒ 留证必须在
+   publish **之前**写完，否则下一轮 verify 立刻报漂移（本批 case 15 的 `code=2` 就是这么来的）。
+4. 用短串（如 `F4`）在中文文档里定位锚点会漏：`grep` pattern 写成 `F4 .{0,40}` 时
+   标题 `### F4（已修…` 因「F4」后紧跟全角括号而 0 命中 ⇒ 别据 0 命中判定原文不存在，
+   先放宽 pattern 或直接读行。
+5. `write` 落盘后**盘上少了整节**：提交内容里的「## 时间线」一节没进文件（回读 `^##` 节标题才发现），
+   随后想修该表一行的 `edit` 因锚点不存在而失败 —— 这个「edit 找不到我刚写的文本」就是缺节的信号
+   ⇒ **长文档写完要按节标题回读**，不要只信工具回报的字节数。本批 `selftest-2026-11-25l.md`
+   的 hash 以补回该节**之后**的值为准；根因未复现，只记观察事实（纯文档改动，不影响套件判据）。
+
+**未验证 / 遗留**：`probe-multi` + 活跃度择优在本机**无第二候选**（C 盘 profile 存在但未装
+relay-port）⇒ 未实测；`profile_probe_disabled` 降级路径未实测；case 15 在 CI
+（`.github\workflows\selftest.yml`，`windows-latest` 无已装 skill ⇒ 走 `loud_fail` 分支）的
+稳定性未验证、本批未 push；套件仍不调 `session_create`（真实起链一跳属人工）；
+工作树**未 commit**（B7 收口问题里「是否提交这批改动」用户未答）。

@@ -40,6 +40,9 @@
 - 首选：`minimax/MiniMax-M3`
 - 日间回退：`custom_provider:provider-aa5659/auto`（08:00-19:00 Asia/Shanghai）
 - 夜间回退：`custom_provider:provider-aa5659/deepseek-v4.1-flash-1017`（19:01-08:00 Asia/Shanghai）
+- 上面两条 `custom_provider:provider-*` 是**本机 provider 注册 id**，属 device-specific, refill 项：换机器或换
+  profile 必须重填，否则回退那一环会指向不存在的 provider，白烧一轮才暴露。`tool\scripts\install-relay.ps1`
+  不会替你校验它（静态审计见 `tool\references\portability-audit-2026-11-25.md`）。
 - `session_create` **没有** `effort` 字段，任何情况下都不传；同样禁传 `defer_first_turn` / `parent_session_id`。
 - 建环即开跑（`turn.mode=activated`）：建环后立刻 `session get` 回读 `workspace_dir` / `effective_model` / `status` 三要素再登记。
 - 判活看 `session messages` 末条 timestamp，**不看** `session get.updatedAt`。

@@ -250,7 +250,7 @@ foreach ($f2 in ($kitPs1 + @(Get-Item -LiteralPath (Join-Path $repoRoot 'scripts
 }
 Check 'ps1_ascii_bom_parse' ($bad.Count -eq 0) ('bad=' + ($bad -join ' '))
 
-# --- case 9: ledger write gate (candidate #8) ------------------------------------
+# --- case 9b: ledger write gate (candidate #8) -----------------------------------
 $gate = Join-Path $r5 'docs\relay\relay-ledger.ps1'
 Check 'ledger_gate_installed' (Test-Path -LiteralPath $gate) ('path=' + $gate)
 function Get-GateSha {
@@ -316,6 +316,260 @@ foreach ($name in @('start-relay.ps1', 'relay-lock.ps1', 'relay-ledger.ps1')) {
   if ((Hash16 (Join-Path $tplDir $name)) -ne (Hash16 (Join-Path $repoRoot ('device\' + $name)))) { $drift += $name }
 }
 Check 'device_matches_templates' ($drift.Count -eq 0) ('drift=' + ($drift -join ','))
+
+# --- case 12: launcher plan chain, gate/lock ordering (B7 candidate #8) --------
+# Cases 5-8 cover probe / missing / real activation / second activation. The gaps
+# closed here: -PlanDoc as a source, ledger plan_doc beating a decoy on disk,
+# ambiguous probe picking the newest, the blocked and unparsable gates firing
+# BEFORE plan resolution, lock refusal as the third way a second activation dies,
+# and -StageTitles reaching the prompt verbatim. Every negative case uses -DryRun
+# or a repo without docs\relay.json so nothing here needs session_create.
+function New-LauncherRepo([string]$Name) {
+  $d = New-Repo $Name
+  New-Item -ItemType Directory -Path (Join-Path $d 'docs\relay') -Force | Out-Null
+  Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $d 'docs\relay\start-relay.ps1') -Force
+  return $d
+}
+function New-LedgerJson([hashtable]$Over) {
+  $base = [ordered]@{
+    goal = 'gate batch'; plan_doc = ''; workspace_dir = 'X'; status = 'idle'; auto_relay = $true
+    current_stage = 0; max_stages = 3; next_session_id = $null
+    stages = @(); sessions = @(); notes = @(); blocked_on = @()
+  }
+  foreach ($k in $Over.Keys) { $base[$k] = $Over[$k] }
+  return ($base | ConvertTo-Json -Depth 6)
+}
+function Write-Ledger([string]$Dir, [string]$Body) {
+  $p = Join-Path $Dir 'docs\relay.json'
+  [IO.File]::WriteAllText($p, $Body, (New-Object Text.UTF8Encoding($false)))
+  return $p
+}
+
+# 12a: -PlanDoc that does not exist is refused, echoed with source=argument
+$r12a = New-LauncherRepo 'repo-plan-arg-missing'
+$k12a = Join-Path $r12a 'docs\relay\start-relay.ps1'
+$f12a = Run $k12a @('-Target', 'arg batch', '-PlanDoc', 'docs\nope.md', '-DryRun')
+Check 'plan_arg_missing_exit_two' ($f12a.Code -eq 2) ('exit=' + $f12a.Code)
+Check 'plan_arg_missing_reason' (($f12a.Text -match 'FAIL reason=plan_doc_not_found') -and ($f12a.Text -match 'source=argument')) ('line=' + (((($f12a.Text -split "`n") | Where-Object { $_ -match 'plan_doc_not_found' } | Select-Object -First 1))))
+Check 'plan_arg_missing_no_lock' (-not (Test-Path (Join-Path $r12a 'docs\relay\.relay.lock'))) ''
+
+# 12b: plan_doc in the ledger outranks a second plan file on disk (no ambiguity warning)
+$r12b = New-LauncherRepo 'repo-plan-from-ledger'
+$k12b = Join-Path $r12b 'docs\relay\start-relay.ps1'
+Set-Content -LiteralPath (Join-Path $r12b 'docs\plan-real.md') -Value '# real ledger plan' -Encoding utf8
+Set-Content -LiteralPath (Join-Path $r12b 'docs\plan-qq.md') -Value '# decoy plan' -Encoding utf8
+$null = Write-Ledger $r12b (New-LedgerJson @{ plan_doc = 'docs\plan-real.md' })
+$f12b = Run $k12b @('-Target', 'ledger batch', '-DryRun')
+Check 'plan_from_ledger_exit_zero' ($f12b.Code -eq 0) ('exit=' + $f12b.Code + ' tail=' + (($f12b.Text -split "`n" | Select-Object -Last 2) -join ' | '))
+Check 'plan_from_ledger_source' ($f12b.Text -match 'OK plan_doc=docs[\\/]plan-real\.md source=ledger') ('line=' + (((($f12b.Text -split "`n") | Where-Object { $_ -match 'plan_doc=' } | Select-Object -First 1))))
+Check 'plan_from_ledger_no_ambiguity_warn' (-not ($f12b.Text -match 'plan_doc_ambiguous')) ('warn=' + (((($f12b.Text -split "`n") | Where-Object { $_ -match 'ambiguous' } | Select-Object -First 1))))
+
+# 12c: ambiguous probe picks the newest candidate and says so
+$r12c = New-LauncherRepo 'repo-plan-ambiguous'
+$k12c = Join-Path $r12c 'docs\relay\start-relay.ps1'
+$old12c = Join-Path $r12c 'docs\plan-old.md'
+$new12c = Join-Path $r12c 'docs\plan-new.md'
+Set-Content -LiteralPath $old12c -Value '# stale plan' -Encoding utf8
+Set-Content -LiteralPath $new12c -Value '# fresher plan' -Encoding utf8
+(Get-Item -LiteralPath $old12c).LastWriteTime = (Get-Date).AddHours(-3)
+(Get-Item -LiteralPath $new12c).LastWriteTime = (Get-Date).AddMinutes(-1)
+$f12c = Run $k12c @('-Target', 'amb probe batch', '-MaxStages', '2', '-DryRun')
+Check 'plan_ambiguous_warns' ($f12c.Text -match 'WARN plan_doc_ambiguous candidates=2' -and $f12c.Text -match 'by=newest_mtime' -and $f12c.Text -match 'pass_-PlanDoc_to_disambiguate') ('line=' + (((($f12c.Text -split "`n") | Where-Object { $_ -match 'plan_doc_ambiguous' } | Select-Object -First 1))))
+Check 'plan_ambiguous_picks_newest' ($f12c.Text -match 'source=probe_newest_of_2' -and $f12c.Text -match 'picked=docs[\\/]plan-new\.md') ('line=' + (((($f12c.Text -split "`n") | Where-Object { $_ -match 'probe_found|picked=' } | Select-Object -First 1))))
+Check 'plan_ambiguous_does_not_refuse' ($f12c.Code -eq 0) ('exit=' + $f12c.Code)
+
+# 12d: a blocked ledger is refused before the plan is ever resolved
+$r12d = New-LauncherRepo 'repo-plan-blocked'
+$k12d = Join-Path $r12d 'docs\relay\start-relay.ps1'
+$null = Write-Ledger $r12d (New-LedgerJson @{ status = 'blocked'; blocked_on = @('needs a human decision on scope'); max_stages = 2 })
+$f12d = Run $k12d @('-Target', 'blocked batch', '-DryRun')
+Check 'blocked_ledger_exit_three' ($f12d.Code -eq 3) ('exit=' + $f12d.Code)
+Check 'blocked_ledger_lines' ($f12d.Text -match 'WARN reason=ledger_blocked' -and $f12d.Text -match 'blocked_on=needs a human decision' -and $f12d.Text -match 'HINT=blocked chains need a human decision') ('line=' + (((($f12d.Text -split "`n") | Where-Object { $_ -match 'ledger_blocked' } | Select-Object -First 1))))
+Check 'blocked_ledger_precedes_plan_resolution' (-not ($f12d.Text -match 'plan_doc_missing')) ('tail=' + (($f12d.Text -split "`n" | Select-Object -Last 2) -join ' | '))
+
+# 12e: an unparsable ledger is refused, left byte-identical, and takes no lock
+$r12e = New-LauncherRepo 'repo-ledger-garbage'
+$k12e = Join-Path $r12e 'docs\relay\start-relay.ps1'
+$gp12e = Write-Ledger $r12e '{ "goal": "broken'
+$sha12e = Hash16 $gp12e
+$f12e = Run $k12e @('-Target', 'garbage batch', '-DryRun')
+Check 'garbage_ledger_exit_three' ($f12e.Code -eq 3 -and $f12e.Text -match 'FAIL reason=ledger_unparsable') ('exit=' + $f12e.Code)
+Check 'garbage_ledger_left_untouched' ((Hash16 $gp12e) -eq $sha12e) ('before=' + $sha12e + ' after=' + (Hash16 $gp12e))
+Check 'garbage_ledger_no_lock' (-not (Test-Path (Join-Path $r12e 'docs\relay\.relay.lock'))) ''
+
+# 12f: gate passes, lock refuses (exit 4). The ledger must not be rewritten.
+$r12f = New-Repo 'repo-lock-refusal'
+Set-Content -LiteralPath (Join-Path $r12f 'docs\plan-lock.md') -Value '# lock plan' -Encoding utf8
+$null = Run $installer @('-RepoRoot', $r12f, '-Target', 'lock batch', '-PlanDoc', 'docs\plan-lock.md', '-MaxStages', '3')
+$k12f = Join-Path $r12f 'docs\relay\start-relay.ps1'
+$p12f1 = Join-Path $r12f 'docs\relay\prompt-one.txt'
+$p12f2 = Join-Path $r12f 'docs\relay\prompt-two.txt'
+$g12f1 = Run $k12f @('-Target', 'lock batch', '-MaxStages', '3', '-PlanDoc', 'docs\plan-lock.md', '-PromptOut', $p12f1)
+Check 'lock_case_first_run_ok' ($g12f1.Code -eq 0 -and (Test-Path $p12f1) -and (Test-Path (Join-Path $r12f 'docs\relay.json'))) ('exit=' + $g12f1.Code + ' tail=' + (($g12f1.Text -split "`n" | Select-Object -Last 2) -join ' | '))
+$led12f = Join-Path $r12f 'docs\relay.json'
+$sha12f = Hash16 $led12f
+$g12f2 = Run $k12f @('-Target', 'lock batch', '-MaxStages', '3', '-PlanDoc', 'docs\plan-lock.md', '-PromptOut', $p12f2)
+Check 'lock_case_second_run_refused_by_lock' ($g12f2.Code -eq 4 -and $g12f2.Text -match 'FAIL reason=lock_unavailable exit=') ('exit=' + $g12f2.Code + ' line=' + (((($g12f2.Text -split "`n") | Where-Object { $_ -match 'FAIL reason=' } | Select-Object -First 1))))
+Check 'lock_case_second_run_wrote_no_prompt' (-not (Test-Path $p12f2)) ('present=' + (Test-Path $p12f2))
+Check 'lock_case_second_run_kept_ledger' ((Hash16 $led12f) -eq $sha12f) ('before=' + $sha12f + ' after=' + (Hash16 $led12f))
+
+# 12g: -StageTitles is spliced into the prompt verbatim; the default line appears without it
+$r12g = New-LauncherRepo 'repo-stage-titles'
+$k12g = Join-Path $r12g 'docs\relay\start-relay.ps1'
+Set-Content -LiteralPath (Join-Path $r12g 'docs\plan-t.md') -Value '# titles plan' -Encoding utf8
+$titles12g = 'alpha|beta|gamma'
+$h12g1 = Run $k12g @('-Target', 'titles batch', '-PlanDoc', 'docs\plan-t.md', '-StageTitles', $titles12g, '-DryRun')
+Check 'stage_titles_preview_framed' ($h12g1.Text -match 'DRYRUN prompt_preview_begin' -and $h12g1.Text -match 'DRYRUN prompt_preview_end' -and $h12g1.Text -match 'STAGE PLAN:') ''
+Check 'stage_titles_verbatim' ($h12g1.Text -match [regex]::Escape($titles12g)) ('tail=' + (($h12g1.Text -split "`n" | Select-Object -Last 2) -join ' | '))
+$h12g2 = Run $k12g @('-Target', 'titles batch', '-PlanDoc', 'docs\plan-t.md', '-DryRun')
+Check 'stage_titles_default_line' ($h12g2.Text -match '1\. stage 1 scope inventory' -and -not ($h12g2.Text -match 'alpha')) ('matched_default=' + ($h12g2.Text -match '1\. stage 1 scope inventory'))
+
+# --- case 13: AGENTS.md adjudication + shipped-file invariants (B7 #8/#9b) -----
+# 13a: -Force replaces the managed block, never the project prose around it
+$r13a = New-Repo 'repo-force'
+$ag13a = Join-Path $r13a 'AGENTS.md'
+Set-Content -LiteralPath (Join-Path $r13a 'docs\plan-f.md') -Value '# force plan' -Encoding utf8
+$null = Run $installer @('-RepoRoot', $r13a, '-Target', 'force batch', '-PlanDoc', 'docs\plan-f.md', '-MaxStages', '2')
+$t13a = [IO.File]::ReadAllText($ag13a).Replace($endMark, ('SENTINEL-inside-managed-block' + "`n" + $endMark))
+[IO.File]::WriteAllText($ag13a, $t13a, (New-Object Text.UTF8Encoding($false)))
+$a13a = Run $installer @('-RepoRoot', $r13a, '-Target', 'force batch', '-PlanDoc', 'docs\plan-f.md', '-MaxStages', '2', '-Force')
+$a13aAfter = [IO.File]::ReadAllText($ag13a)
+Check 'force_action_replaced' ($a13a.Text -match 'AGENTS action=replaced') ('line=' + (((($a13a.Text -split "`n") | Where-Object { $_ -match 'AGENTS action=' } | Select-Object -First 1))))
+Check 'force_single_marker_pair' ((CountOf $ag13a $beginMark) -eq 1 -and (CountOf $ag13a $endMark) -eq 1) ('begin=' + (CountOf $ag13a $beginMark) + ' end=' + (CountOf $ag13a $endMark))
+Check 'force_machine_markers_echoed' ($a13a.Text -match 'AGENTS_MARKERS begin=1 end=1') ('line=' + (((($a13a.Text -split "`n") | Where-Object { $_ -match 'AGENTS_MARKERS' } | Select-Object -First 1))))
+Check 'force_dropped_injected_line' (-not $a13aAfter.Contains('SENTINEL-inside-managed-block')) ''
+Check 'force_kept_project_prose' ($a13aAfter.Contains('Be nice.') -and $a13aAfter.Contains('# repo-force rules')) ('has_prose=' + $a13aAfter.Contains('Be nice.'))
+
+# 13b: a pre-existing relay section found by the TITLE criterion is adopted in place
+$r13b = New-Repo 'repo-adopt-title'
+$ag13b = Join-Path $r13b 'AGENTS.md'
+Set-Content -LiteralPath (Join-Path $r13b 'docs\plan-a.md') -Value '# adopt plan' -Encoding utf8
+$adopt13b = @('# Rules', '', '## Auto Relay (manual)', '', 'Only one writer may advance the chain at a time.', '', '## Other rules', '', 'Keep commit messages in English.') -join "`n"
+[IO.File]::WriteAllText($ag13b, $adopt13b + "`n", (New-Object Text.UTF8Encoding($false)))
+$a13b = Run $installer @('-RepoRoot', $r13b, '-Target', 'adopt batch', '-PlanDoc', 'docs\plan-a.md')
+$a13bAfter = [IO.File]::ReadAllText($ag13b)
+Check 'adopt_title_action_and_reason' ($a13b.Text -match 'AGENTS action=adopted reason=title') ('line=' + (((($a13b.Text -split "`n") | Where-Object { $_ -match 'AGENTS action=' } | Select-Object -First 1))))
+Check 'adopt_title_single_pair' ((CountOf $ag13b $beginMark) -eq 1 -and (CountOf $ag13b $endMark) -eq 1) ('begin=' + (CountOf $ag13b $beginMark) + ' end=' + (CountOf $ag13b $endMark))
+Check 'adopt_title_keeps_both_sections' ($a13bAfter.Contains('Only one writer may advance the chain at a time.') -and $a13bAfter.Contains('Keep commit messages in English.')) ''
+
+# 13c: markers present but no locatable block -> present_unparsed, file untouched
+$r13c = New-Repo 'repo-unparsed'
+$ag13c = Join-Path $r13c 'AGENTS.md'
+Set-Content -LiteralPath (Join-Path $r13c 'docs\plan-u.md') -Value '# unparsed plan' -Encoding utf8
+$bad13c = '# Rules' + "`n`n" + $endMark + "`n" + 'orphan managed text with the end marker first' + "`n" + $beginMark + "`n"
+[IO.File]::WriteAllText($ag13c, $bad13c, (New-Object Text.UTF8Encoding($false)))
+$sha13c = Hash16 $ag13c
+$a13c = Run $installer @('-RepoRoot', $r13c, '-Target', 'unparsed batch', '-PlanDoc', 'docs\plan-u.md')
+Check 'unparsed_action_no_guess' ($a13c.Text -match 'AGENTS action=present_unparsed reason=n/a') ('line=' + (((($a13c.Text -split "`n") | Where-Object { $_ -match 'AGENTS action=' } | Select-Object -First 1))))
+Check 'unparsed_left_file_bytes' ((Hash16 $ag13c) -eq $sha13c) ('before=' + $sha13c + ' after=' + (Hash16 $ag13c))
+Check 'unparsed_added_no_second_block' ((CountOf $ag13c $beginMark) -eq 1) ('begin=' + (CountOf $ag13c $beginMark))
+
+# 13d: a stray one-sided marker is warned about, stripped, then normal rules apply
+$r13d = New-Repo 'repo-stray-marker'
+$ag13d = Join-Path $r13d 'AGENTS.md'
+Set-Content -LiteralPath (Join-Path $r13d 'docs\plan-s.md') -Value '# stray plan' -Encoding utf8
+$stray13d = '# Rules' + "`n`n" + $beginMark + "`n`n## Relay chain`n`nHand-written chain rules." + "`n"
+[IO.File]::WriteAllText($ag13d, $stray13d, (New-Object Text.UTF8Encoding($false)))
+$a13d = Run $installer @('-RepoRoot', $r13d, '-Target', 'stray batch', '-PlanDoc', 'docs\plan-s.md')
+$a13dAfter = [IO.File]::ReadAllText($ag13d)
+Check 'stray_marker_warned' ($a13d.Text -match 'WARN agents_markers_corrupt stray_marker_removed') ('line=' + (((($a13d.Text -split "`n") | Where-Object { $_ -match 'agents_markers_corrupt' } | Select-Object -First 1))))
+Check 'stray_marker_then_dual_criteria' ($a13d.Text -match 'AGENTS action=(adopted|appended)') ('line=' + (((($a13d.Text -split "`n") | Where-Object { $_ -match 'AGENTS action=' } | Select-Object -First 1))))
+Check 'stray_marker_pair_after_fix' ((CountOf $ag13d $beginMark) -eq 1 -and (CountOf $ag13d $endMark) -eq 1) ('begin=' + (CountOf $ag13d $beginMark) + ' end=' + (CountOf $ag13d $endMark))
+Check 'stray_marker_kept_section_text' ($a13dAfter.Contains('Hand-written chain rules.')) ''
+
+# 13e: the protocol mirror under protocol\ must equal the shipped template byte for byte
+$mirrorTpl = Hash16 (Join-Path $tplDir 'AGENT-RELAY.md')
+$mirrorCopy = Hash16 (Join-Path $repoRoot 'protocol\AGENT-RELAY.md')
+Check 'protocol_mirror_matches_template' ($mirrorCopy -eq $mirrorTpl -and $mirrorCopy -ne 'MISSING') ('tpl=' + $mirrorTpl + ' mirror=' + $mirrorCopy)
+
+# 13f: protocol doc and the shipped scripts must not drift apart on failure literals
+function Cross([string]$DocPath, [string]$CodePath, [string[]]$Tokens, [string]$Tag) {
+  $docT = [IO.File]::ReadAllText($DocPath)
+  $codeT = [IO.File]::ReadAllText($CodePath)
+  $dm = @(); $cm = @()
+  foreach ($tk in $Tokens) {
+    if (@([regex]::Matches($docT, [regex]::Escape($tk))).Count -eq 0) { $dm += $tk }
+    if (@([regex]::Matches($codeT, [regex]::Escape($tk))).Count -eq 0) { $cm += $tk }
+  }
+  return ($Tag + ' doc_missing=[' + ($dm -join ',') + '] code_missing=[' + ($cm -join ',') + ']')
+}
+$docRelay = Join-Path $tplDir 'AGENT-RELAY.md'
+$lauLiterals = @('workspace_missing', 'not_a_git_repo', 'ledger_unparsable', 'stage_in_progress', 'one_writer_per_project', 'chain_already_running', 'chain_exhausted', 'ledger_blocked', 'ledger_absent', 'plan_doc_not_found', 'plan_doc_missing', 'plan_doc_ambiguous', 'probe_newest_of_', 'by=newest_mtime', 'pass_-PlanDoc_to_disambiguate', 'lock_unavailable', 'DRYRUN skip=lock_acquire')
+$insLiterals = @('agents_markers_corrupt', 'stray_marker_removed', 'AGENTS_MARKERS', 'content_signature count=', 'agents_relay_section_ambiguous', 'appended_managed_block', 'keep_a_single_relay_section', 'present_kept', 'present_unparsed', 'replaced', 'adopted', 'appended')
+$crossLau = Cross $docRelay (Join-Path $tplDir 'start-relay.ps1') $lauLiterals 'LAUNCHER'
+$crossIns = Cross $docRelay $installer $insLiterals 'INSTALLER'
+Check 'protocol_documents_launcher_literals' ($crossLau -match 'doc_missing=\[\] code_missing=\[\]') $crossLau
+Check 'protocol_documents_installer_literals' ($crossIns -match 'doc_missing=\[\] code_missing=\[\]') $crossIns
+
+# --- case 14: static portability audit of the shipped kit (candidate #5) ---------
+# Absolute paths and home-dir literals are judged on CODE only (comment/help blocks
+# are stripped): usage examples in the installer help legitimately show D:\work\myapp.
+# Foreign project names are judged on the FULL text, header comments included.
+function Get-KitCode([string]$t) {
+  $u = [regex]::Replace($t, '(?s)<#.*?#>', ' ')
+  $u = [regex]::Replace($u, '(?m)^\s*#.*$', ' ')
+  return $u
+}
+$kitFiles = @()
+$kitFiles += @(Get-ChildItem -LiteralPath $tplDir -File -Filter '*.ps1')
+$kitFiles += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tool\scripts') -File -Filter '*.ps1')
+$kitFiles += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'device') -File -Filter '*.ps1')
+$absBad = @(); $homeBad = @(); $projBad = @()
+foreach ($f in $kitFiles) {
+  $raw = [IO.File]::ReadAllText($f.FullName)
+  $code = Get-KitCode $raw
+  $rel = $f.FullName.Substring($repoRoot.Length + 1)
+  if ($code -match '[A-Za-z]:\\') { $absBad += $rel }
+  if ($code -match 'USERPROFILE|\$HOME|\.minimax') { $homeBad += $rel }
+  if ($raw -match 'PractiLog') { $projBad += $rel }
+}
+Check 'kit_scanned_file_count' ($kitFiles.Count -ge 7) ('scanned=' + $kitFiles.Count)
+Check 'kit_no_absolute_paths_in_code' ($absBad.Count -eq 0) ('files=' + ($absBad -join ' ') + ' scanned=' + $kitFiles.Count)
+Check 'kit_no_home_literals_in_code' ($homeBad.Count -eq 0) ('files=' + ($homeBad -join ' ') + ' scanned=' + $kitFiles.Count)
+Check 'kit_no_foreign_project_name' ($projBad.Count -eq 0) ('files=' + ($projBad -join ' ') + ' scanned=' + $kitFiles.Count)
+$adaptDoc = [IO.File]::ReadAllText((Join-Path $tplDir 'RELAY-ADAPTATION.md'))
+Check 'kit_device_specific_ids_flagged' ($adaptDoc.Contains('provider-') -and $adaptDoc.Contains('device-specific, refill')) ('has_provider_id=' + $adaptDoc.Contains('provider-') + ' has_refill_note=' + $adaptDoc.Contains('device-specific, refill'))
+
+# --- case 15: global skill root resolution in publish-relay.ps1 (finding F4) -----
+# F4 was found by the portability audit and fixed on 2026-11-25 under a human ruling.
+# The default root used to be probed only under the user profile directory, but the active
+# desktop profile can live on another volume, so the gate reported skill_root_not_found /
+# exit 3 on a machine where the skill really was installed and pushed every caller to pass
+# -SkillRoot by hand. The probe now walks the data-dir variables, $HOME / %USERPROFILE%
+# (each with the profile sub-variants) and the same relative profile path on every
+# filesystem drive, with no path hardcoded. These cases pin that: explicit parameter and
+# environment pin must win, the probe branch must stay generic, and a genuinely absent
+# root must still fail loudly instead of silently verifying against nothing.
+$pubRelay = Join-Path $repoRoot 'scripts\publish-relay.ps1'
+$pubRaw = [IO.File]::ReadAllText($pubRelay)
+$pubCode = Get-KitCode $pubRaw
+$pubNeed = @('Get-RelaySkillCandidate', 'Get-PSDrive', 'skill_root_candidates', 'skill_root_ambiguous', 'RELAY_PORT_SKILL_ROOT', 'MAVIS_DATA_DIR', 'v2\sessions', '.minimax\.minimax', 'skill_root_not_found')
+$pubMissing = @()
+foreach ($n in $pubNeed) { if (-not $pubCode.Contains($n)) { $pubMissing += $n } }
+Check 'publish_probe_tokens_present' ($pubMissing.Count -eq 0) ('missing=' + ($pubMissing -join ',') + ' wanted=' + $pubNeed.Count)
+$pubDriveHits = [regex]::Matches($pubCode, '[A-Za-z]:\\').Count
+Check 'publish_probe_has_no_hardcoded_drive' ($pubDriveHits -eq 0) ('drive_literals_in_code=' + $pubDriveHits)
+$pubDocNeed = @('drive scan for the same relative profile path', 'skill_root_ambiguous')
+$pubDocMissing = @()
+foreach ($n in $pubDocNeed) { if (-not $pubRaw.Contains($n)) { $pubDocMissing += $n } }
+Check 'publish_skill_root_doc_describes_probe' ($pubDocMissing.Count -eq 0) ('missing=' + ($pubDocMissing -join ';'))
+$sentEnv = Join-Path $script:root 'skill-root-env-pinned'
+$sentArg = Join-Path $script:root 'skill-root-arg-pinned'
+$env:RELAY_PORT_SKILL_ROOT = $sentEnv
+$runEnv = Run $pubRelay @('-Direction', 'verify')
+Check 'publish_skill_root_env_pin' ($runEnv.Text.Contains('skill_root=' + $sentEnv + ' via=env') -and $runEnv.Code -ne 3) ('code=' + $runEnv.Code + ' pinned=' + $sentEnv)
+$runArg = Run $pubRelay @('-Direction', 'verify', '-SkillRoot', $sentArg)
+Check 'publish_skill_root_parameter_wins' ($runArg.Text.Contains('skill_root=' + $sentArg + ' via=parameter') -and $runArg.Code -ne 3) ('code=' + $runArg.Code + ' pinned=' + $sentArg + ' env_was=' + $sentEnv)
+$env:RELAY_PORT_SKILL_ROOT = ''
+$runProbe = Run $pubRelay @('-Direction', 'verify')
+$probeLine = ''
+foreach ($ln in ($runProbe.Text -split "`n")) { if ($ln -match 'skill_root=') { $probeLine = $ln; break } }
+$probeOk = ($probeLine -match 'via=probe(-multi)?$')
+$probeRoot = ''
+if ($probeOk -and ($probeLine -match 'skill_root=(.*?) via=')) { $probeRoot = $Matches[1] }
+$probeExists = ($probeRoot -ne '') -and (Test-Path -LiteralPath $probeRoot -PathType Container)
+$loudFail = ($runProbe.Code -eq 3) -and $runProbe.Text.Contains('skill_root_not_found') -and $runProbe.Text.Contains('every_drive')
+Check 'publish_skill_root_probe_branch' (($probeOk -and $probeExists) -or $loudFail) ('line=' + $probeLine + ' code=' + $runProbe.Code + ' root_exists=' + $probeExists + ' loud_fail=' + $loudFail)
 
 # --- verdict -------------------------------------------------------------------
 Say ('SUITE_END pass=' + $script:pass + ' fail=' + $script:fail + ' root=' + $script:root)

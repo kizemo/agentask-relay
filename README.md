@@ -120,7 +120,7 @@ ledger gate (refuses to start when a stage is `in_progress`, when `running` alre
 
 | Path | Contents | Origin |
 |---|---|---|
-| `tool/` | **the tool body** (relay-port skill source): installer + 6 templates + manual + selftest evidence | `skills\relay-port\` |
+| `tool/` | **the tool body** (relay-port skill source): installer + 8 templates + manual + selftest evidence | `skills\relay-port\` |
 | `device/` | device bodies `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` + a design-sample ledger `relay.json` | PractiLog field version + `maintenance\relay\` |
 | `protocol/` | shared protocol layer: general protocol / SOP / relay prompt / pointer / evidence-driven notes (5 files) | `maintenance\relay\` |
 | `protocol/probe-ws/` | **real-chain probe on a generic repository** - complete artifacts of a 3-link run that was not executed in the PractiLog repo (5 files) | `maintenance\relay\probe-ws\` |
@@ -170,9 +170,12 @@ pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish   # this dir 
   (`SHA_MATCH=42 / SHA_MISMATCH=0`). Across the whole repository:
   `BOM=0`, non-ASCII `.ps1=0`, `CR=0` in `.md` and `.txt`. Reconciliation lives in
   `MANIFEST.txt`.
-- The tool is implemented and verified end to end. The first batch of 14 cases passed
-  (`tool\references\selftest-2026-11-25.md`); batches B2/B3 add assertion suites recorded as
-  `selftest-2026-11-25-b2.md` and `-b3.md` with raw logs alongside them.
+- The tool is implemented and verified end to end. `scripts\selftest.ps1` now runs cases 1-15 with
+  **106 assertions / 0 failures / `EXIT=0`**; the raw log and its note for this round are
+  `tool\references\selftest-2026-11-25l.txt` and `selftest-2026-11-25l.md`. Earlier rounds stay
+  recorded as `tool\references\selftest-2026-11-25.md` (first batch, 14 cases), the B2/B3
+  assertion suites `-b2.md` / `-b3.md`, and `selftest-2026-11-25k.txt` / `.md` (the B7 round,
+  100 assertions), each with its raw log alongside.
 - Fixed defects: **D1** an uninitialized output variable in the idempotent branch truncated
   the target project's `AGENTS.md` to 0 bytes; **D2** dry-run evidence was 0 B; **D3** CJK
   literals inside installer `.ps1` files would garble under Windows PowerShell 5.1 without a

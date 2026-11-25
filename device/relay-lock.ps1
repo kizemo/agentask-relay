@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Relay chain cross-session mutex lock (PractiLog auto-advance kit).
+  Relay chain cross-session mutex lock (relay-port kit).
 
 .DESCRIPTION
   Guarantees that at most ONE relay session may act as writer for a project.
