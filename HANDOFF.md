@@ -375,6 +375,8 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
   `completed / success` ⇒ `root_canonicalised` 修法在真 runner 上验证通过，闸门转绿。
   对照：修复前同一 workflow 的 run `45585467312`（`4d939d5`）= `failure`。
   徽章链接指向 workflow，main 分支现为绿。
+- 复验（收工后回读）：最终文档提交 `53d653c` 的 run `45588054281` = `completed / success`
+  ⇒ 本批两个提交都过闸，不存在「只有修复那次绿」。https://github.com/kizemo/agentask-relay/actions/runs/45588054281
 - **真实起链一跳未做**：本批只跑了套件（套件不调 `session_create`）。
   装置侧的「一次真激活 + 下一环自取锁」需在目标项目里人工发指令验证，历史留证见
   `tool/references/selftest-2026-11-25*.txt` 里登记的实测轮次。
