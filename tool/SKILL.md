@@ -1,0 +1,161 @@
+---
+name: relay-port
+description: Install the unattended relay (auto-advance) kit into any git project so that a single prompt can start a continuous, self-advancing session chain with one-writer-per-project locking. Use when the user asks to 给别的项目装自动接力/自动推进装置, 把接力链搬到别的项目, port the relay kit to another repo, or make unattended auto-advance available in another project.
+---
+
+# relay-port —— 把「无人值守接力链」装置装进任意项目
+
+一次性安装，之后**只要一句 Prompt** 就能在目标项目内启动连续接力任务。
+
+## 它装了什么
+
+| 目标路径 | 作用 |
+|---|---|
+| `<repo>\docs\relay\start-relay.ps1` | 启动器：工作区校验 + 并发闸门 + 取锁 + 台账初始化（只新建不覆写）+ 生成接力 prompt |
+| `<repo>\docs\relay\relay-ledger.ps1` | 台账写闸门：写锁 + CAS(`-ExpectSha256`) + 只追加不变式 + 写后回读；动作只有 `-Action status` / `-Action commit`，`-DryRun` 可先验 |
+| `<repo>\docs\relay\relay-lock.ps1` | 互斥锁：`FileMode.CreateNew` 原子创建，保证一个项目同时只有一个写会话 |
+| `<repo>\docs\AGENT-RELAY.md` | 通用协议（自包含、仓库相对路径，可直接搬） |
+| `<repo>\docs\RELAY-SOP.md` | 操作规程 |
+| `<repo>\docs\RELAY-ADAPTATION.md` | **本项目裁决骨架**（写集 / 门禁 / 模型策略，装完须补全 TODO） |
+| `<repo>\AGENTS.md` | 受管家规块 `<!-- BEGIN RELAY-PORT -->`（幂等注入，不重复、不覆盖项目自己写的规则） |
+| `<repo>\docs\plan-relay.md` | 计划文档（未指定 `-PlanDoc` 且未探测到既有计划时自动生成） |
+| `<repo>\docs\relay\ACTIVATION-PROMPT.txt` | **激活包**：起链的四步命令 + 一句话激活语 |
+| `<repo>\docs\relay\install-report.md` | 安装报告（文件清单、sha16、自检结果） |
+
+**它绝不写 `docs\relay.json`** —— 台账由启动器在激活那一刻创建，安装器只读不碰。
+
+## 怎么调用
+
+在**任意会话**里执行一次安装：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-relay.ps1" `
+  -RepoRoot "<目标仓库绝对路径>" `
+  -Target "<本轮目标批次>" `
+  [-PlanDoc "<仓库相对路径的计划文档>"] `
+  [-StageTitles "1. xxx;2. yyy"] `
+  [-MaxStages 6] [-WorkspaceDir "<仓库根>"] [-TtlSeconds 1800] [-Force]
+```
+
+- 退出码 `0` = 装好；`2` = 参数/工作区非法；`5` = 自检不过。装完会顺带跑一次启动器干跑，干跑结果只记录不拉低退出码（`3` 链已在跑 / 台账 blocked 或耗尽、`4` 锁被占 —— 都不影响安装本身）。
+- `-PlanDoc` 省略时会自动探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`；探测到多份会告警（`WARN plan_doc_ambiguous`）并退回新建 `docs\plan-relay.md`。**安装器是唯一允许创建计划文档的地方**，启动器只解析、绝不创建（见「装置契约」）。
+- **幂等**：重复执行不产生重复家规块、不覆盖项目自己改过的文件（`SKIP ... kept`）。要强制覆盖用 `-Force`。
+- 已有未受管的接力家规时**收编**（adopt）该段并加标记，不追加第二份。收编判据是双层的：
+  1. 标记块已存在 → `present_kept`；
+  2. 标题命中「接力 / relay / 自动推进」→ `reason=title` 包裹收编；
+  3. 标题不含关键词时按 **内容指纹**打分（`relay.json` / `relay-lock` / `start-relay` / `session_create` / `in_progress` / `max_stages` / `next_session` / `awaiting_user` / 接力 / relay），**单节命中 ≥4 条**即包裹收编（`reason=content_signature`）；
+  4. **≥2 节都合格则不猜** → `WARN agents_relay_section_ambiguous matches=N` + 追加托管块，提示人工把接力规则合并成单一章节。
+
+  原始内容一律保留，包裹不删字。
+
+## 装完之后必须做的两件事
+
+1. **补全 `docs\RELAY-ADAPTATION.md` 的 TODO**：写集（哪些目录可改、哪些禁止碰）、验收门禁命令与判绿口径、模型策略、并发检测口径。**这一步不补，接力链会在第一环就撞上「写集不明」而停链。**
+2. **在目标项目内激活**（起环权必须在目标项目内）：
+
+```
+按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链
+```
+
+激活包 `docs\relay\ACTIVATION-PROMPT.txt` 里写死了四步：跑启动器 → `session_create` 开第一环 → `relay-lock.ps1 -Action adopt` 转交锁 → `session get` 回读校验。目标项目会话照做即可。
+
+## 装置契约（实测可用）
+
+```powershell
+# 启动器（-PlanDoc 可省）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -MaxStages 6
+# 退出码 0 可起链 / 2 工作区非法、不是 git 仓库、计划文档解析不出来（plan_doc_missing / plan_doc_not_found）/
+#         3 已有链在跑或台账 blocked、耗尽 / 4 锁拿不到
+# 干跑（只校验不起链）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -DryRun
+
+# 互斥锁
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action status
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action acquire -SessionId '<sid>' -Stage 1 -Title 'relay-1' -TtlSeconds 1800
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action renew  -SessionId '<sid>'
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action adopt  -SessionId '<new sid>'
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action release -SessionId '<sid>'
+```
+
+**启动器的计划文档解析链**（在取锁**之前**跑完，所以失败不会留下活锁）：
+`-PlanDoc` → 台账 `plan_doc` → 探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`。
+唯一命中直接用（打印 `OK plan_doc=<相对路径> source=probe bytes=<n>`）；多命中告警 `plan_doc_ambiguous` 后按 mtime 取最新并列出候选；
+零命中 `FAIL reason=plan_doc_missing` + `exit 2`，提示补 `-PlanDoc` / 台账 `plan_doc` / 新增 `docs\plan-<批次>.md` 三条出路。
+解析出的相对路径会写进台账 `plan_doc`，之后每一环读的是同一个文件；**启动器绝不创建计划文档**（那是安装器的职责）。
+
+起环参数（`session_create`）：只传 `agent_name` / `title` / `workspace_dir`（**反斜杠绝对路径**）/ `model` / `content`。
+**禁止**传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。建环后立刻 `session get` 回读 `workspace_dir` / `effective_model` / `status` 三要素。
+
+## 四道并发闸门
+
+1. `FileMode.CreateNew` 原子锁 —— 抢不到就退出，不存在「两个会话同时写」。
+2. 台账闸门 —— 有 `in_progress` 阶段 / `status=running` 且有 `next_session_id` / 台账 blocked 或耗尽 ⇒ 拒绝起链。
+3. 写集指纹 —— 每环先读 `docs\relay.json` 的阶段写集与 `RELAY-ADAPTATION.md` 的并发检测口径。
+4. 台账回写 CAS —— 由 `relay-ledger.ps1` 机制化：回写前必须先 `-Action status` 取在盘 `sha256`，提交时用 `-ExpectSha256` 传入（锁外、锁内各比一次）。sha 陈旧 = 视图过期，直接被 `cas_conflict` 判死，只能重取 sha、重建 patch、重试一次。
+
+## 自检（安装器自动跑）
+
+- 两个 `.ps1` 的**非 ASCII 字节数 = 0**、**无 BOM**。
+- `AGENTS.md` 里 `BEGIN/END RELAY-PORT` 标记各 **1** 个。
+- `relay-lock.ps1 -Action status` 可执行。
+- `start-relay.ps1 -DryRun` 退出码 0（已有链在跑时是 3，只告警不判失败）。
+
+结论落盘在 `<repo>\docs\relay\install-report.md`，控制台最后一行 `INSTALL_VERDICT=PASS`。
+
+## 本仓库的开发件（不随 skill 发布）
+
+真源仓库 `scripts\` 下有两个一键件，**只在仓库里跑**，不属于装进目标项目的东西，也不复制到全局 skill：
+
+```powershell
+# 一键自测（家规 1 的落地）：临时 git 仓库跑安装器/启动器/锁/台账/编码/逐字一致
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\selftest.ps1 -EvidencePath "$env:TEMP\relay-selftest.log"
+# 期望 exit 0 且日志 fail=0；改 tool\ 或 device\ 任何文件后必跑
+```
+
+它覆盖 ① fresh 仓（无家规无计划件）② 家规无 relay 字样（内容签名收编）③ 双 relay 节（歧义护栏）
+④ `-PlanDoc` 解析链 5 个子用例 ⑤ 锁与并发 ⑥ `device\`↔`tool\templates\` 逐字一致 + 编码。
+**不覆盖**真 `session_create` 起环 —— 日志里的 `MANUAL_STEP real_session_activation` 提醒那一环仍需人在目标项目内激活。
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\publish-relay.ps1 -Direction publish   # 同步 + 复核 + 提示刷 manifest
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\publish-relay.ps1 -Direction verify    # 只比对（exit 7 = 有漂移）
+```
+
+发布以**内容**为单位、不看目录形状：真源 `tool\SKILL.md` → 全局 `SKILL.md`，`tool\scripts\` / `tool\templates\` 整体镜像，
+`tool\references\*.md|txt` 扁平到全局 `references\`；仓库 `scripts\` / `examples\` / `protocol\` 与根 `MANIFEST.txt` 不参与发布。
+它会拒绝空源与缺装置件，并把 `device\` ↔ `tool\templates\` 逐字一致当作**发布前置条件**（不合格先 `Copy-Item tool\templates\<f> device\<f> -Force`）。
+顺序固定：`selftest.ps1` → `publish-relay.ps1 -Direction publish` → `refresh-manifest.ps1`（清单必须最后，它包含自己）。
+
+## 台账写闸门 `relay-ledger.ps1`
+
+`docs\relay.json` 的回写不靠散文约束：闸门脚本是**唯一**允许的程序化写入口。
+
+```powershell
+# 1) 读在盘版本与它的 sha256（输出 LEDGER_STATE ... sha256=<64hex>）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action status
+
+# 2) 把本轮意图写成 ASCII JSON patch（放 docs\relay\ 下），只用追加式键：
+#    stage_done / stage_fields / append_stage / sessions_append / notes_append /
+#    ledger_docs_append / blocked_on_append / set_status / bump_current_stage / next_session_id
+
+# 3) 先干跑（不落盘、不留锁）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action commit -ExpectSha256 '<64hex>' -Patch '<repo>\docs\relay\p.json' -DryRun
+
+# 4) 提交 => LEDGER_COMMITED before=<旧 sha> after=<新 sha>
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action commit -ExpectSha256 '<64hex>' -Patch '<repo>\docs\relay\p.json'
+```
+
+机制四层：① 写锁 `docs\relay\.ledger.lock`（`FileMode.CreateNew`，超 `-LockStaleSeconds` 可接管）；② CAS —— `-ExpectSha256` **必传**，锁外锁内各比一次，陈旧视图必被判死；③ 只追加不变式 —— `stages` / `sessions` / `notes` / `ledger_docs` / `blocked_on` / `human_checkpoints` / `stop_conditions` 只许追加，改写别人的条目直接拒；④ 写后回读 —— 写临时文件 + `Move-Item -Force` + 逐字比对后才报 `LEDGER_COMMITED`。
+
+退出码：`0` 提交或干跑通过 / `2` 参数与 patch 键非法（含 `commit` 未带 `-ExpectSha256`、`stage_fields` 未配 `stage_done`）/ `3` 拒绝（CAS 冲突、规则违反、台账缺文件）/ `4` 锁超时 / `5` patch 不可解析。
+
+- **动作只有 `status` 与 `commit`**，没有 `-Action blocked` 这类便捷动作；blocked 状态由 patch 里 `set_status` + `blocked_on_append` 表达。
+- `set_status: "running"` 是**人类专用**（起链时由人写入），会话侧提交一律被拒。
+- 正常收尾与停链分支（blocked / done）一律走闸门，不许手工编辑 `docs\relay.json`。
+- 脚本按 `$PSScriptRoot\..\..` 推仓库根，所以它**必须**放在 `<repo>\docs\relay\` 下才能跑。
+
+## 边界
+
+- 安装器**不碰** `docs\relay.json`、不碰 `apps/**`、`packages/**` 等产品代码，不改门禁脚本。
+- `.ps1` 一律纯 ASCII、无 BOM；仓库 Markdown 一律 LF。
+- 装置的 `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` 与 `tool\templates\`、`device\` 两侧**逐字一致**（sha16 见 `templates/`），`publish-relay.ps1` 按硬不变式判定，漂移 exit 2。项目差异一律落在参数与 `RELAY-ADAPTATION.md`，不改脚本本体。

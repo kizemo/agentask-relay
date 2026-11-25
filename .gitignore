@@ -1,0 +1,14 @@
+# Scratch area for one-off recon / intermediate artifacts. Never committed:
+# these artifacts carry local machine paths and are not evidence.
+.superpowers-tmp/
+
+# Local editor / shell droppings
+*.tmp
+*.bak
+*~
+.DS_Store
+Thumbs.db
+
+# NOTE: do NOT add docs or tool/references entries here.
+# scripts\refresh-manifest.ps1 counts real files, and MANIFEST.txt is the
+# per-file sha16 reconciliation evidence for this repository.

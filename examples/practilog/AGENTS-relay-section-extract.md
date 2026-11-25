@@ -1,0 +1,21 @@
+## 自动接力（Relay）—— 硬规则
+
+本项目启用会话自动接力。状态机文件：`docs\relay.json`。协议：`docs\AGENT-RELAY.md`（通用）+ `docs\RELAY-ADAPTATION.md`（本项目裁决，**优先级高于通用协议，低于本文件其余家规**）。装置：`docs\relay\start-relay.ps1`（启动器）+ `docs\relay\relay-lock.ps1`（互斥锁）。
+
+### A. 启动：只在本项目内、由用户指令激活
+
+1. **激活触发**：仅当用户在**本项目会话**内明确下达「启动接力链 / 继续接力 / 自动推进」指令时才可起链。**禁止**由项目外的监督会话代起本仓库的链，也**禁止**为别的项目起链时把本仓库顺带拉进来（跨项目起链会落进私有 workspace，读不到仓库）。
+2. **起链必须走启动器**，不得手写 `session_create`：`pwsh -NoProfile -ExecutionPolicy Bypass -File docs\relay\start-relay.ps1 -Target "<目标批次>" -MaxStages <N>`。启动器负责工作区校验、并发闸门、锁获取、台账初始化（只新建不覆写）、生成 `docs\relay\next-relay-prompt.txt`。
+3. **启动器退出码**：`0` 可起链（`content` = `docs\relay\next-relay-prompt.txt` 全文）；`2` 工作区非法；`3` 已有链在跑 / 存在 `in_progress` 阶段 / 台账耗尽或 blocked（**不得起环**，如实汇报）；`4` 锁拿不到（**不得起环**，另一会话正在跑）。
+4. **起环后转交锁**：拿到 `session_id` 立刻 `docs\relay\relay-lock.ps1 -Action adopt -SessionId <id>`；起环失败则 `-Action release`，不留死锁。
+5. **起环参数**：`session_create` 只传 `agent_name` / `title` / `workspace_dir`（本仓库根，**反斜杠绝对路径**）/ `model` / `content`。**禁止**传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段，见 `RELAY-ADAPTATION.md` §9.5）。建环即开跑（`turn.mode=activated`），起环后立刻 `session get` 回读 `workspace_dir` / `effective_model` / `status` 三要素再登记。
+
+### B. 每环自律
+
+6. 开工第一步读 `docs\relay.json`。`status != "running"` ⇒ 不接力，正常收尾。
+7. 本环身份 = `current_stage`；只允许写 `stages[current_stage].scope` 声明的写集，且必须先过 `RELAY-ADAPTATION.md` §5 并发检测。
+8. 锁的持有者每几轮跑一次 `docs\relay\relay-lock.ps1 -Action renew` 续心跳（TTL 默认 1800 秒）；超时未续视为环已死，后继会话 `acquire` 会回收并留 `.stale.*` 存证。
+9. `status == "running"` 且本环 acceptance 已达成 ⇒ **回复用户之前**必须：先只追加方式回写 `relay.json`（本环 `status/session_id/model/tool_calls/finished_at` + `current_stage += 1` + `stages` 追加下一环），**回写前必须重读盘**（链上各环并发写同一文件，已实测读到过比前一环更旧的版本），回读核对条数与署名；再按 §9 模型策略用 `session_create` 起下一环（`workspace_dir` 反斜杠绝对路径，显式传 model，**不传 effort**），把返回的 `session_id` 回写 `next_session_id`；再 `relay-lock.ps1 -Action adopt -SessionId <新 id>` 转交锁。
+10. 命中 `human_checkpoints` / `stop_conditions` / 写集冲突 ⇒ 写 `status="blocked"` + `note`，**不起新会话**，停下等人，并 `relay-lock.ps1 -Action release` 释放锁。
+11. `current_stage > max_stages` ⇒ 写 `status="blocked"` 停链。不得自行加长 `max_stages`。
+12. `docs\relay.json` 的 `status` 改成 `running` 只有人能做。**agent 不得自行起链** —— 唯一例外是满足 §A 全部条件（用户在本项目内明确指令 + 启动器放行 + 拿到锁）。

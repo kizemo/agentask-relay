@@ -1,0 +1,55 @@
+RELAY ACTIVATION PACKET（接力激活包）
+=====================================
+
+repo        : {{REPO}}
+target      : {{TARGET}}
+plan doc    : {{PLAN_DOC}}
+max stages  : {{MAX_STAGES}}
+workspace   : {{REPO}}
+ledger      : {{REPO}}\docs\relay.json
+launcher    : {{REPO}}\docs\relay\start-relay.ps1
+lock script : {{REPO}}\docs\relay\relay-lock.ps1
+prompt file : {{REPO}}\docs\relay\next-relay-prompt.txt
+
+用户在**工作区就是本仓库**的会话里只需说一句：
+
+    按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链
+
+会话按下面 4 步执行即可。
+
+--- STEP 1：跑启动器（工作区校验 + 并发闸门 + 取锁 + 生成 prompt）---
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\start-relay.ps1" -Target "{{TARGET}}" -PlanDoc "{{PLAN_DOC}}" -MaxStages {{MAX_STAGES}}
+
+退出码判读：
+  0 = 可起链，继续 STEP 2
+  2 = 工作区非法，停下汇报，**不得起环**
+  3 = 已有链在跑 / 有 in_progress 阶段 / 台账 blocked 或耗尽，停下汇报，**不得起环**
+  4 = 锁被别的会话持有（另一会话正在跑），停下汇报，**不得起环**
+
+--- STEP 2：开第一环会话 ---
+
+读取 {{REPO}}\docs\relay\next-relay-prompt.txt 全文，然后：
+
+mcp_invoke(tool_name="session_create", arguments={
+  agent_name   : "me",
+  title        : "relay-1-<阶段短名>",
+  workspace_dir: "{{REPO}}",
+  model        : "<按 docs\RELAY-ADAPTATION.md 第 5 节的模型策略>",
+  content      : "<next-relay-prompt.txt 全文>"
+})
+
+禁止传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。
+`workspace_dir` 必须用上面这个**反斜杠绝对路径**；用正斜杠会静默落进私有 workspace，等于这一环没接上。
+
+--- STEP 3：把锁转交给新会话 ---
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-lock.ps1" -Action adopt -SessionId <新 session id>
+
+--- STEP 4：回读校验再汇报 ---
+
+mavis session get {"session_id":"<新 id>"} —— 核对 `workspace_dir` / `effective_model` / `status` 三要素。
+
+若 STEP 1 或 STEP 2 失败：执行
+pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-lock.ps1" -Action release
+然后如实汇报，**不要重试起环**。

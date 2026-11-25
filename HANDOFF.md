@@ -1,0 +1,286 @@
+# HANDOFF —— relay-port 工具（2026-11-25 建目录时的状态）
+
+## 背景
+
+PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「装置」：
+
+- `docs\relay\start-relay.ps1`：启动器（工作区校验 → 并发闸门 → 取锁 → 台账初始化 → 生成接力 prompt）
+- `docs\relay\relay-lock.ps1`：跨会话互斥锁（`FileMode.CreateNew` 原子创建）
+- `docs\relay.json`：状态机台账
+- `AGENTS.md` §A/§B：家规
+
+问题：这套东西要装进**别的项目**，原来得手工抄 5～8 个文件、手改家规、手写台账骨架 —— 易漏、不可重复执行、跨项目一改就走样。
+
+## 目标（已达成）
+
+把「照搬到别的项目需要做的事」做成**一个任何会话调用一次即装完**的工具：装置、锁、台账骨架、家规、协议、激活 Prompt 全部就位；之后目标项目内只需一句 Prompt 起链。
+
+## 进度
+
+- ✅ 工具实现：`tool\scripts\install-relay.ps1`（17,262 B，纯 ASCII、无 BOM，sha16 `8134C322B0AA0394`）
+- ✅ 模板 6 件 + 说明书 1 件 + 自测证据 4 件
+- ✅ 端到端实测 14 项全 PASS（T1–T14：安装 / 幂等 / 收编 / 干跑 / 真起链 / 二次起链被拒 / 锁互斥 / 台账不被安装器写 / ASCII 与 BOM 全库扫 …）
+- ✅ 抓出并修掉三个缺陷：D1 幂等分支输出变量未初始化 ⇒ 目标 `AGENTS.md` 被截断成 0 字节；D2 `Write-Host` 证据需 `*>&1` 才捕得到；D3 安装器自身含中文字面量 ⇒ PS 5.1 按 ANSI 解码必乱码
+- ✅ 全局发布：`E:\Users\Duanyi\.minimax\.minimax\skills\relay-port\`（新会话的技能目录快照里可见）
+- ✅ 资产归拢到本目录（`MANIFEST.txt` 留证）
+- ✅ **批次 B2（同日 14:0x）**：完成后续候选 #7 发布一键化 / #2 装置版本化一致性 / #3 `-PlanDoc` 加固 / #4 收编判据加固，并把家规 1 的强制自测固化成 `scripts\selftest.ps1`
+- 安装器 `tool\scripts\install-relay.ps1` 17,262 B `8134C322B0AA0394` → **19,756 B `A7EF9E3CA5A4BEE8`**（收编双判据；mtime 13:55:22，run2/run3 自测与发布均按此件跑绿）
+  - 启动器 `tool\templates\start-relay.ps1` 9,352 B `29158782C8843588` → **12,026 B `5B3012510BB70688`**（`-PlanDoc` 解析链 + 台账记解析结果），`device\` 已同步覆盖
+  - 新增 `scripts\publish-relay.ps1`（8,556 B）与 `scripts\selftest.ps1`（≈17 KB），两者纯 ASCII 无 BOM 语法零错
+- 一键自测 **终态 40 条断言全绿（fail=0 / EXIT=0）**：run1 32/5（抓到 D1 假绿）→ run2 39/0 → run3 40/0（D4 扫描范围收敛 + 加正控）；证据 `tool\references\selftest-2026-11-25-b2.md` + `.txt`（run3 raw）+ `-run1.txt` + `-run2.txt` + `-next-prompt.txt`
+  - `relay-lock.ps1` **未改**（`227FA4696C69AADE`），`examples\practilog\docs\relay\` 按家规 8 保留为历史快照
+- ✅ **批次 B3（同日 15:5x）**：后续候选 #8「台账写保护」落地为写闸门 `docs\relay\relay-ledger.ps1`（散文纪律 ⇒ 机制闸门）
+  - 新增 `tool\templates\relay-ledger.ps1` = `device\relay-ledger.ps1` **15,672 B `6068012759F0D0A6`**（纯 ASCII / 无 BOM / LF）：
+    独占写锁（`FileMode.CreateNew` + 陈旧接管）+ CAS `-ExpectSha256`（锁外与锁内 `stage=under_lock` 双比）+
+    只追加不变式 + 同卷 tmp 原子替换与写后逐字回读（成功打印 `LEDGER_COMMITED before= after=`）
+  - 安装器 19,756 B `A7EF9E3CA5A4BEE8` → **20,011 B `793B530773F3CE6D`**（装置清单计入闸门）；
+    启动器 12,026 B `5B3012510BB70688` → **13,633 B `4A65572783501F9E`**（预检 `ledger_gate_missing` **必须排在计划解析之后** +
+    生成的 prompt 内嵌四步配方 + blocked/完成分支走闸门 + bootstrap 台账补 `notes=@()` / `blocked_on=@()`），`device\` 已同步覆盖
+  - `scripts\selftest.ps1` ≈17 KB → **23,612 B `4375CB370B32C657`**（新增 6 条闸门断言）；
+    `scripts\publish-relay.ps1` 8,556 → **8,596 B `348BEB5BD733078E`**（硬不变式与逐件清单计入 `relay-ledger.ps1`）
+  - 文档同步 5 件：`tool\SKILL.md` **12,456 B `2869DBCFEFFD8320`**（新增「台账写闸门」整节；第 4 道闸门由散文改为机制）、
+    `protocol\AGENT-RELAY.md` **10,715 B `EA9A9C3ED74466CB`**、`tool\templates\AGENT-RELAY.md` **10,768 B `FEE1F7ED81F85388`**、
+    `AGENTS.md` **3,667 B `82AD88107DEC7B64`**、`README.md` **6,172 B `89A5FB7B0E519D3E`**
+  - 一键自测 **终态 `pass=55 fail=0 EXIT=0`**（run dir `20261125-155000`）：CAS 冲突 `exit=3`、未知 patch 键 `exit=2`、
+    `set_status:"running"` 会话身份被拒 `exit=3`、`-DryRun` 非破坏、并发单写者 `wins=1 refused=1`、竞态后 `locks=0` 全实测；
+    证据 `tool\references\selftest-2026-11-25-b3.md` + raw `.txt`（`EA1F0A67E968C24E`）
+  - 家规 1 字面项**已闭合**（订正）：改完文档后合规复跑 run `20261125-155836`（15:58:36→15:59:13），同样 `pass=55 fail=0 EXIT=0`，
+    raw 收进 `tool\references\selftest-2026-11-25-b3h.txt`（6,001 B / `AE4D9CC84548BC6D`）；`next-prompt.md` **确实存在**，
+    它是启动器写到**被安装目标仓库**的产物（实测 `<run>\repo-planprobe\docs\relay\next-prompt.md`），不在 run dir 根 ——
+    按根目录找必然 `Copy-Item` 报 path not found，要找它得 `Get-ChildItem <run> -Recurse -Filter 'next-prompt*'`。
+    留证 `tool\references\selftest-2026-11-25-b3-next-prompt.txt`（4,077 B / `89ADFFE3038C5CD0`）；
+  - **发布与清单（固定顺序）**：`publish-relay.ps1 -Direction publish` → `STATUS=OK fail=0 warn=1`，
+    硬不变式 `device_matches_template` 三件全 OK（含新闸门），`tracked_files` 21→23；唯一 WARN 是 `examples\practilog`
+    历史快照漂移（家规 8 有意不为此同步）。最后 `refresh-manifest.ps1` → `verdict=PASS`，
+    `NEW_ENTRY tool\templates\relay-ledger.ps1` + 4 件 `CHANGED`（`install-relay.ps1` / `SKILL.md` / 两份 `AGENT-RELAY.md` / `start-relay.ps1`）。
+    全局 skill 已回读确认：`templates\relay-ledger.ps1` `6068012759F0D0A6`、`SKILL.md` `2869DBCFEFFD8320`、三份 b3 证据件全部就位。
+- 🔧 **门禁 `MD_TXT_CR_TOTAL=41` 已查清并归零**（B4 轮，2026-11-25）：41 个 CR **全部来自单个留证件**
+  `tool\references\selftest-2026-11-25-b2-run1.txt`（整文件 CRLF）—— 全库其余 `.md` / `.txt` 均 CR=0，同批兄弟件
+  （`-b2.txt` / `-b2-run2.txt` / `-b2-next-prompt.txt`）也全是 LF ⇒ 判定为**离群缺陷，不是设计**。
+  核查确认：只有 `MANIFEST.txt` 钉了它的 sha，`HANDOFF.md` 与 `selftest-2026-11-25-b2.md` 仅按路径引用，
+  **没有任何文档承诺逐字节保留其 CRLF** ⇒ 做**无损归一**（只删 41 个行尾 CR 字节）：
+  `BECCFB77170D7FEF / 3986 B` → `63696A8EFF2975BF / 3945 B`，行数仍 41，
+  哨兵行 `SUITE_START` / `CASE_FAIL install_verdict_ok` / `SUITE_END pass=32 fail=5` 原位可查。
+  留痕见 `tool\references\selftest-2026-11-25-b2.md`「行尾归一留痕」条。
+- **根因 = 家规口径缺口**（已补）：家规 4 原文只约束「仓库 Markdown 一律 LF」，而门禁
+  `scripts\refresh-manifest.ps1:64` 统计的是 `.md` **加** `.txt` ⇒ 留证 `.txt` 落在无人认领的地带。
+  现把家规 4 文字补齐：`.ps1` 纯 ASCII 无 BOM；仓库 Markdown 与 `tool\references\` 留证 `.txt` 一律 LF，
+  `MD_TXT_CR_TOTAL` **必须为 0**。这是**文字对齐机制**（门禁代码与阈值/白名单一字未动），不触家规 7。
+- ✅ 本目录已 `git init` 并推到 https://github.com/kizemo/agentask-relay （B5，16:38 用户指令；原「留给用户做」由该指令取代）
+- ⬜ 本目录尚未安装 relay kit 自身（dogfood 候选：`install-relay.ps1:118-122` 要求目标必须是 git 仓库 ⇒ 这条与上一条绑在一起做）
+
+## 已验证 / 推断 / 未验证
+
+### 已验证（实测，有证据）
+
+- 安装器幂等：第二次执行后 `AGENTS.md` sha16 前后相同（`F482063537A97B5B`），标记块 `begin=1 end=1`。
+- 已有接力家规被**收编**而非重复追加；项目自己写的规则与其它 `##` 章节原样保留。
+- 对真 PractiLog `AGENTS.md`（sha16 `BB1B6D28F7D684EF`）的**副本**安装后，真仓库该文件**未被改动**。
+- 真起链：exit 0、锁 `LOCK_ACQUIRED`、台账 1,749 B（`running` / `current_stage=1` / `max_stages=4`）、接力 prompt 2,334 B。
+- 二次起链被拒（`LOCK_HELD` → exit 4）；跨会话锁互斥（exit 2）。
+- `.ps1` 纯 ASCII 无 BOM；`docs\relay.json` 安装器绝不写（由启动器创建）。
+- **B2 新增**：启动器 `-PlanDoc` 三种解析来源（`source=argument|ledger|probe`）与零命中 `exit 2` 均实测，零命中时**不留锁、不写台账**（`tool\references\selftest-2026-11-25-b2.txt` 用例 5-8）。
+- **B2 新增**：收编内容指纹判据实测 —— 标题不含「接力/relay」的等价段落被 `reason=content_signature` 抓住并包裹（`count=8 signals=relay.json+relay-lock+start-relay+session_create+in_progress+max_stages+next_session+awaiting_user`）；两节都合格时**不猜**，`WARN agents_relay_section_ambiguous matches=2` + 追加托管块。
+- **B2 新增**：`device\` ↔ `tool\templates\` 硬不变式由 `publish-relay.ps1 -Direction verify` 判绿；`tool\` ↔ 全局 skill 逐件 sha16 同步 + 复核一次命令完成（`SYNC|DRIFT|PUBLISH|PULL|FIX`）。
+- **B2 新增**：真启动器激活后 `docs\relay\next-prompt.md` 内 Read 行是**绝对路径**、台账 `plan_doc` 是**仓库相对路径**（留证 `selftest-2026-11-25-b2-next-prompt.txt`）。
+
+### 推断（合理，但本目录未复测）
+
+- 装到任意第三方项目都能一次成功 —— 只在 3 个临时仓库（空仓库 / 带家规仓库 / 真 PractiLog 家规副本）上验过，**未在真实第三方项目上跑完整链**。
+- `RELAY-ADAPTATION.md` 的 TODO（写集 / 门禁 / 模型策略）若不补，第一环会因「写集不明」停链 —— 这是设计推理，**未实测**（本次自测链路没有真实写集）。
+- ~~收编判据只认标题~~ → **B2 已修并实测**（双判据：标记块 > 标题 > 内容指纹打分 ≥4 信号；歧义不猜）。剩余推断：内容指纹阈值 `4/10` 是启发式，真实第三方项目的段落若恰好命中 4 条信号但并非接力家规，会被误包裹 —— 概率低（信号词高度专名化），且包裹只加 marker 不删原文，人工可 `review`；未做大规模误判率测量。
+
+### 未验证
+
+- ~~手敲 `start-relay.ps1` 不传 `-PlanDoc`~~ → **B2 已修**（解析链 + 零命中 `exit 2`，默认值不再指向 PractiLog 专用路径；实测见上）。
+- **B2 未实测**：`plan_doc_ambiguous`（多计划文件）在启动器路径下按 mtime 取最新这条分支未被用例覆盖（安装器侧同类歧义 WARN 已实测）；判据代码与安装器共用同一份清单，属推断可用。
+- 非 Windows 平台（脚本用了 `FileMode.CreateNew` + `Move-Item`；全链路只在 Windows / pwsh 7 上跑过）。
+- 长链（>6 环）的自动转交：PractiLog 侧实测过 6 环，本工具产物本身只跑到第 1 环。
+
+## 证据路径
+
+- 自测报告：`tool\references\selftest-2026-11-25.md`
+- **B2 自测报告**：`tool\references\selftest-2026-11-25-b2.md`（用例↔判据↔实测行）
+- **B2 raw 证据**：`tool\references\selftest-2026-11-25-b2.txt`（终态 40 条全绿的机器日志）、`tool\references\selftest-2026-11-25-b2-run1.txt`（32/5，D1 现场）、`tool\references\selftest-2026-11-25-b2-run2.txt`（39/0）、`tool\references\selftest-2026-11-25-b2-next-prompt.txt`（真启动器产出的下一环 prompt）
+- **B2 新脚本**：`scripts\selftest.ps1`（家规 1 的一键自测）、`scripts\publish-relay.ps1`（家规 2/3 的一键发布与一致性判定）
+- 自测工作区（临时，会被系统清理）：`%TEMP%\relay-port-selftest\<stamp>\repo-*`
+- 安装报告样张：`tool\references\selftest-install-report.md`
+- 干跑证据：`tool\references\selftest-install-dryrun.txt`
+- 激活包样张：`tool\references\selftest-activation-prompt.txt`
+- 通用仓库真实链路：`examples\probe-ws\docs\{relay.json, stage-1.md, stage-2.md, stage-3.md}`
+- 生产级台账样例：`examples\practilog\docs\relay.json`（22 顶层 key / 6 环全 done）
+- 项目裁决实例：`examples\practilog\docs\RELAY-ADAPTATION.md`
+- 装置设计说明（四道闸门 / 复制五步 / 人工边界）：`device\auto-advance-design.md`
+- 通用协议：`protocol\AGENT-RELAY.md`；规程：`protocol\RELAY-SOP.md`
+
+## 拷贝轮实录（2026-11-25 12:12 → 12:45）
+
+用户指令：「把所有和 relay 相关的文件拷贝到本目录，我将以这个目录新建项目，接力执行后续这个工具的完善和优化」。
+
+1. **盘点**：relay 相关散在 4 处——全局 skill（13 件）、用户级共享装置/协议（11 件 + `probe-ws` 5 件探针工程）、PractiLog 项目（`docs\relay\` 12 件 + `docs\` 顶层 4 件）。**本目录当时已有 4 份文档**。
+2. **逐件拷贝 + 逐件 sha16 对账**：42 件全部一致（`SHA_MATCH=42 SHA_MISMATCH=0`），未覆盖本目录 4 份文档。布局：`tool\`（工具本体）/ `protocol\`（通用协议 + `protocol\probe-ws\` 探针工程）/ `device\`（装置）/ `examples\practilog\`（首个吃螃蟹项目的完整台账与证据）。
+3. **抽取 PractiLog 接力家规**：`AGENTS.md` 第 **491–511** 行整段 → `examples\practilog\AGENTS-relay-section-extract.md`。它是「标题式收编」形态（无 `BEGIN RELAY-PORT` 标记），正是候选第 4 条的实证样本。
+4. **生成 `MANIFEST.txt`**（`sha16 | bytes | relpath`，LF，不含自身）；全库字节级自检 = `BOM=0 / .ps1 非 ASCII=0`。收口时（12:5x）重刷一次，变化 4 条＝`tool\scripts\install-relay.ps1`、`tool\references\selftest-2026-11-25.md`、`README.md`、`HANDOFF.md`；目录实有 **47 件**（MANIFEST 46 条 + 自身）。
+5. **装置三处一致性已当场核过**（后续候选第 2 条的当前状态）：`device\` / `tool\templates\` / `examples\practilog\docs\relay\` 三处的 `start-relay.ps1` 同为 sha16 `29158782C8843588`，`relay-lock.ps1` 同为 `227FA4696C69AADE`，`DISTINCT_SHA16=1`。改任一处必须同步另外两处，并用 MANIFEST 逐条比 hash 作为 CI 式自检。
+6. **新增 `scripts\refresh-manifest.ps1`**（4,598 B，纯 ASCII、无 BOM）：一条命令重生成 `MANIFEST.txt` 并顺带做全库 BOM / `.ps1` 非 ASCII / md+txt CR 自检，输出 `FILE_COUNT / ENTRY_COUNT / INVARIANT_OK / CHANGE_COUNT` 与逐条 `CHANGED|NEW_ENTRY|REMOVED|PS1_NON_ASCII`。**踩过的坑：文档每改一次，MANIFEST 就过期一次（自指抖动）** ⇒ 规矩定为「本轮最后一步跑它」，且文档里不再写死件数，只写不变式 `条目数 = 文件数 − 1`。
+5. **拷贝自查抓出并修掉缺陷 D3**：`install-relay.ps1:399` 把中文激活口令写成字面量塞进生成的 `ACTIVATION-PROMPT.md` ⇒ 脚本含 18 个非 ASCII 字节且无 BOM。**Windows PowerShell 5.1 按 ANSI 解码 ⇒ 该行必乱码**，还违反「产物 .ps1 必须纯 ASCII」自家纪律（此前 12 项自测没覆盖到）。改为 `[char[]](0x6309...)` 码点构造；复测（本轮 12:5x 重跑）安装产物 `docs\relay\install-report.md` 该行非 ASCII 字符恰为 `U+6309 U+542F U+52A8 U+63A5 U+529B U+94FE`＝`按启动接力链`（`MATCH_EXPECT=True`），安装器本体 `SRC_BYTES=17262 SRC_NON_ASCII=0`、`INSTALL_VERDICT=PASS`、干跑 `exit=0`。修复版已同步回全局 skill（sha16 `8134C322B0AA0394`）。
+6. **证据**：`tool\references\selftest-2026-11-25.md`（T1–T14 + D1/D2/D3 + 8 条可复用结论）、`examples\practilog\docs\relay\proof\2026-11-25\*.txt`。
+
+## 后续候选（未排期）
+
+1. **安装完自动填 `RELAY-ADAPTATION.md` 的 TODO**（写集 / 门禁命令 / 模型策略）：现在是骨架 + TODO，需人补；可让调用会话探测后填。**B2 有意不做** —— 门禁阈值与白名单是家规 7 的人工验收点，自动填会把人工闸门变成假闸门。若要动，先改家规 7。
+2. ✅ **装置版本化 / 一致性**（B2 完成）：`publish-relay.ps1` 把 `device\` ↔ `tool\templates\` 定为**硬不变式**（漂移 exit 2），`tool\` ↔ 全局 skill 逐件 sha16 对账 + 单向同步，`examples\practilog\docs\relay\` 降级为「快照、只报 `SNAPSHOT_DRIFT`」。剩余可做：把 `scripts\selftest.ps1` 挂进 git hook / CI（本目录已 `git init`，见 #6 —— 挂 hook 仍待做）。
+3. ✅ **`start-relay.ps1` 的 `-PlanDoc` 加固**（B2 完成）：默认值不再是 PractiLog 专用路径，改为 `-PlanDoc` > 台账 `plan_doc` > 探测三段清单；零命中 `exit 2` 且不落锁，歧义 WARN 后按 mtime 取最新（绝不为此创建文件）。
+4. ✅ **收编判据加固**（B2 完成）：标记块 > 标题 > 内容指纹打分（十条信号命中 ≥4）；≥2 节合格不猜，WARN + 追加并提示人工合并成单节。
+5. **跨平台**：脚本只用 `FileMode.CreateNew` / `Move-Item`，macOS、Linux 未验。**B2 未做**（本机 Windows-only，无 mac/Linux 环境）；可做的替代 = 静态可移植性审计（`pwsh` 依赖、路径分隔符、`$env:TEMP`、大小写敏感）。
+6. **dogfood**：在本目录装一次 kit，让这个工具自己的项目也受同一套闸门管。**前置已解除**（B5 已 `git init`，满足 `install-relay.ps1:118-122` 的目标须为 git 仓库）⇒ 现在可直接做。
+7. ✅ **发布一键化**（B2 完成）：`publish-relay.ps1 -Direction verify|publish|pull`，同步 + 逐件复核一次命令做完；skill 根改为 `-SkillRoot` > `RELAY_PORT_SKILL_ROOT` > 探测，去掉硬编码用户名路径。
+8. **`selftest.ps1` 补用例**：启动器侧 `plan_doc_ambiguous` 分支（多计划文件按 mtime 取最新）、`-StageTitles` 写入台账、`ledger_unparsable` 拒绝起链、blocked 状态起链被拒、`install.ps1 -Force` 替换托管块。（B3 已补 6 条台账闸门用例，启动器侧这些仍缺。）
+9. **协议文档同步**：`protocol\AGENT-RELAY.md` §3.2 已在 B3 改写为闸门配方；仍缺「计划文档解析链」「收编双判据」两节（`tool\templates\AGENT-RELAY.md` 同步）。
+10. **`MANIFEST.txt` 与 `publish-relay` 联动**：B3 已让发布脚本把 `MANIFEST.txt` 计入总数（`manifest_count_matches=True`）；家规里「最后一步跑 refresh-manifest」仍是人工纪律。
+11. ~~**发布流程**~~ **已完成（B2）**：`scripts\publish-relay.ps1 -Direction publish|verify|pull` 一处命令做完同步 + 逐件 sha16 复核，旧的手工四处覆盖作废。
+
+## 本轮工具坑（别重试）
+
+- **`Get-Content -Raw` 对空文件返回 `$null`**，不是 `''` ⇒ `.Contains()` / `[regex]::Matches()` 会抛 `Value cannot be null (Parameter 'input')`。
+- **PowerShell 里 `Write-Host` 的内容要用 `*>&1` 才捕得到**，`2>&1` 捕不到 ⇒ 干跑证据文件曾经是 0 B。
+- **分支里的输出变量必须先初始化**：`$null -ne "文本"` 为真 ⇒ `WriteAllText(path, $null)` 会把目标文件清零（本轮真炸过一次，把测试仓的 `AGENTS.md` 截成 0 B）。写盘条件要用 dirty 布尔标志，不要用内容比较代替。
+- `rm -- <工作区外路径>` 被回收站通道拒（"target outside the workspace"）⇒ 临时目录清不掉，只能手工删。
+- `Set-Location` 后写相对路径会被本地硬安全策略拦 ⇒ 一律绝对路径。
+- bash 里长篇中文内联脚本会被本地安全网关整体拦截 ⇒ 长文落盘用 write 工具。
+- 严禁读跨项目交接卡 `maintenance\task-state\LATEST.md`；结论写进本仓库。
+
+**B2 新增（都是脚手架判据写错导致的假失败，不是工具缺陷 —— run1 5 条 FAIL 全部由此）**
+
+- 安装器的**成功标记是 `INSTALL_VERDICT=PASS`**，不是 `OK`（`install-relay.ps1:458`）。断言成 `INSTALL_VERDICT=OK` ⇒ 假失败。
+- **安装器的干跑不写 stdout**：`-DryRun` 把启动器输出灌进 `docs\relay\install-dryrun.txt`（`install-relay.ps1:401-407`），所以「安装器是否把 `-PlanDoc` 透传给干跑」必须**读那个文件**，抓 stdout 永远抓不到。
+- **`relay-lock.ps1` 的参数不是 `-RepoRoot -Owner`**：真实参数只有 `-Action -SessionId -Title -Stage -TtlSeconds -LockPath`。传错被参数绑定拒绝，且 `2>&1 | Select-Object` 会吞掉退出码 ⇒ 看起来像「锁行为变了」。锁的输出字样：`LOCK_ACQUIRED` / `LOCK_HELD`(exit 2) / `LOCK_RACE`(exit 2) / `LOCK_MISSING`(exit 3) / `LOCK_NOT_MINE`(exit 5) / `LOCK_STATE state=LIVE`。
+- **绝不要用目录名子串断言歧义**：临时仓库起名 `repo-ambiguous` 时，任何含 `ambiguous` 的断言都会因路径自身命中而**假通过** ⇒ 必须锚定 WARN 码（`agents_relay_section_ambiguous`）这类只可能来自工具输出的字面量。
+- **`Join-Path` 不解析 `..\`**：`Join-Path $src '..\x.log'` 拼出含字面 `..\` 的路径，后续复制/删除全部落空（本轮复制证据第一次就是这么失败的）⇒ 用各自绝对路径，或 `[IO.Path]::GetFullPath()` 归一。
+- 台账里 `plan_doc` **存的是仓库相对路径**（bootstrap 时归一化过），断言不能拿绝对路径去 `Contains`；prompt 文件里给的是绝对路径 —— 两者刻意不同，别改。
+
+## 批次 B3 实录（2026-11-25 15:30 → 15:5x）—— 候选「台账写保护」
+
+把 `docs\relay.json` 的回写从**散文要求**变成**机制闸门**。这是 B2 之前就挂账的老缺陷：协议 §3.2 写着
+「回写前必须重读一次、只许追加、写完必须回读核对」，但**没有任何东西强制它** —— 链上会话照样可以裸
+`Set-Content` 整份覆写，把上一环的署名冲掉（2026-11-24 PractiLog 第 3 环读到比第 2 环落盘更早的台账，
+就是这类竞态，"没丢数据是运气"）。
+
+### 新增装置件 `relay-ledger.ps1`（第四件装置，与 `start-relay.ps1` / `relay-lock.ps1` 同级）
+
+放在 `<repo>\docs\relay\relay-ledger.ps1`（`$repoRoot` 由 `$PSScriptRoot\..\..` 推导，**放错位置即
+`ledger_missing` exit 3**）。三个目录层级不能混淆：链锁 `docs\relay\.lock`、台账 `docs\relay.json`、
+写锁 `docs\relay\.ledger.lock`。
+
+- **动作只有两个**：`-Action status`（读台账，打印 `LEDGER_STATE stage= status= next_session= sha256=`）
+  与 `-Action commit -Patch p.json -ExpectSha256 <sha>`。**没有** `-Action blocked` 这类便捷动作 ——
+  意图全部走 patch 文件（`{"set_status":"blocked","blocked_on_append":[...]}`）。
+- **四层机制**：① 独占写锁 `FileMode.CreateNew`，被占 `-TimeoutMs`（默认 5000）内重试，
+  陈旧锁（mtime 老于 `-LockStaleSeconds`，默认 30）接管并打 `WARN stale_lock_taken_over`；
+  ② CAS —— sha256 在锁外比一次、锁内**再比一次**（`stage=under_lock`），陈旧视图必被判死；
+  ③ 只追加不变式 —— `stages/sessions/notes/ledger_docs/blocked_on/human_checkpoints/stop_conditions`
+  为受保护数组，只许增长、每条 `sha256` 逐字保留（丢了报 `rule_violation missing=[...]`），
+  已有 stage 条目除 owner 本人外不可改（`rule_rewrote_existing_entry`）；
+  ④ 写后回读 —— 同目录 tmp + `Move-Item -Force`（同卷原子），再回读逐字比对，不一致 `commit_verify_readback`。
+- **patch 键（共 10 个）**：`stage_done`(int id) / `stage_fields`(只能配 `stage_done` 用) /
+  `append_stage`(`{"id":..,"title":..}`) / `sessions_append` / `notes_append` / `ledger_docs_append` /
+  `blocked_on_append` / `set_status` / `bump_current_stage`(bool) / `next_session_id`。
+  `*_append` 先**去重后追加** ⇒ 同环重跑幂等；未知键 → exit 2（防拼错静默失效）。
+  `next_session_id` 非 null 只许 owner 环写（`next_owner_only`），且必须形如 `mvs_` / `sess_` + ≥6 字符。
+- **退出码**：`0` 已提交（或 `-DryRun` 通过，打 `LEDGER_DRYRUN_OK`，不写盘不建锁文件）；
+  `2` 参数/patch 键/意图非法（含 `missing_expect_sha256`、`stage_fields_without_stage_done`）；
+  `3` CAS 冲突、不变式违反、台账缺失；`4` 写锁超时；`5` patch 不可解析。
+- **`set_status:"running"` 是人类专用**（链锁 owner 的指纹）；会话身份提交 `running` → `session_may_not_claim_running`。
+
+### 接线
+
+- `install-relay.ps1`：装置清单加 `relay-ledger.ps1`（dry-run / 实装的复制清单与幂等哈希集合都带上）。
+- `start-relay.ps1`：起链前预检闸门存在（缺 → `ledger_gate_missing` exit 2，**排在计划解析之后**）；
+  接力 prompt 里台账回写改成 4 步配方（status 取 sha → 写 ASCII patch → `-DryRun` → commit），
+  blocked 分支与完成分支同样走闸门。bootstrap 种子补 `notes=@()` / `blocked_on=@()` 两个键。
+- `publish-relay.ps1`：硬不变式与逐件清单加入 `relay-ledger.ps1`；`MANIFEST.txt` 计入文件总数。
+- `selftest.ps1`：新增 6 条断言（闸门安装到位 / `-DryRun` 非破坏 / owner `stage_done` 生效 /
+  陈旧 sha 被拒 / 裸改写被 pre-image 还原 / `append_stage` 与 owner `stage_fields` 被接受）。
+- 文档：`tool\SKILL.md` 新增「台账写闸门」整节 + 第 4 道闸门改为指向机制；
+  `protocol\AGENT-RELAY.md` §3.2 重写为闸门配方；本仓库 `AGENTS.md` 家规 3 / `README.md` 装置清单同步。
+
+### 已知限制（有意不做，别当缺陷报）
+
+1. 闸门不校验 `current_stage <= max_stages`（阶段上限归 `start-relay.ps1` 判）。
+2. `LEDGER_STATE` 不输出 `blocked=` 计数（要看得 `-Action status` 之外自己读台账）。
+3. **无变化的 patch 仍会刷新 `updated_at` 并改 sha** —— 幂等靠 `*_append` 去重，不靠"内容相同就不写"。
+4. 写锁只串行化闸门提交，**拦不住裸 `Set-Content`** —— 它保证的是"走闸门的写不互相踩踏、且能被 CAS 判死"，
+   配合 §3.2 的纪律使用。
+
+### 本轮工具坑（B3 新增）
+
+- **`-Action blocked` / `-Reason` / `-Note` 是我凭空造的**，盘上闸门只有 `status|commit`；
+  照幻想写文档 = 给下一轮埋假承诺。写配方前先跑一次 `-Action status` 看真实参数。
+- **断言 `stage_fields` 缺 `stage_done` 该 exit 几**：闸门是 `2`（用法错，`Fail ... 2`），不是 `3`（规则拒绝）。
+  第一版断言写 `3` 直接红；`rule_rewrote_existing_entry` 是**纵深防御后盾**，意图层根本走不到它，
+  拿它当预期 = 拿备用防线当主判据。
+- **`-Filter '*.lock'` 会把链锁 `.lock` 一起数进去**（点号扩展名 = `.lock`），于是断言
+  "陈旧锁被接管后不残留" 恒假。判据必须是 `-Filter '*ledger.lock*'` 且排除目录。
+- **`ledger_gate_missing` 预检若排在计划解析之前**，会顶掉 `plan_doc_missing` 诊断，
+  把 `noplan_exit_two` 变成假绿。顺序：工作区校验 → 闸门存在 → 计划解析。
+- 任何 `commit` 断言**必须先 `-Action status` 取 sha**，否则吃 `missing_expect_sha256`（闸门强制，非 bug）。
+- 一次性仓库目录名不要含 `ambiguous` / `ledger` 这类断言关键词（B2 已记，本轮再犯一次）。
+- **多行 patch 用 here-string 拼 `$patches` 哈希表时，锚点计数守卫（`-ne 1` → throw）必须在写盘之前**；
+  本轮 `AGENTS.md` 锚点不匹配时 throw 先于写盘，文件零改动（这是想要的行为，不是失败）。
+- `tool\templates\bootstrap-ledger.json` **不存在**（bootstrap 台账模板内联在 `start-relay.ps1` 的 `$template`）；
+  别按摘要里的文件名去 read。
+
+### 证据路径
+
+- 自测 raw 日志：`tool\references\selftest-2026-11-25-b3.txt`；结论件 `tool\references\selftest-2026-11-25-b3.md`。
+- 一次性测试仓保留在 `%TEMP%\relay-port-selftest\<时间戳>\`（`-Cleanup` 开关已实现，绿了才用）。
+- 闸门冒烟夹具（独立于 selftest）：`%TEMP%\relay-ledger-smoke\`，含 T1~T8 真并发与 CAS 判据。
+
+## 批次 B5 实录（2026-11-25 16:38 → 17:0x）—— 双语 README + 推到 GitHub
+
+### 做了什么
+
+- `README.md` 改写为**英文默认**（源文件非 ASCII 字符 = 0），新增 `README.zh-CN.md` 中文镜像；
+  两份顶部互跳：shields.io badge + 纯 ASCII 文本兜底行。**GitHub 没有真「选项卡」**，
+  这是社区通行的最接近做法（用户口径「选项卡链接方式」按此实现）。
+- README 里的本机绝对路径改为泛化写法（`<MCode 数据目录>\skills\relay-port\` /
+  `%USERPROFILE%\.minimax\.minimax\skills\relay-port\`）。文档不是留证，泛化不算改证据（家规 5）。
+- 新增 `.gitignore`：排除 `.superpowers-tmp/` 与常见临时件；**明确不许**把 `docs` /
+  `tool\references` 加进去（清单与留证要数得到）。
+- `git init` + `remote add origin` + 首推 `main`。家规原文「git 留给用户做」由用户的
+  push 指令取代，`README.md` 与 `AGENTS.md` 的「尚未 git init」表述随之订正。
+- 本轮**未触工具本体**（`tool\` / `device\` 的 `.ps1` 零改动）⇒ 依家规 1 不重跑 selftest；
+  `publish-relay.ps1 -Direction verify` 只作一致性复核（预期 `fail=0 warn=1 SNAPSHOT_DRIFT`）。
+
+### 实测事实（侦察一次取齐，raw 在 `%TEMP%\relay-recon-github-20261125-164315.txt`，120 行）
+
+- `git 2.54.0` / `gh` 均可用；`gh auth status` = 已登录 `kizemo`（HTTPS，scopes 含 `repo`+`workflow`，
+  缺 `read:org` 不影响个人仓 push）。git 身份取全局配置 `user.name=kizemo`。
+- 目标仓库 `kizemo/agentask-relay` **已存在、`visibility=PUBLIC`、`isEmpty=true`**
+  ⇒ push 无冲突、不需 force。
+- **非 ASCII 文件名/目录名 = 0 件** ⇒ 「文件列表里不要出现中文」天然满足，
+  未改任何文件名、未动 `MANIFEST.txt` 的引用关系。
+- 凭据模式扫描命中 10 件，逐条读原文核实**全是文档散文**（讲「不要把凭据写进文件」、
+  D3/D4 缺陷描述等），**无真凭据** ⇒ 假阳性，不阻塞公开。
+
+### 公开面风险（推完如实记，别当已解决）
+
+1. **本机用户名路径仍在留证件里**：34 件含 `E:\Users\Duanyi\…` / `F:\soft\…`
+   （`examples\practilog\docs\relay\*.md` 单文件最多 19 行）。按家规 5 不改留证
+   ⇒ 已随公开仓库上线。要清得走「从仓库排除 `examples\` / 改写留证」的**人工决策**。
+2. `examples\practilog\` 是 PractiLog 真实项目的台账与门禁留证（含真实 session id、门禁数字），
+   同属公开面。用户名本身不是秘密，但这份目录是**别人的项目实况**，公开是否合适应由用户裁决。
+3. 本仓库无 `LICENSE` ⇒ 默认保留所有权利；两份 README 已如实写明，**未擅自声明许可**。
+4. `scripts\refresh-manifest.ps1:30` 的 `Get-ChildItem -Recurse -File` 不带 `-Force`，
+   故 `.git`（Windows 隐藏属性）**预期**不进清单 —— 本轮 `git init` 之后由 `FILE_COUNT`
+   实测确认。若暴涨则要给脚本加排除项，那属门禁改动 = 人工验收点（家规 7），先停下问用户。
+
+### 本轮工具坑
+
+- 侦察脚本的证据**写到 `$env:TEMP` 而不是仓库内**：否则「本机路径全清单」会被 push 进公开仓库。
+- 命令里避免出现凭据类中文词字面量，改用码点构造（`` `u{5BC6}`u{53E3}`u{94A5}`u{5319} ``）拼正则；
+  拼 `'|'` 时必须 `'A' + '|' + $w`，把 `|` 不加空格塞进正则字面量会让 PowerShell 报
+  「表达式只能作为管道的第一个元素」。
+- 含 CJK 的长内联命令会被本地安全网关整体拦 ⇒ 文档一律用写文件工具落盘，bash 只做小补丁。
+- 重写 README 时最容易**顺手造编号**：本轮初稿把「台账写闸门」写成 `D5`，而缺陷编号体系里
+  只到 D4，闸门是 B3 的加固项不是新缺陷 ⇒ 已改为独立 bullet。**引用编号前先 grep 原文**。

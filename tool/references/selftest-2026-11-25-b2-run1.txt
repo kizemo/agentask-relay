@@ -1,0 +1,41 @@
+13:57:14 SUITE_START root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714 kit=F:\soft\00selfmade\agentask-relay
+13:57:17 CASE_PASS install_exit_zero exit=0
+13:57:17 CASE_FAIL install_verdict_ok tail=INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714\repo-fresh\docs\relay\install-report.md | ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714\repo-fresh\docs\relay\ACTIVATION-PROMPT.txt | WARN_COUNT=0
+13:57:17 CASE_PASS install_launcher_present dir=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714\repo-fresh
+13:57:17 CASE_PASS install_lock_present 
+13:57:17 CASE_PASS install_agents_single_block 
+13:57:17 CASE_FAIL install_dryrun_inside_install plan_line=
+13:57:18 CASE_PASS reinstall_exit_zero exit=0
+13:57:18 CASE_PASS reinstall_agents_bytes_stable before=C4AF8196DCDDC7B2 after=C4AF8196DCDDC7B2
+13:57:18 CASE_PASS reinstall_single_block_still 
+13:57:18 CASE_PASS reinstall_keeps_existing agents_line=AGENTS action=present_kept reason=n/a before=[bytes=3550 sha16=C4AF8196DCDDC7B2] after=[bytes=3550 sha16=C4AF8196DCDDC7B2] bom=False
+13:57:21 CASE_PASS adopt_by_content_exit_zero exit=0
+13:57:21 CASE_PASS adopt_by_content_marked has_marker=True kept_original=True
+13:57:21 CASE_PASS adopt_by_content_reason_logged agents_line=AGENTS action=adopted reason=content_signature count=8 signals=relay.json+relay-lock+start-relay+session_create+in_progress+max_stages+next_session+awaiting_user before=[bytes=423 sha16=B862B74A304C46EE] after=[bytes=476 sha16=B4F431517C335CED] bom=False
+13:57:23 CASE_PASS ambiguous_warns warn=REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714\repo-ambiguous
+13:57:23 CASE_PASS ambiguous_appends_managed_block 
+13:57:23 CASE_PASS ambiguous_keeps_both_sections 
+13:57:26 CASE_PASS probe_dryrun_exit_zero exit=0
+13:57:26 CASE_PASS probe_found_plan line=OK plan_doc=docs\superpowers\plans\2026-11-07-b1.md source=probe bytes=13
+13:57:26 CASE_PASS probe_no_lock_left_behind 
+13:57:26 CASE_PASS probe_no_ledger_written 
+13:57:26 CASE_PASS kit_has_no_foreign_default_plan hits=
+13:57:28 CASE_PASS noplan_exit_two exit=2
+13:57:28 CASE_PASS noplan_reason_reported line=FAIL reason=plan_doc_missing hint=pass_-PlanDoc_or_set_plan_doc_in_docs\relay.json_or_add_docs\plan-<batch>.md
+13:57:28 CASE_PASS noplan_no_lock 
+13:57:29 CASE_PASS activate_exit_zero exit=0 tail=NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id> | DONE exit=0 target=probe batch
+13:57:29 CASE_PASS activate_ledger_created 
+13:57:29 CASE_PASS activate_ledger_plan_doc_relative plan_doc=docs\superpowers\plans\2026-11-07-b1.md
+13:57:29 CASE_PASS activate_lock_held 
+13:57:29 CASE_PASS activate_prompt_absolute_plan 
+13:57:30 CASE_PASS second_activation_refused exit=4
+13:57:30 CASE_PASS second_activation_reason_logged line=FAIL reason=lock_unavailable exit=2
+13:57:31 CASE_FAIL lock_alpha_acquired exit=1 out=[31;1mrelay-lock.ps1: [31;1m找不到与参数名称 'RepoRoot' 匹配的参数。[0m
+13:57:32 CASE_PASS lock_beta_refused exit=1
+13:57:32 CASE_FAIL lock_owner_still_alpha out=[31;1mrelay-lock.ps1: [31;1m找不到与参数名称 'RepoRoot' 匹配的参数。[0m
+13:57:33 CASE_FAIL lock_release_ok exit=1
+13:57:33 CASE_PASS ps1_ascii_bom_parse bad=
+13:57:33 CASE_PASS device_matches_templates drift=
+13:57:33 SUITE_END pass=32 fail=5 root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261125-135714
+13:57:33 MANUAL_STEP real_session_activation: this suite never calls session_create. One live chain per changed kit is still an agent-side step; see tool\references\selftest-*.md for how it was last verified.
+[31;1mselftest.ps1: [31;1m调用“WriteAllText”并传入“3”个参数时发生异常：“The process cannot access the file 'C:\Users\Duanyi\AppData\Local\Temp\relay-selftest-b2-run1.log' because it is being used by another process.”[0m

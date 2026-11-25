@@ -1,0 +1,25 @@
+{
+  "schema": "mcode-relay/1",
+  "updated_at": "2026-11-24T20:33:00+08:00",
+  "status": "idle",
+  "goal": "",
+  "plan_doc": "",
+  "handoff_card": "E:\\Users\\Duanyi\\.minimax\\.minimax\\maintenance\\task-state\\LATEST.md",
+  "handoff_card_warning": "此卡是 agent 级共享文件，任意会话的 Stop Hook 都会覆写它（2026-11-24 冒烟实证）。链的进度真相只能是本文件 + 项目自己的 docs，不得依赖此卡。",
+  "workspace_dir": "",
+  "workspace_dir_note": "必填。session_create 不传 workspace_dir 时，新会话落在 sessions\\<sid>\\workspace 私有临时目录（2026-11-24 实证），看不到项目仓库，接力必然失败。",
+  "agent_name": "mavis",
+  "auto_relay": true,
+  "max_stages": 12,
+  "current_stage": 0,
+  "chain_started_at": null,
+  "stop_conditions": [
+    "relay.json.status 变为 blocked 或 done",
+    "命中 plan_doc 中声明的人工验收点（提交/发布/删数据/付费/不可逆操作）",
+    "连续两轮同一阶段无实质进展（产出物或验收证据未变化）",
+    "current_stage 达到或超过 max_stages",
+    "存在未终态的后台任务（不得接力，先等完或 task_stop）"
+  ],
+  "stages": [],
+  "sessions": []
+}
