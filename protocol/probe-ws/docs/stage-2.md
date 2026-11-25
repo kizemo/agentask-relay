@@ -17,7 +17,7 @@ STAGE-2-BY|mvs_f245bf8bdb31478193f42c0e919863f4
 | max_stages | `3` |
 | stages | 1 条（Stage 1 记录） |
 | next_session_id | `mvs_f245bf8bdb31478193f42c0e919863f4`（= 本会话 id） |
-| workspace_dir | `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws` |
+| workspace_dir | `%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws` |
 
 ## 本阶段完成的活
 
@@ -41,7 +41,7 @@ STAGE-2-BY|mvs_f245bf8bdb31478193f42c0e919863f4
 | relay.json 变更 | `stages` 1 → 2 条；`current_stage` 2 → 3；`next_session_id` = 下一跳 session id |
 | 下一跳 session id | `mvs_12e46516919f406e9b4dd87b49de5f41`（`session_create` 返回值；turn `turn_b2272dbd-0220-40d7-88ac-3af455b36eca`，mode `activated`） |
 | 下一跳首条消息 | `按项目 AGENTS.md 的硬规则执行当前阶段。` |
-| 下一跳 workspace_dir | `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws` |
+| 下一跳 workspace_dir | `%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws` |
 | 下一跳 location.mode | `current`（就地工作，非 worktree） |
 | 下一阶段 | Stage 3（`current_stage = 3` ≤ `max_stages = 3`，链条继续） |
 | 链条终点 | Stage 3 之后 `current_stage = 4 > max_stages = 3` ⇒ `status = done`，不再建会话 |

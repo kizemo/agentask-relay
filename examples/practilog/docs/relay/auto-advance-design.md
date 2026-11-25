@@ -8,13 +8,13 @@
 
 | 错位 | 现象 | 代价 |
 |---|---|---|
-| **起环权在项目外** | 靠一个 `workspace=C:\Users\Duanyi` 的监督会话读 `relay.json`，再 `session_create` 把本仓库拉起来 | 跨项目、跨会话；监督会话一挂链就没人看；为一个项目动另一个项目 |
+| **起环权在项目外** | 靠一个 `workspace=%USERPROFILE%` 的监督会话读 `relay.json`，再 `session_create` 把本仓库拉起来 | 跨项目、跨会话；监督会话一挂链就没人看；为一个项目动另一个项目 |
 | **没有原子互斥** | 「同一时刻只允许一个环」靠人记 | 两次并发起环 → 两环写同一 `relay.json` 与同一写集 → **静默丢数据**（已实测跨环读到比前一环更旧的台账版本） |
 | **自愈靠外部 cron** | 排程挂在全局 cron 里，prompt 还被混入过与本链无关的产品需求 | 链的行为受外部文本影响；末环只能等人，无法自愈 |
 
 ## 2. 目标形态：三层切分
 
-- **共享层** `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\`：只放**协议与模板**
+- **共享层** `%USERPROFILE%\.minimax\.minimax\maintenance\relay\`：只放**协议与模板**
   （`AGENT-RELAY.md` / `RELAY-SOP.md`）。跨项目共享，**不含任何项目状态**。
 - **项目层** `<repo>\docs\`：状态机 `relay.json` + 裁决 `RELAY-ADAPTATION.md` + 阶段报告 `docs\relay\stage-N-*.md`。
 - **项目层** `<repo>\docs\relay\*.ps1`：装置层 —— **启动器** 与 **互斥锁**。

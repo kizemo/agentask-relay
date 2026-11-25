@@ -127,7 +127,7 @@
 **全量门禁可执行命令**（脚本自述用法 `reports\task51-gate.ps1:3`–`:7`）：
 
 ```powershell
-cd F:\soft\00selfmade\practilog
+cd <PRACTILOG_ROOT>
 pwsh -NoProfile -ExecutionPolicy Bypass -File reports\task51-gate.ps1 -ExpectDesktopTests 836
 ```
 
@@ -139,7 +139,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File reports\task51-gate.ps1 -ExpectDes
 
 | 包 | 命令 | 原始输出 | 退出码 |
 |---|---|---|---|
-| `apps\desktop` | `flutter analyze`（工作目录 `F:\soft\00selfmade\practilog\apps\desktop`） | `No issues found! (ran in 14.7s)` | 0 |
+| `apps\desktop` | `flutter analyze`（工作目录 `<PRACTILOG_ROOT>\apps\desktop`） | `No issues found! (ran in 14.7s)` | 0 |
 | `packages\core_domain` | `dart analyze` | `No issues found!` | 0 |
 | `packages\core_db` | `dart analyze` | `No issues found!` | 0 |
 | `packages\core_data` | `dart analyze` | `No issues found!` | 0 |

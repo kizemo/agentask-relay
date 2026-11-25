@@ -295,10 +295,10 @@
 
 | 指针 | 用途 |
 |---|---|
-| `F:\soft\00selfmade\practilog\docs\relay\stage-2-scope.md` | 本环交付（本文件） |
-| `F:\soft\00selfmade\practilog\docs\relay\stage-1-inventory.md` | 第 1 环盘点 |
-| `F:\soft\00selfmade\practilog\docs\relay.json` | 状态机（stage 2 条目 + `current_stage` → 3 + stage 3 条目 + `next_session_id`） |
-| `F:\soft\00selfmade\practilog\docs\RELAY-ADAPTATION.md` | 裁决文档（§1 顺序 / §4 人工验收点 / §5 并发检测 / §9 模型策略） |
-| `F:\soft\00selfmade\practilog\AGENTS.md` `:484-494` | 接力硬规则（每环开工必回读） |
-| `F:\soft\00selfmade\practilog\docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` `:9611-9619` / `:9630-9642` | 台账真源 §68.4a–i / §68.6 W9 残留面 |
-| `F:\soft\00selfmade\practilog\reports\task68-gate-run1.log` | 并发门禁原始输出（本环引用，非本环实测） |
+| `<PRACTILOG_ROOT>\docs\relay\stage-2-scope.md` | 本环交付（本文件） |
+| `<PRACTILOG_ROOT>\docs\relay\stage-1-inventory.md` | 第 1 环盘点 |
+| `<PRACTILOG_ROOT>\docs\relay.json` | 状态机（stage 2 条目 + `current_stage` → 3 + stage 3 条目 + `next_session_id`） |
+| `<PRACTILOG_ROOT>\docs\RELAY-ADAPTATION.md` | 裁决文档（§1 顺序 / §4 人工验收点 / §5 并发检测 / §9 模型策略） |
+| `<PRACTILOG_ROOT>\AGENTS.md` `:484-494` | 接力硬规则（每环开工必回读） |
+| `<PRACTILOG_ROOT>\docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` `:9611-9619` / `:9630-9642` | 台账真源 §68.4a–i / §68.6 W9 残留面 |
+| `<PRACTILOG_ROOT>\reports\task68-gate-run1.log` | 并发门禁原始输出（本环引用，非本环实测） |

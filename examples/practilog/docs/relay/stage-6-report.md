@@ -23,7 +23,7 @@
 
 ```powershell
 $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'; $env:FLUTTER_STORAGE_BASE_URL='https://storage.flutter-io.cn'
-pwsh -NoProfile -ExecutionPolicy Bypass -File 'F:\soft\00selfmade\practilog\reports\task51-gate.ps1' -ExpectDesktopTests 836
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<PRACTILOG_ROOT>\reports\task51-gate.ps1' -ExpectDesktopTests 836
 ```
 
 本体输出逐字（`reports/task51-gate/summary.txt`，1930 B / sha16 `6FFED0BBE47E41F5` / mtime `2026-11-25 00:04:17`）：
@@ -225,7 +225,7 @@ HEAD=85b809a  AHEAD=0  status --porcelain -uall = 22 行（+ 本环新建 stage-
 11. `apps/desktop/test/task60_project_domain_edit_test.dart`
 12. `apps/desktop/test/task63_w7_l10n_test.dart`
 
-未跟踪（10，**门禁 `00:04:17` 时刻快照**，逐行 `-uall` 实测）：`docs/AGENT-RELAY.md`、`docs/RELAY-ADAPTATION.md`、`docs/relay.json`（3 个在 `docs/` 根）+ `docs/relay/stage-1-inventory.md`、`docs/relay/stage-2-scope.md`、`docs/relay/stage-3-report.md`、`docs/relay/stage-4-implementation.md`、`docs/relay/stage-5-report.md`、`docs/relay/supervision-2026-11-24.md`、`docs/relay/supervision-2026-11-25.md`（7 个在 `docs/relay/`；两份 supervision 日志**非本环创建**）。本环新建 `stage-6-report.md` 后变为 **11 个** ⇒ 合计 `23` 行。逐行以 `git -C F:\soft\00selfmade\practilog status --porcelain -uall` 为准；**不加 `-uall` 会被折叠成 4 行 / 16 行合计，少算 7 件**。
+未跟踪（10，**门禁 `00:04:17` 时刻快照**，逐行 `-uall` 实测）：`docs/AGENT-RELAY.md`、`docs/RELAY-ADAPTATION.md`、`docs/relay.json`（3 个在 `docs/` 根）+ `docs/relay/stage-1-inventory.md`、`docs/relay/stage-2-scope.md`、`docs/relay/stage-3-report.md`、`docs/relay/stage-4-implementation.md`、`docs/relay/stage-5-report.md`、`docs/relay/supervision-2026-11-24.md`、`docs/relay/supervision-2026-11-25.md`（7 个在 `docs/relay/`；两份 supervision 日志**非本环创建**）。本环新建 `stage-6-report.md` 后变为 **11 个** ⇒ 合计 `23` 行。逐行以 `git -C <PRACTILOG_ROOT> status --porcelain -uall` 为准；**不加 `-uall` 会被折叠成 4 行 / 16 行合计，少算 7 件**。
 
 ### 十三·5·2 建议 commit message（待用户批准后使用）
 
@@ -364,7 +364,7 @@ git rev-list --left-right --count HEAD...@{u} ⇒ behind = 0 ⇒ 全部提交仅
 | `PS1_ASCII_VIOLATIONS` | 0 | **0** |
 | `STATUS_LINES` / `HEAD` / `AHEAD` | 22 / `85b809a` / 0 | **57 / `9ef1c9e` / 4** |
 
-命令 = `pwsh -NoProfile -ExecutionPolicy Bypass -File F:\soft\00selfmade\practilog\reports\task51-gate.ps1 -ExpectDesktopTests 882`；**脚本零改动**（`:38` 的 `$baseline=596` 与白名单均未动）。
+命令 = `pwsh -NoProfile -ExecutionPolicy Bypass -File <PRACTILOG_ROOT>\reports\task51-gate.ps1 -ExpectDesktopTests 882`；**脚本零改动**（`:38` 的 `$baseline=596` 与白名单均未动）。
 
 前置条件（可复用）：并发会话当时正在跑 `flutter test`（`dart` / `dartaotruntime` 11:18:16 起、11:18:58 退）⇒ 门禁必须**等窗口**；`reports\task51-gate.ps1:22` 搬 `apps\desktop\build\test_cache\build` 被占用时抛 `file is being used by another process` ⇒ exit 1 且**不产出新摘要**（旧摘要三项指纹逐字不变 ⇒ 可据此判「本轮根本没跑起来」）。该坑已登记进 `AGENTS.md` §5 第 94 / 95 条。
 

@@ -1,7 +1,7 @@
 # 接力 Prompt 模板（路径 A · session_create 自接力）
 
-状态机文件：`E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\relay.json`
-交接卡（由现有 Stop Hook 每轮自动刷新）：`E:\Users\Duanyi\.minimax\.minimax\maintenance\task-state\LATEST.md`
+状态机文件：`%USERPROFILE%\.minimax\.minimax\maintenance\relay\relay.json`
+交接卡（由现有 Stop Hook 每轮自动刷新）：`%USERPROFILE%\.minimax\.minimax\maintenance\task-state\LATEST.md`
 
 占位符全部替换后再发送：`<PLAN>` 计划文档绝对路径、`<WORKSPACE>` 仓库绝对路径、`<N>` 阶段号。
 
@@ -13,7 +13,7 @@
 按 <PLAN> 建立无人值守接力链，本次是第 1 阶段。
 
 1. 读 <PLAN>，把阶段拆成 relay.json 的 stages[]（每项含 id / title / deliverable / acceptance / status=pending），
-   写 E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\relay.json：
+   写 %USERPROFILE%\.minimax\.minimax\maintenance\relay\relay.json：
    status=running、goal、plan_doc=<PLAN>、workspace_dir=<WORKSPACE>、current_stage=1、
    auto_relay=true、max_stages=<最大阶段数>、chain_started_at=当前 ISO8601 时间。
 2. 只推进 current_stage 这一个阶段，做到 acceptance 判据成立并亲自跑出证据为止。
@@ -37,7 +37,7 @@
 ```text
 你是无人值守接力链的第 <N> 环，只做这一个阶段，不要问我任何问题。
 
-1. 先读 E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\relay.json，再读 relay.json.plan_doc 指向的计划文档。
+1. 先读 %USERPROFILE%\.minimax\.minimax\maintenance\relay\relay.json，再读 relay.json.plan_doc 指向的计划文档。
    （不要依赖 maintenance\task-state\LATEST.md：它是 agent 级共享交接卡，任意其它会话的 Stop Hook 都会覆写它，
    内容可能完全不属于本链。进度真相只有 relay.json + 本仓库 docs/。）
    以 relay.json 为唯一进度真相：若 status 不是 running 或 current_stage 已 ≥ max_stages，

@@ -28,7 +28,10 @@
   publish  mirror tool/templates -> device, then tool -> global skill
   pull     mirror global skill -> tool (rescue path), then templates -> device
 .PARAMETER SkillRoot
-  Absolute path of the installed global skill. Precedence: this parameter > $env:RELAY_PORT_SKILL_ROOT > default.
+  Absolute path of the installed global skill. Precedence: this parameter >
+  $env:RELAY_PORT_SKILL_ROOT > probe of $env:MAVIS_DATA_DIR / $env:MINIMAX_DATA_DIR /
+  $HOME / %USERPROFILE%. Pass this explicitly when the desktop profile does not sit
+  under the user profile directory.
 .PARAMETER Strict
   With verify, also fail on SNAPSHOT_DRIFT. Off by default: the examples snapshot is allowed to lag.
 .EXAMPLE
@@ -75,15 +78,23 @@ $rootSource = ''
 if (-not [string]::IsNullOrWhiteSpace($SkillRoot)) { $resolvedRoot = $SkillRoot; $rootSource = 'parameter' }
 elseif (-not [string]::IsNullOrWhiteSpace($env:RELAY_PORT_SKILL_ROOT)) { $resolvedRoot = $env:RELAY_PORT_SKILL_ROOT; $rootSource = 'env' }
 else {
-  foreach ($cand in @(
-      (Join-Path $HOME '.minimax\.minimax\skills\relay-port'),
-      'E:\Users\Duanyi\.minimax\.minimax\skills\relay-port'
-    )) {
-    if (Test-Path -LiteralPath $cand -PathType Container) { $resolvedRoot = $cand; $rootSource = 'probe'; break }
+  # The desktop profile is NOT guaranteed to live under $HOME or %USERPROFILE%
+  # (a redirected profile keeps the runtime data dir on another volume), so the
+  # probe walks every candidate data root it can name and takes the first hit.
+  $dataRoots = New-Object System.Collections.Generic.List[string]
+  foreach ($v in @($env:MAVIS_DATA_DIR, $env:MINIMAX_DATA_DIR, $HOME, $env:USERPROFILE)) {
+    if (-not [string]::IsNullOrWhiteSpace($v)) { $dataRoots.Add($v) }
+  }
+  foreach ($dr in $dataRoots) {
+    foreach ($rel in @('.minimax\.minimax\skills\relay-port', 'minimax\.minimax\skills\relay-port', 'skills\relay-port')) {
+      $cand = Join-Path $dr $rel
+      if (Test-Path -LiteralPath $cand -PathType Container) { $resolvedRoot = $cand; $rootSource = 'probe'; break }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($resolvedRoot)) { break }
   }
 }
 if ([string]::IsNullOrWhiteSpace($resolvedRoot)) {
-  Say 'FAIL' 'skill_root_not_found hint=pass_-SkillRoot_or_set_RELAY_PORT_SKILL_ROOT'
+  Say 'FAIL' ('skill_root_not_found probed=' + ($dataRoots -join ',') + ' hint=pass_-SkillRoot_or_set_RELAY_PORT_SKILL_ROOT_or_MAVIS_DATA_DIR')
   exit 3
 }
 Say 'INFO' ('skill_root=' + $resolvedRoot + ' via=' + $rootSource)

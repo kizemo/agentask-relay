@@ -21,7 +21,7 @@ PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「�
 - ✅ 模板 6 件 + 说明书 1 件 + 自测证据 4 件
 - ✅ 端到端实测 14 项全 PASS（T1–T14：安装 / 幂等 / 收编 / 干跑 / 真起链 / 二次起链被拒 / 锁互斥 / 台账不被安装器写 / ASCII 与 BOM 全库扫 …）
 - ✅ 抓出并修掉三个缺陷：D1 幂等分支输出变量未初始化 ⇒ 目标 `AGENTS.md` 被截断成 0 字节；D2 `Write-Host` 证据需 `*>&1` 才捕得到；D3 安装器自身含中文字面量 ⇒ PS 5.1 按 ANSI 解码必乱码
-- ✅ 全局发布：`E:\Users\Duanyi\.minimax\.minimax\skills\relay-port\`（新会话的技能目录快照里可见）
+- ✅ 全局发布：`%USERPROFILE%\.minimax\.minimax\skills\relay-port\`（新会话的技能目录快照里可见）
 - ✅ 资产归拢到本目录（`MANIFEST.txt` 留证）
 - ✅ **批次 B2（同日 14:0x）**：完成后续候选 #7 发布一键化 / #2 装置版本化一致性 / #3 `-PlanDoc` 加固 / #4 收编判据加固，并把家规 1 的强制自测固化成 `scripts\selftest.ps1`
 - 安装器 `tool\scripts\install-relay.ps1` 17,262 B `8134C322B0AA0394` → **19,756 B `A7EF9E3CA5A4BEE8`**（收编双判据；mtime 13:55:22，run2/run3 自测与发布均按此件跑绿）
@@ -270,7 +270,7 @@ PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「�
 
 ### 公开面风险（推完如实记，别当已解决）
 
-1. **本机用户名路径仍在留证件里**：34 件含 `E:\Users\Duanyi\…` / `F:\soft\…`
+1. **本机用户名路径仍在留证件里**：34 件含 `%USERPROFILE%\…` / `F:\soft\…`
    （`examples\practilog\docs\relay\*.md` 单文件最多 19 行）。按家规 5 不改留证
    ⇒ 已随公开仓库上线。要清得走「从仓库排除 `examples\` / 改写留证」的**人工决策**。
 2. `examples\practilog\` 是 PractiLog 真实项目的台账与门禁留证（含真实 session id、门禁数字），
@@ -300,3 +300,101 @@ PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「�
 - 含 CJK 的长内联命令会被本地安全网关整体拦 ⇒ 文档一律用写文件工具落盘，bash 只做小补丁。
 - 重写 README 时最容易**顺手造编号**：本轮初稿把「台账写闸门」写成 `D5`，而缺陷编号体系里
   只到 D4，闸门是 B3 的加固项不是新缺陷 ⇒ 已改为独立 bullet。**引用编号前先 grep 原文**。
+
+---
+
+# 批次 B6：公开仓库隐私处置 + CI 闸门
+
+## 本批目标
+
+B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本批处置它，并补上 CI 回归闸门。
+
+## 暴露面量化（改前实测）
+
+用与 `scripts/refresh-manifest.ps1` 无关的独立口径，对 `git ls-files` 的 64 个受版本管理文件
+逐条正则扫本机绝对路径形态：**35 个文件 / 177 处命中**，分四类：
+
+| 形态 | 出现文件数 | 性质 |
+|---|---|---|
+| `E:\Users\<user>\.minimax\...`（全局 skill 路径） | 多 | 用户名 + 盘符，工具必需路径 |
+| `F:\soft\00selfmade\agentask-relay` | 多 | 本机开发根 |
+| `F:\soft\00selfmade\practilog*` / `D:\...` 等 | 若干 | 其它项目路径，出现在留证与示例里 |
+| 中文目录名（办公盘） | 1 | 语言 + 用户名 + 用途 |
+
+## 用户裁决（选项 1）
+
+**非留证文档抹掉本机绝对路径；`examples/practilog` 脱敏后留在仓库；保留 Git 历史，不做 force push。**
+推论：已推送提交的历史版本里仍能检出旧路径；`tool/references/` 留证件里的命中按家规 5（不伪造验收证据）
+一律不改，属公开可见。
+
+另两项裁决：**LICENSE 暂不加**（两份 README 已写明「默认保留所有权利」，与现状一致）；
+**CI 现在就加**。
+
+## 已做（实测）
+
+1. **脱敏规则表**：8 条 IgnoreCase 正则 → 占位符
+   （`<AGENTASK_RELAY_ROOT>` / `<PRACTILOG_ROOT>` / `<SELFMADE_ROOT>` / `<FLUTTER_ROOT>` /
+   `<CODEX_STAND_ROOT>` / `<OFFICE_ROOT>` / `%USERPROFILE%`）。
+   占位符是字面标记，不是假的另一台机器路径 ⇒ 读者不会误抄。
+2. **作用域**：`git ls-files` 排除 `tool/references/**` 与 `MANIFEST.txt` = 50 件；
+   逐件字节级读写、保留原 BOM 状态、LF 不转 CRLF。
+3. **结果**：首过 `TOUCHED=19 REPLACED=89`；三个台账 JSON 二次处理
+   （`device/relay.json`、`examples/practilog/docs/relay.json`、`protocol/probe-ws/docs/relay.json`，
+   替换 12 处）。终态复验 **`RESIDUAL_FILES=0 / RESIDUAL_TOTAL=0`**。
+4. **硬不变式复核**：`start-relay.ps1` / `relay-ledger.ps1` / `relay-lock.ps1`
+   装置件与 `tool/templates/` 同名件 **SHA256 逐字一致（identical=True ×3）**。
+5. **就地修一个脱敏引入的真缺陷**：`scripts/publish-relay.ps1` 的 skill 根候选原为
+   `'E:\Users\<user>\...'` 字面量，脱敏后变成单引号里的 `%USERPROFILE%\...`
+   （PowerShell 单引号不展开，且与下一候选重复）⇒ 改为
+   `(Join-Path $env:USERPROFILE '.minimax\.minimax\skills\relay-port')`，
+   既修根因又去掉本机路径。解析顺序不变：`-SkillRoot` > `RELAY_PORT_SKILL_ROOT` > 探测。
+   **但那条改法本身是错的**（第 7 步之前实测 `publish-relay -Direction publish` 报
+   `skill_root_not_found` / `EXIT=3`）：本机 `$HOME` 与 `%USERPROFILE%` 都是 `C:\Users\Duanyi`，
+   而 runtime data 目录在另一卷 ⇒ 「skill 装在 `%USERPROFILE%` 下」这个假设**根本不成立**，
+   与脱敏无关，且被这次改写固化了。已按根因重写探测：候选数据根
+   `$env:MAVIS_DATA_DIR` > `$env:MINIMAX_DATA_DIR` > `$HOME` > `%USERPROFILE%`（去重），
+   每根再试三种层级形态（`.minimax\.minimax\skills\relay-port` / `minimax\.minimax\...` / `skills\...`），
+   取第一个命中的容器；失败信息带上 `probed=` 实测候选，便于一次定位。
+   这台机器上 `MAVIS_DATA_DIR` **未被注入**（外层会话读为空），所以仍依赖 E 盘根在候选里命中；
+   跨机器/跨卷的**正解仍是显式传 `-SkillRoot`** 或设 `RELAY_PORT_SKILL_ROOT`（脚本 doc 已写明）。
+6. **CI**：新增 `.github/workflows/selftest.yml`，`windows-latest`，push(main)/PR/手动触发，
+   跑 `scripts/selftest.ps1 -EvidencePath <runner temp>`，退出码透传，
+   失败时上传留证 log 为 artifact；成功路径不落新证据 ⇒ 不污染 `tool/references/` 编号体系。
+   两份 README 标题下加同一枚构建状态徽章（纯 ASCII，不破坏英文默认 README 的零非 ASCII 要求）。
+
+7. **家规 1 的 selftest 已重跑**（改过 `tool/SKILL.md` ⇒ 必须跑）：
+   `pwsh -NoProfile -File scripts/selftest.ps1 -EvidencePath <abs>` ⇒ **`SELFTEST_EXIT=0`、
+   `SUITE_END pass=55 fail=0`**。逐件断言原文落盘
+   `tool/references/selftest-2026-11-25i.txt`（沿用本目录 `selftest-<date><字母>` 编号惯例，接 `…h`）。
+   留证件含本机绝对路径，属家规 5 保留范围，**不脱敏**。
+   注：套件不调 `session_create`，真实起链仍需人工一跳（日志自带 `MANUAL_STEP` 提示）。
+
+## 未做 / 待下一轮
+
+- `scripts/publish-relay.ps1 -Direction publish` 把脱敏后的全局 skill 同步齐。
+- `scripts/refresh-manifest.ps1` 重算 `MANIFEST.txt`（本批改了 20+ 文件，必变）。
+- 提交 + push 到 `origin/main`。
+
+## 证据路径
+
+| 证据 | 位置 |
+|---|---|
+| 脱敏逐文件明细（规则命中数 / BOM / 行尾） | `tool/references/scrub-2026-11-25-local-paths.txt` |
+| 本批改动清单 | `git status --porcelain`（批前基线 = B5 收尾 HEAD） |
+| 硬不变式复核 | 上述三条 SHA256 比对，`identical=True` |
+| selftest 逐件断言原文 | `tool/references/selftest-2026-11-25i.txt` |
+
+## 本批工具坑（下一轮别再踩）
+
+- **.NET Regex（pwsh 7）不支持 `\P{ASCII}`** —— 报 `Unknown property 'ASCII'`。
+  要「非 ASCII」写 `[^\x00-\x7F]`。首轮扫描因此整条中断，且**在第一个文件就抛 ⇒ 无任何部分写入**（幸运，不是常态）。
+- **JSON 台账里的路径是双反斜杠转义**（`"E:\\Users\\..."`）。按 markdown 单反斜杠形态写的正则
+  在 JSON 里 **0 命中**，看起来像「没有泄漏」，其实是匹配形态不对。正斜杠形态（`"E:/Users/..."`）同理要单列。
+- **不要用 `ConvertFrom-Json` 给台账 JSON 当安全门**：这些台账 JSON 本来就带**重复键**
+  （多个 `notes`），pwsh 7 的严格解析直接报错 —— 这是既有状态，不是本次改动造成的。
+  改用「替换后孤立反斜杠数不得增加」做门：
+  `([regex]::Matches($t,'(?<!\\)\\(?!\\)')).Count`，实测 `loneBefore=0 loneAfter=0` 三件全过。
+- **脱敏会把「只在单引号字符串里当文档注释用的路径」变成运行时字面量** —— 见第 5 条，
+  扫完必须 grep 一遍 `%USERPROFILE%` 是否落进 `.ps1` 的单引号串里。
+- 独立脚本 `-File` 执行时 `Test-Path` 判定与内联执行不一致（同一表达式内联命中、`-File` 全判 MISSING），
+  本轮未能定位根因；最终走内联。**别把这种不一致当成脚本 bug 去改门禁。**

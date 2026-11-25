@@ -1,0 +1,42 @@
+name: selftest
+
+# The relay kit is Windows-native: the lock relies on NTFS FileMode.CreateNew
+# atomicity and the harness runs under pwsh, so the suite only makes sense on a
+# Windows runner. See HANDOFF.md for what each case guards.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run one-click regression suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $log = Join-Path $env:RUNNER_TEMP 'relay-selftest-ci.log'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/selftest.ps1 -EvidencePath $log
+          $code = $LASTEXITCODE
+          "SELFTEST_EXIT=$code" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path -LiteralPath $log) {
+            Copy-Item -LiteralPath $log -Destination 'relay-selftest-ci.log'
+          }
+          exit $code
+
+      - name: Upload evidence log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-selftest-evidence
+          path: relay-selftest-ci.log
+          if-no-files-found: ignore

@@ -79,7 +79,7 @@
 - **task60 T9**（`:322`）：`which is not an instance of 'StateError'`
   （用例名 `T9（60.4c）：已软删的项目行 ⇒ 同样抛 StateError，墓碑行原样不动`）
 - **task63**：`This was caught by the test expectation on the following line:
-  file:///F:/soft/00selfmade/practilog/apps/desktop/test/task63_w7_l10n_test.dart line 168`，
+  file:///<PRACTILOG_ROOT>/apps/desktop/test/task63_w7_l10n_test.dart line 168`，
   用例 `结果撰写（OutcomeComposer）` / `en 态：落库短语与前缀不翻译（芯片仍是中文，编码仍是 [结论]）`
 
 ### 根因（两条，各自坐实）
@@ -249,12 +249,12 @@ docs/relay/supervision-2026-11-24.md
 - 本环未验证项：`reports\task51-gate.ps1` 的真实执行结果（禁止运行，只能用复算逼近）
 
 ```powershell
-Set-Location 'F:\soft\00selfmade\practilog\apps\desktop'
+Set-Location '<PRACTILOG_ROOT>\apps\desktop'
 $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'; $env:FLUTTER_STORAGE_BASE_URL='https://storage.flutter-io.cn'
-& 'F:\soft\flutter\flutter\bin\flutter.bat' analyze
-& 'F:\soft\flutter\flutter\bin\flutter.bat' test test\task60_project_domain_edit_test.dart --reporter compact
-& 'F:\soft\flutter\flutter\bin\flutter.bat' test test\task63_w7_l10n_test.dart --reporter compact
-& 'F:\soft\flutter\flutter\bin\flutter.bat' test test\l10n_base_test.dart --reporter compact
+& '<FLUTTER_ROOT>\bin\flutter.bat' analyze
+& '<FLUTTER_ROOT>\bin\flutter.bat' test test\task60_project_domain_edit_test.dart --reporter compact
+& '<FLUTTER_ROOT>\bin\flutter.bat' test test\task63_w7_l10n_test.dart --reporter compact
+& '<FLUTTER_ROOT>\bin\flutter.bat' test test\l10n_base_test.dart --reporter compact
 ```
 
 ---
@@ -333,7 +333,7 @@ $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'; $env:FLUTTER_STORAGE_BASE_URL='
 **命令**：
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File 'F:\soft\00selfmade\practilog\reports\task51-gate.ps1'
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<PRACTILOG_ROOT>\reports\task51-gate.ps1'
 ```
 
 **时间线**：23:03:26 起（脚本自身先搬 stale cache），23:05:43 写出 summary，约 2 分 17 秒。
@@ -397,7 +397,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File 'F:\soft\00selfmade\practilog\repo
 ### 十一·2 第二轮实跑（带参，正式判据轮）
 
 ```powershell
-& pwsh -NoProfile -ExecutionPolicy Bypass -File 'F:\soft\00selfmade\practilog\reports\task51-gate.ps1' -ExpectDesktopTests 836
+& pwsh -NoProfile -ExecutionPolicy Bypass -File '<PRACTILOG_ROOT>\reports\task51-gate.ps1' -ExpectDesktopTests 836
 ```
 
 stale cache 仍由脚本自搬 → `build_moved_20261124-230852`（`Move-Item`，非删除）；`RUN_AT=2026-11-24 23:11:01`；`EXITCODE=0`。
@@ -527,6 +527,6 @@ stale cache 仍由脚本自搬 → `build_moved_20261124-230852`（`Move-Item`�
 
 **未验证项（如实声明）**：本章落盘后**没有**重跑门禁本体。理由是零代码改动；`reports\` 被 git 忽略、不进 `git status`，`docs\relay/*` 已在 Q8 白名单内属合法改动面 ⇒ 重跑只会重复得到 `PASS`，不产生新信息。若下一环要本批的新鲜门禁证据，按 §十一·1 的命令带 `-ExpectDesktopTests 836` 重跑即可（约 2 分 10 秒，stale cache 由脚本自搬）。
 
-**放行但未派工（如实声明）**：`docs\relay.json` 已就绪（`status=running` / `current_stage=6` / `blocked_on` 空），但本环**没有**调用 `session_create`。理由：stage 6 是末环，且 68.4h 的 `git commit` / `push` 必须用户明确授权，故留一次确认由用户决定何时开跑。用户确认后按 `docs\AGENT-RELAY.md:80-90` 的配方建会话：`agent_name="me"` / `title="relay-6-w9-close"` / `workspace_dir="F:\soft\00selfmade\practilog"` / `content` = stage 5 回答里给出的接力 prompt，**不传 `effort`**；建完立刻 `session get` 回读 `effective_model` / `workspace_dir` 两要素再登记。
+**放行但未派工（如实声明）**：`docs\relay.json` 已就绪（`status=running` / `current_stage=6` / `blocked_on` 空），但本环**没有**调用 `session_create`。理由：stage 6 是末环，且 68.4h 的 `git commit` / `push` 必须用户明确授权，故留一次确认由用户决定何时开跑。用户确认后按 `docs\AGENT-RELAY.md:80-90` 的配方建会话：`agent_name="me"` / `title="relay-6-w9-close"` / `workspace_dir="<PRACTILOG_ROOT>"` / `content` = stage 5 回答里给出的接力 prompt，**不传 `effort`**；建完立刻 `session get` 回读 `effective_model` / `workspace_dir` 两要素再登记。
 
 **判据**：下一环读本章即可确认「8 条人工验收点已全部拍板、零代码改动、链已放行到 stage 6」，无需回读对话上下文。

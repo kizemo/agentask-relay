@@ -126,10 +126,10 @@ static const List<String> nextStepLabels = <String>[
 **验证命令**（在 `apps\desktop` 目录、进程内设镜像环境变量）：
 
 ```powershell
-Set-Location 'F:\soft\00selfmade\practilog\apps\desktop'
+Set-Location '<PRACTILOG_ROOT>\apps\desktop'
 $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'; $env:FLUTTER_STORAGE_BASE_URL='https://storage.flutter-io.cn'
-& 'F:\soft\flutter\flutter\bin\flutter.bat' analyze
-& 'F:\soft\flutter\flutter\bin\flutter.bat' test test\l10n_base_test.dart --reporter compact
+& '<FLUTTER_ROOT>\bin\flutter.bat' analyze
+& '<FLUTTER_ROOT>\bin\flutter.bat' test test\l10n_base_test.dart --reporter compact
 ```
 
 `flutter analyze` 原始输出（最终态）：
@@ -144,7 +144,7 @@ No issues found! (ran in 7.0s)
 `flutter test test\l10n_base_test.dart --reporter compact` 原始输出（最终态，节选首尾，逐字）：
 
 ```text
-00:02 +0: loading F:/soft/00selfmade/practilog/apps/desktop/test/l10n_base_test.dart
+00:02 +0: loading <PRACTILOG_ROOT>/apps/desktop/test/l10n_base_test.dart
 00:02 +1: 键表结构 417 条 getter 全部登记在对照表里
 00:02 +2: 键表结构 4 条列表型 getter 全部登记在列表表里
 00:02 +3: 键表结构 53 条插值方法登记在方法表里

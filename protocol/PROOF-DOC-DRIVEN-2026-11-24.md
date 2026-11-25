@@ -5,7 +5,7 @@
 
 ## 一、实验条件
 
-工作区：`E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws`（普通目录，非 git 仓库）
+工作区：`%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws`（普通目录，非 git 仓库）
 
 投入该项目的东西只有两份文档：
 

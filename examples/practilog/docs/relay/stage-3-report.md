@@ -1,7 +1,7 @@
 # Stage 3 报告 · U1–U4 未判定复验 + 27 条新 l10n 键设计稿
 
 > 会话：`mvs_c65a7cd9bcaa47409abe7dc89ffa7ac8`（stage 3 · `read_only_verify_and_design`）
-> 仓库根：`F:\soft\00selfmade\practilog` · 计划真源：`docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` §68.4a–i / §68.5 / §68.6 / §68.7（`:9611-9619` / `:9631-9649`）
+> 仓库根：`<PRACTILOG_ROOT>` · 计划真源：`docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` §68.4a–i / §68.5 / §68.6 / §68.7（`:9611-9619` / `:9631-9649`）
 > 前序交付：`docs\relay\stage-1-inventory.md`、`docs\relay\stage-2-scope.md`
 
 ---
@@ -108,7 +108,7 @@
 
 ```powershell
 # scan-cjk-ui.ps1 - ASCII only, CRLF, no BOM
-param([string]$Root = 'F:\soft\00selfmade\practilog')
+param([string]$Root = '<PRACTILOG_ROOT>')
 $ErrorActionPreference = 'Stop'
 $scanDir = Join-Path $Root 'apps\desktop\lib'
 $files = @(Get-ChildItem -Path $scanDir -Recurse -Filter *.dart -File | Sort-Object FullName)
@@ -521,20 +521,20 @@ static String displayLabel(AppLocalizations t, String stored) {
 
 | 指针 | 用途 |
 |---|---|
-| `F:\soft\00selfmade\practilog\docs\relay\stage-3-report.md` | **本环交付**（本文件） |
-| `F:\soft\00selfmade\practilog\docs\relay\stage-2-scope.md` | 第 2 环：范围定稿 + 68 条切分（`§6` = U1–U4 复验方法，`§7` = stage 4/5/6 切分） |
-| `F:\soft\00selfmade\practilog\docs\relay\stage-1-inventory.md` | 第 1 环：批次盘点 |
-| `F:\soft\00selfmade\practilog\docs\relay.json` | 状态机（stage 3 条目 → done、`current_stage` → 4、追加 stage 4 条目、`sessions` 追加 stage 4 会话、`next_session_id`） |
-| `F:\soft\00selfmade\practilog\docs\RELAY-ADAPTATION.md` | 裁决文档（§1 顺序 / §4 人工验收点 / §5 并发检测 / §9 模型策略） |
-| `F:\soft\00selfmade\practilog\AGENTS.md` `:487-494` | 接力硬规则（每环开工必回读） |
-| `F:\soft\00selfmade\practilog\apps\desktop\lib\src\widgets\outcome_composer.dart` `:27-57` / `:174-209` | 21 条落库值 + 芯片渲染点 |
-| `F:\soft\00selfmade\practilog\apps\desktop\lib\src\pages\projects_page.dart` `:284-292` / `:295-313` | `_messageOf` 与 `_optionalDay` |
-| `F:\soft\00selfmade\practilog\apps\desktop\lib\src\data\project_store.dart` `:399-401` / `:469-471` | 两条上屏 `StateError` |
-| `F:\soft\00selfmade\practilog\apps\desktop\test\l10n_base_test.dart` `:27-33` / `:44-109` / `:111-118` | 键数断言 + byMethod 名单 |
-| `F:\soft\00selfmade\practilog\apps\desktop\test\l10n_harness.dart` `:27-29` / `:586-589` | 访问器表 + 同值白名单 |
-| `F:\soft\00selfmade\practilog\apps\desktop\lib\src\l10n\l10n_keys.dart` `:1486-1490` / `:1906-1911` / `:1914` | `byGetter` / `byListGetter` / `byMethod` 三表 |
-| `F:\soft\00selfmade\practilog\packages\core_domain\lib\src\entities.dart` `:64-70` / `:111` | 扫描面外的领域异常 |
-| `F:\soft\00selfmade\practilog\reports\task51-gate.ps1` `:141/:183/:187/:188/:194/:206/:207/:227-246/:263/:269` | 门禁白名单实测行号 |
-| `F:\soft\00selfmade\practilog\docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` `:9611-9619` / `:9631-9649` | 台账真源 §68.4a–i / §68.6 / §68.7 |
-| `F:\soft\00selfmade\practilog\reports\task68-gate-run1.log` | 并发门禁原始输出（**引用，非本环实测**） |
-| `F:\soft\00selfmade\practilog\reports\task68-deadlock-scan.md` | worker B 扫描报告（口径差异 7 条的来源之一） |
+| `<PRACTILOG_ROOT>\docs\relay\stage-3-report.md` | **本环交付**（本文件） |
+| `<PRACTILOG_ROOT>\docs\relay\stage-2-scope.md` | 第 2 环：范围定稿 + 68 条切分（`§6` = U1–U4 复验方法，`§7` = stage 4/5/6 切分） |
+| `<PRACTILOG_ROOT>\docs\relay\stage-1-inventory.md` | 第 1 环：批次盘点 |
+| `<PRACTILOG_ROOT>\docs\relay.json` | 状态机（stage 3 条目 → done、`current_stage` → 4、追加 stage 4 条目、`sessions` 追加 stage 4 会话、`next_session_id`） |
+| `<PRACTILOG_ROOT>\docs\RELAY-ADAPTATION.md` | 裁决文档（§1 顺序 / §4 人工验收点 / §5 并发检测 / §9 模型策略） |
+| `<PRACTILOG_ROOT>\AGENTS.md` `:487-494` | 接力硬规则（每环开工必回读） |
+| `<PRACTILOG_ROOT>\apps\desktop\lib\src\widgets\outcome_composer.dart` `:27-57` / `:174-209` | 21 条落库值 + 芯片渲染点 |
+| `<PRACTILOG_ROOT>\apps\desktop\lib\src\pages\projects_page.dart` `:284-292` / `:295-313` | `_messageOf` 与 `_optionalDay` |
+| `<PRACTILOG_ROOT>\apps\desktop\lib\src\data\project_store.dart` `:399-401` / `:469-471` | 两条上屏 `StateError` |
+| `<PRACTILOG_ROOT>\apps\desktop\test\l10n_base_test.dart` `:27-33` / `:44-109` / `:111-118` | 键数断言 + byMethod 名单 |
+| `<PRACTILOG_ROOT>\apps\desktop\test\l10n_harness.dart` `:27-29` / `:586-589` | 访问器表 + 同值白名单 |
+| `<PRACTILOG_ROOT>\apps\desktop\lib\src\l10n\l10n_keys.dart` `:1486-1490` / `:1906-1911` / `:1914` | `byGetter` / `byListGetter` / `byMethod` 三表 |
+| `<PRACTILOG_ROOT>\packages\core_domain\lib\src\entities.dart` `:64-70` / `:111` | 扫描面外的领域异常 |
+| `<PRACTILOG_ROOT>\reports\task51-gate.ps1` `:141/:183/:187/:188/:194/:206/:207/:227-246/:263/:269` | 门禁白名单实测行号 |
+| `<PRACTILOG_ROOT>\docs\superpowers\plans\2026-11-07-b1-flutter-implementation.md` `:9611-9619` / `:9631-9649` | 台账真源 §68.4a–i / §68.6 / §68.7 |
+| `<PRACTILOG_ROOT>\reports\task68-gate-run1.log` | 并发门禁原始输出（**引用，非本环实测**） |
+| `<PRACTILOG_ROOT>\reports\task68-deadlock-scan.md` | worker B 扫描报告（口径差异 7 条的来源之一） |

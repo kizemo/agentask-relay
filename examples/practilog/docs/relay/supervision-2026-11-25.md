@@ -1,7 +1,7 @@
 # 监督旁注 · 2026-11-25 00:00–00:20 · stage 5 收尾 → stage 6 末环起环
 
 > 本文件是**监督会话旁注**，不是链上环的交付物。链上权威台账仍只认 `docs\relay.json` 与 `docs\relay\stage-N-report.md`。
-> 监督会话 `mvs_ea04f090b03346079cda1d888f816a0e`（workspace `C:\Users\Duanyi`），不在 `stages[]` 内，不改 `relay.json` 的 `stages`/`sessions` 条目。
+> 监督会话 `mvs_ea04f090b03346079cda1d888f816a0e`（workspace `%USERPROFILE%`），不在 `stages[]` 内，不改 `relay.json` 的 `stages`/`sessions` 条目。
 
 ## 1. 本轮结论（先看这段）
 
@@ -10,7 +10,7 @@
 | stage 5 | **done**（会话 `mvs_dd5bbcf80ab040c5a017d664411a84eb`），8 条人工验收点已由用户拍板（23:16），**代码改动 0** |
 | 链状态（链上环自收尾时写） | `status=running` / `current_stage=6` / `stages` 5 条全 done / `blocked_on` 空（原文改名 `blocked_on_closed` 保留 8 条） |
 | stage 6 | **本轮由监督会话补起**，会话 `mvs_34ce7f807b0a42e186ede8fa6db366e1`，标题 `relay-6-w9-close` |
-| stage 6 三要素回读 | `workspaceDir=F:\soft\00selfmade\practilog`（`isDefaultWorkspace=false`）/ `effective_model=custom_provider:provider-aa5659/deepseek-v4.1-flash-1017` / `status.type=started` / `createdBySessionId=mvs_ea04f090…` |
+| stage 6 三要素回读 | `workspaceDir=<PRACTILOG_ROOT>`（`isDefaultWorkspace=false`）/ `effective_model=custom_provider:provider-aa5659/deepseek-v4.1-flash-1017` / `status.type=started` / `createdBySessionId=mvs_ea04f090…` |
 | `HEAD` | `85b809a`（AHEAD=0，本链至今零 git 写操作） |
 | 工作区 | `git status --porcelain -uall` = 21 行（含 9 个 stage 4 实现文件 + 2 个测试文件 + `AGENTS.md` + 9 个 relay docs） |
 

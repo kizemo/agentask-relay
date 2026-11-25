@@ -2,7 +2,7 @@
   "status": "done",
   "current_stage": 4,
   "max_stages": 3,
-  "workspace_dir": "E:\\Users\\Duanyi\\.minimax\\.minimax\\maintenance\\relay\\probe-ws",
+  "workspace_dir": "%USERPROFILE%\\.minimax\\.minimax\\maintenance\\relay\\probe-ws",
   "stages": [
     {
       "stage": 1,

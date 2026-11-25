@@ -18,7 +18,7 @@ STAGE-3-BY|mvs_12e46516919f406e9b4dd87b49de5f41
 | max_stages | `3` |
 | stages | 2 条（Stage 1、Stage 2 记录） |
 | next_session_id | 首次读取为 `null`；Stage 2 的延迟回写随后落地为 `mvs_12e46516919f406e9b4dd87b49de5f41`（= 本会话 id），见「并发写入说明」 |
-| workspace_dir | `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws` |
+| workspace_dir | `%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws` |
 
 ## 本阶段完成的活
 

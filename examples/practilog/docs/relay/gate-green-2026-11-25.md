@@ -10,7 +10,7 @@
 命令（绝对路径，脚本零改动）：
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File 'F:\soft\00selfmade\practilog\reports\task51-gate.ps1' -ExpectDesktopTests 882
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<PRACTILOG_ROOT>\reports\task51-gate.ps1' -ExpectDesktopTests 882
 ```
 
 | 判据 | 值 | 说明 |

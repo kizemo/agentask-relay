@@ -17,7 +17,7 @@ STAGE-1-BY|mvs_b8740844c4fe4c17b784a68d327e4c4a
 | max_stages | `3` |
 | stages | `[]`（空，无历史记录） |
 | next_session_id | `null` |
-| workspace_dir | `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws` |
+| workspace_dir | `%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws` |
 
 ## 本阶段完成的活
 
@@ -39,7 +39,7 @@ STAGE-1-BY|mvs_b8740844c4fe4c17b784a68d327e4c4a
 | relay.json 变更 | `stages` 0 → 1 条；`current_stage` 1 → 2；`next_session_id` = 下一跳 session id |
 | 下一跳 session id | `mvs_f245bf8bdb31478193f42c0e919863f4`（`session_create` 返回值；首条消息已激活该会话，turn `turn_6efb7990-bcb8-495d-9ca0-ca1ba767ac19`） |
 | 下一跳首条消息 | `按项目 AGENTS.md 的硬规则执行当前阶段。` |
-| 下一跳 workspace_dir | `E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws` |
+| 下一跳 workspace_dir | `%USERPROFILE%\.minimax\.minimax\maintenance\relay\probe-ws` |
 | 下一阶段 | Stage 2（`current_stage = 2` ≤ `max_stages = 3`，链条继续） |
 
 ## 证据

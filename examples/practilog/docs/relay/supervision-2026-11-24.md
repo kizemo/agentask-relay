@@ -1,8 +1,8 @@
 # 接力链监督记录 · 2026-11-24（监督会话，非链上环）
 
-> 本文件由**用户开的监督会话** `mvs_ea04f090b03346079cda1d888f816a0e` 写入（workspace `C:\Users\Duanyi`，非链上环、不是 `stages[]` 里的一环）。
+> 本文件由**用户开的监督会话** `mvs_ea04f090b03346079cda1d888f816a0e` 写入（workspace `%USERPROFILE%`，非链上环、不是 `stages[]` 里的一环）。
 > 用途：记录链的推进状态、判活口径、以及**监督者不得越界**的边界，避免下一位监督会话从零重做。
-> 链的唯一进度真相仍是 `F:\soft\00selfmade\practilog\docs\relay.json`；本文件只做指针与旁注。
+> 链的唯一进度真相仍是 `<PRACTILOG_ROOT>\docs\relay.json`；本文件只做指针与旁注。
 
 ---
 
@@ -23,7 +23,7 @@
 | `status` / `current_stage` / `max_stages` | `running` / `4` / `6` | `Get-Content docs\relay.json \| ConvertFrom-Json` |
 | stage 4 会话 | `mvs_6e8375ea012f4f64a23fdcd02dde6139`（`stages[3].session_id` 已回填，状态 `in_progress`） | `relay.json` + `mavis session list` |
 | stage 4 起链时刻 / 模型 | `2026-11-24T22:17:23+08:00` / `minimax/MiniMax-M3`（未降级） | `relay.json` + `session get` |
-| stage 4 工作区 | `F:\soft\00selfmade\practilog`（`isDefaultWorkspace=false` ⇒ 生效） | `session get` |
+| stage 4 工作区 | `<PRACTILOG_ROOT>`（`isDefaultWorkspace=false` ⇒ 生效） | `session get` |
 | stage 4 判活 | 最后一次工具调用 `2026-11-24 22:19:36`（并发检测 bash），本轮**在跑** | `session messages` 末条 timestamp |
 | 仓库 HEAD / 脏文件 | `85b809a` / 5 行（`M AGENTS.md` + `?? docs/AGENT-RELAY.md` + `?? docs/RELAY-ADAPTATION.md` + `?? docs/relay.json` + `?? docs/relay/`） | `git -C … status --porcelain` |
 | l10n 写集是否被并发会话占住 | **否** —— `l10n_keys.dart`(21:18:21) / `parts\dialog.dart`(17:42:26) / `parts\projects.dart`(21:11:45) / `test\l10n_base_test.dart`(21:17:39) 全部早于 stage 4 开工，**不 dirty** | stage 4 自己的并发检测输出（22:19:36） |
@@ -39,8 +39,8 @@
 
 ## 4. `session_create` 起环姿势（本轮实测）
 
-- `workspace_dir` 必须写**反斜杠绝对路径**：`F:\soft\00selfmade\practilog`。
-  stage 3 传 `F:/soft/00selfmade/practilog`（正斜杠）→ 运行时未采纳，落到 `…\.minimax\sessions\<sid>\workspace`，那一环整轮读不到仓库；stage 4 传反斜杠 → 生效。
+- `workspace_dir` 必须写**反斜杠绝对路径**：`<PRACTILOG_ROOT>`。
+  stage 3 传 `<PRACTILOG_ROOT>`（正斜杠）→ 运行时未采纳，落到 `…\.minimax\sessions\<sid>\workspace`，那一环整轮读不到仓库；stage 4 传反斜杠 → 生效。
 - `input_schema` 只有 `content` / `agent_name` / `title` / `workspace_dir` / `location` / `model`：**无 `effort`、无 `defer_first_turn`、无 `parent_session_id`**（与 `docs\RELAY-ADAPTATION.md` §9.5 一致）。建环即开跑，无预检窗口 ⇒ 起环后**立刻** `session get` 回读 `workspaceDir` / `isDefaultWorkspace` / `effective_model` 三要素。
 
 ## 5. 监督者要盯的三个风险（未验证 = 待观察）
@@ -51,10 +51,10 @@
 
 ## 6. 链内已有交付（指针，供快速定位）
 
-- `F:\soft\00selfmade\practilog\docs\relay\stage-1-inventory.md` —— 只读盘点：最近未闭环批次判定 + 门禁缺口
-- `F:\soft\00selfmade\practilog\docs\relay\stage-2-scope.md` —— 下一批次范围定稿 + 521 条切分（口径被 stage 3 订正）
-- `F:\soft\00selfmade\practilog\docs\relay\stage-3-report.md` —— U1–U4 复验 + 27 条新键设计稿（stage 4 的唯一施工依据）
-- `F:\soft\00selfmade\practilog\docs\relay\stage-4-implementation.md` —— stage 4 交付（**尚未生成**）
+- `<PRACTILOG_ROOT>\docs\relay\stage-1-inventory.md` —— 只读盘点：最近未闭环批次判定 + 门禁缺口
+- `<PRACTILOG_ROOT>\docs\relay\stage-2-scope.md` —— 下一批次范围定稿 + 521 条切分（口径被 stage 3 订正）
+- `<PRACTILOG_ROOT>\docs\relay\stage-3-report.md` —— U1–U4 复验 + 27 条新键设计稿（stage 4 的唯一施工依据）
+- `<PRACTILOG_ROOT>\docs\relay\stage-4-implementation.md` —— stage 4 交付（**尚未生成**）
 
 ## 7. 已验证 / 推断 / 未验证
 
