@@ -691,16 +691,26 @@ push 授权在本轮给出（此前 B7/B8 轮**未** push）。本轮结束状�
 | `MD_TXT_CR_TOTAL` | `0` | 仓库 `.md` 与 `tool\references\*.txt` 全 LF（家规 4） |
 | `MANIFEST_BYTES` | `5649` | 清单本体字节数 |
 | `MANIFEST_NON_ASCII` | `0` | 清单纯 ASCII |
-| `CHANGE_COUNT` | `1` | 相对上一次清单只有 `HANDOFF.md` 变更（即本节回填本身） |
+| `CHANGE_COUNT` | `1` | 相对上一次清单只有 `HANDOFF.md` 变更（即本节回填本身）；**提交后再跑一次为 `0`** |
 | `MANIFEST_EXIT` | `0` | 脚本退出码 |
 
-**口径提醒**：本节文字本身写进 `HANDOFF.md` 后，清单会因 `HANDOFF.md` 字节数变化而重算（`MANIFEST_BYTES` / `CHANGE_COUNT` 可能 ±1），
-所以本节写完**又跑了一次**清单以对齐最终态；上表是**最终那次**运行的回读值。
-清单统计 `.md` 与 `.txt` 一起 ⇒ 改 `HANDOFF.md` 必须以最后一次 `refresh-manifest` 为准，别用本表去推断清单自身哈希。
+**口径提醒**：`MANIFEST.txt` 首行带 `generated: <时间戳>` ⇒ **每跑一次清单它就变一次**，与内容无关。
+所以正确收尾顺序是：**改 `HANDOFF.md` → 跑一次清单 → 把 `HANDOFF.md` + `MANIFEST.txt` 一起提交 → 不要再跑清单**（或跑完用 `git checkout -- MANIFEST.txt` 回退）。
+本轮入库清单与盘上文件做了**内容级核对**（逐行比 sha16 + 字节数，而不是信清单自报）：
+`ROWS=85 MISMATCH=0` ⇒ 入库清单的 85 行全部与盘上真实文件一致。
+清单统计 `.md` 与 `.txt` 一起 ⇒ 改 `HANDOFF.md` 必须重新跑清单，否则入库清单的 `HANDOFF.md` 行哈希会与盘上不符。
 
 ### ⑧ 提交与推送（2026-11-25）
 
 - 分支 `main`，远端 `origin = https://github.com/kizemo/agentask-relay.git`（push 已获用户授权）。
-- 本批入库：`git add -A`（新增 9 件 + 修改 14 件左右），一次提交；随后 `git push origin main`。
+- 本批入库：新增 9 件 + 修改 14 件，提交 `1f966c3`（`B9: runtime adaptation layer (Claude Code / Codex CLI / OpenClaw)`），
+  随后 `git push origin main` ⇒ `HEAD` 与 `origin/main` 同为 `1f966c342fd49c449aecec860d7aabfb4c84ca15`，工作树干净。
+- 此前两个未推送的历史提交 `473474a`（B7+B8 证据）与 `42ef625`（F4 skill-root 自发现 + 交接记录）也在本次 push 中一并上库。
 - 推送后 `origin/main` 与本地 `main` 一致 ⇒ 下一轮新会话 clone 即得运行时适配层 + 新文档。
+- 复核（只读）：`publish-relay.ps1 -Direction verify` ⇒ `STATUS=OK fail=0 warn=2`（两条 `SNAPSHOT_DRIFT` 属 `examples\` 历史快照，家规 8 不为它同步）、`tracked_files=41`。
+- **坑（新增）**：`git commit -F -` 在 PowerShell 里配 here-string 会把消息当 **pathspec**（报 `did not match any file(s) known to git`）⇒
+  改用 `-m` 或先写消息文件再 `-F <file>`；`git push` 仍会照常推走**之前**的提交（本次就是），所以 commit 失败后要回读 `git log` 确认到底提交上没有。
+- **坑（新增）**：`refresh-manifest.ps1` 每次运行都会刷新 `MANIFEST.txt` 首行的 `generated:` 时间戳 ⇒
+  **清单跑在提交之前**（最后一次跑完立刻提交），跑在提交之后就会留下一条与内容无关的永久脏 diff（本轮 `git checkout -- MANIFEST.txt` 回退解决）。
+  判据不看 `git status` 脏不脏，看**入库清单逐行与盘上文件的 sha16+字节数是否一致**。
 
