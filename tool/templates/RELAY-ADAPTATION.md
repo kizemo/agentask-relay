@@ -7,6 +7,7 @@
 ## 1. 项目身份
 
 - 项目名：{{REPO_NAME}}
+- 运行时：{{RUNTIME}}
 - 仓库根（绝对路径，反斜杠，用于 `session_create.workspace_dir`）：{{REPO}}
 - 计划文档（仓库相对）：{{PLAN_DOC}}
 - 本轮目标：{{TARGET}}
@@ -71,3 +72,16 @@
 - 激活包：`docs\relay\ACTIVATION-PROMPT.txt`（用户一句话即可起链）。
 - 每环落盘：`docs\relay\stage-<N>-<短名>.md`，编号逐字续编，不新建跨项目指针。
 - 台账：`docs\relay.json`，回写只许追加，回写前必须重读盘。
+
+## 9. 运行时与起环方式（安装器自动填，装完核对）
+
+- 运行时：`{{RUNTIME}}`。**换运行时必须重装**（`-Force`）或手工改本节，否则家规块与本文件会各说各话。
+- 起环方式：{{SPAWN_RULE}}
+- 家规落点：`{{RULE_FILES}}`
+  - `AGENTS.md`：Codex CLI / OpenClaw / MCode 原生读取。
+  - `CLAUDE.md`：Claude Code 只在没有 `CLAUDE.md` 时才回退读 `AGENTS.md`；装了 `CLAUDE.md` 就会遮蔽 `AGENTS.md`，所以两种运行时都要写。
+- 运行时约束（人工核对）：
+  - `mcode`：起环用内置 `session_create` 工具；`workspace_dir` 必须反斜杠绝对路径。
+  - `claude-code`：下一环是无头 `claude -p` 进程，子进程跑完即结束，靠 `relay-spawn.ps1` 再起下一环。
+  - `codex`：下一环是无头 `codex exec` 进程，退出码即成败。
+  - `openclaw`：下一环用 `sessions_spawn` 工具；**OpenClaw 只注入它 workspace 根目录的 `AGENTS.md`**，仓库不是 workspace 时必须先把家规块复制过去。

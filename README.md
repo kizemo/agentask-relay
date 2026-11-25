@@ -1,222 +1,245 @@
-# agentask-relay - engineering home of the unattended relay kit (`relay-port`)
+# agentask-relay — the unattended relay kit (`relay-port`)
 
 [![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
 
-<p align="left">
-  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/lang-English-2ea44f?style=for-the-badge"/></a>
-  <a href="./README.zh-CN.md"><img alt="Chinese (Simplified)" src="https://img.shields.io/badge/lang-Chinese_Simplified-0969da?style=for-the-badge"/></a>
-</p>
+**English** | [简体中文](./README.zh-CN.md)
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+Put an **unattended relay chain** into any git project. One sentence starts a
+self-advancing chain of sessions where exactly one writer runs at a time, every
+stage has acceptance criteria, and the chain stops on its own the moment a human
+checkpoint is reached.
 
-**English** | [Chinese (Simplified)](./README.zh-CN.md)
+Works on **MCode**, **Claude Code**, **Codex CLI** and **OpenClaw**.
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+---
 
-This directory is the **evolvable engineering surface** for one tool: installing an
-"unattended relay chain" into any git project, so that a single prompt starts a
-self-advancing chain of sessions with one writer per stage.
+## 1. What it does
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+Without a relay kit, "keep going until it's done" means a human keeps pasting
+"continue" into a chat window, and every paste re-reads the whole repo, loses
+the thread, and sometimes writes into a file another session is writing right
+now. The kit turns that into a **machine-driven chain**:
 
-The tool itself is also published as a global skill at
-`<MCode data dir>\skills\relay-port\` (on Windows that is
-`%USERPROFILE%\.minimax\.minimax\skills\relay-port\`). This repository is its
-**source of truth / working copy**: edit here -> run the one-shot selftest ->
-sync back to the global skill directory. Only after the sync does a new session
-pick up the change.
+| | Without the kit | With the kit |
+|---|---|---|
+| Who starts the next stage | a human pastes "continue" | the previous stage starts it itself |
+| Concurrency | two sessions edit the same file | one writer per project, enforced by an atomic lock |
+| Where is the state | in someone's head | `docs\relay.json` — append-only, CAS-guarded |
+| What stops it | nothing stops it | acceptance criteria, `max_stages`, write-set rules, human checkpoints |
+| Can it resume | only by re-reading everything | resume from the ledger |
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+Concretely, installing the kit gives the target repository:
 
-## Tool in one line
+- **a launcher** — validates the workspace, runs the concurrency gates, takes the lock, creates the ledger (never overwrites it), and writes the next-stage prompt;
+- **an atomic lock** — `FileMode.CreateNew`, so two sessions can never hold the same project;
+- **a ledger write gate** — lock + compare-and-swap (`sha256`) + append-only invariant + read-back after write;
+- **a protocol** (`docs\AGENT-RELAY.md`), an **operating procedure** (`docs\RELAY-SOP.md`) and a **per-project decision skeleton** (`docs\RELAY-ADAPTATION.md`);
+- **a house-rules block** injected into the project's instruction file, idempotently, without duplicating or overwriting what the project already wrote;
+- **an activation packet** — the exact four steps plus the one sentence a human says to start the chain.
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+---
+
+## 2. Why it is worth it
+
+- **Unattended by design, not by luck.** The chain advances only when the previous stage reached its acceptance criteria, wrote its evidence, and appended its result to the ledger. "It stopped" always has a reason in `docs\relay.json`, not a feeling.
+- **Safe to run while you sleep.** Four gates stand between "the model wants to continue" and "the model writes": the atomic lock, the ledger gate, the write-set fingerprint, and CAS on write-back. A stale view cannot silently overwrite a fresher one.
+- **Auditable.** Every stage leaves a ledger entry, a stage document and a lock heartbeat. The evidence is on disk, not in a transcript.
+- **Portable across agent runtimes.** The same kit runs on MCode, Claude Code, Codex CLI and OpenClaw. One command picks the runtime; the house rules and the way the next link starts are adapted for you.
+- **Zero resident processes.** Nothing runs in the background between turns. The chain lives entirely in files plus the agent session that is currently holding the lock.
+
+---
+
+## 3. Install and deploy
+
+### 3.1 Requirements
+
+- PowerShell 7 (`pwsh`) — Windows, Linux or macOS.
+- A **git repository** — the launcher refuses to start a chain anywhere else.
+- A plan document describing the stages, or let the installer create one.
+
+### 3.2 Install into a target project
+
+The tool is published as a global skill at `<MCode data dir>\skills\relay-port\`
+(on Windows: `%USERPROFILE%\.minimax\.minimax\skills\relay-port\`). This
+repository is its source of truth and working copy.
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File tool\scripts\install-relay.ps1 `
-  -RepoRoot "<absolute repo path>" -Target "<this round's goal batch>" `
-  [-PlanDoc "<plan document path>"] [-StageTitles "1. xxx;2. yyy"] [-MaxStages 6] `
-  [-WorkspaceDir "<workspace dir>"] [-TtlSeconds 1800] [-Force] [-SkipVerify]
+pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill>\scripts\install-relay.ps1" `
+  -RepoRoot "<absolute path of the target repo>" `
+  -Target "<this round's goal batch>" `
+  -Runtime mcode `
+  [-PlanDoc "<plan document path, repo-relative>"] `
+  [-StageTitles "1. scope;2. build;3. verify;4. closeout"] `
+  [-MaxStages 6] [-WorkspaceDir "<repo root>"] [-TtlSeconds 1800] [-Force]
 ```
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+Exit codes: `0` installed, `2` invalid parameters or workspace, `5` self-check failed.
+A dry run of the launcher is run at the end; its result is recorded but does not
+change the install exit code.
 
-`-PlanDoc` **may be omitted**. When it is not given, the plan document is resolved
-in this order: explicit `-PlanDoc` -> ledger `plan_doc` -> probing
-`docs\plan-*.md`, `docs\plans\*.md`, `docs\superpowers\plans\*.md`. Exactly one hit is
-used; multiple hits emit a `WARN` and the newest by mtime wins; zero hits means
-`exit 2` and the chain refuses to start. Installation and chain start share the same
-list, so there is no "install first, then hand-type the plan path".
-**A plan document is never created just to satisfy chain start.**
+### 3.3 Pick the runtime
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+`-Runtime` decides **where the house rules land** and **how the next link starts**.
 
-After installation, say one sentence **inside the target project** to start the chain:
+| `-Runtime` | House rules go to | Next link starts with | Needs the spawn driver |
+|---|---|---|---|
+| `mcode` (default) | `AGENTS.md` | the built-in `session_create` tool | no |
+| `claude-code` | `AGENTS.md` **and** `CLAUDE.md` | a headless `claude -p` child process | yes |
+| `codex` | `AGENTS.md` | a headless `codex exec` child process | yes |
+| `openclaw` | `AGENTS.md` | the runtime's own `sessions_spawn` tool | no (lock hand-over stays manual) |
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+An unknown runtime fails loudly (`FAIL reason=runtime_unsupported`, exit `2`) —
+it never silently falls back to the default.
+
+> **Why Claude Code needs two files.** Claude Code reads `CLAUDE.md`, and only
+> falls back to `AGENTS.md` when the repository has no `CLAUDE.md`. A repository
+> that already ships a `CLAUDE.md` would therefore shadow the whole relay block:
+> the kit would look installed while the chain never starts. The installer
+> writes both files for `claude-code` and prints `AGENTS_MARKERS begin=1 end=1`
+> and `CLAUDE_MARKERS begin=1 end=1` so you can verify it.
+>
+> **OpenClaw hard constraint.** OpenClaw injects only the `AGENTS.md` at the root
+> of *its own workspace*. The target repository must be that workspace, or the
+> house-rules block has to be copied there.
+
+Per-runtime deployment guides (prerequisites, activation, how to tell it worked,
+the traps):
+
+- `tool\references\deployment-claude-code.md`
+- `tool\references\deployment-codex.md`
+- `tool\references\deployment-openclaw.md`
+- `tool\references\runtime-portability-2026-11-25.md` — the full four-runtime analysis
+
+### 3.4 Two things you must do after installing
+
+1. **Fill in the TODO sections of `docs\RELAY-ADAPTATION.md`** — the write set
+   (which directories may change, which must not), the acceptance gate commands
+   and what "green" means, and the model policy. Without this the chain stops in
+   its first stage with "write set unknown".
+2. **Activate inside the target project.** The right to start a chain belongs to
+   the target project, never to an outside supervisor session.
 
 ```
-start the relay chain per docs\relay\ACTIVATION-PROMPT.txt
+follow docs\relay\ACTIVATION-PROMPT.txt to start the relay chain
 ```
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+The activation packet contains four fixed steps: run the launcher, start the
+first link, hand the lock over (`relay-lock.ps1 -Action adopt`), and read the
+new session back to verify it. On any failure: release the lock and report
+honestly — never retry starting a link.
 
-The launcher's exit code decides whether you may start a link at all:
+### 3.5 The launcher's exit code decides everything
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-| Exit | Meaning | Start a session? |
+| Exit | Meaning | Start a link? |
 |---|---|---|
 | `0` | all gates passed, next prompt generated | yes |
-| `2` | invalid workspace (or plan document unresolved, ledger gate missing) | **no** |
-| `3` | a chain is already running / a stage is `in_progress` / `blocked` / stages exhausted | **no** |
+| `2` | invalid workspace, or the plan document could not be resolved | **no** |
+| `3` | a chain is already running, a stage is `in_progress`, or the ledger is blocked / exhausted | **no** |
 | `4` | the lock is held by another session | **no** |
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+The plan document is resolved before the lock is taken: explicit `-PlanDoc` →
+ledger `plan_doc` → probing `docs\plan-*.md`, `docs\plans\*.md`,
+`docs\superpowers\plans\*.md`. One hit is used; several hits warn and the
+newest by mtime wins; zero hits means exit `2`. **A plan document is never
+created just to satisfy chain start.**
 
-Activation is four fixed steps (written into `docs\relay\ACTIVATION-PROMPT.txt`):
-run the launcher -> `session_create` with only `agent_name` / `title` /
-`workspace_dir` (backslash absolute path) / `model` / `content` (never `effort`,
-`defer_first_turn`, or `parent_session_id`) -> `relay-lock.ps1 -Action adopt` with the new
-session id -> read the session back to verify `workspace_dir` / model / status. On any
-failure: `-Action release` and report honestly instead of retrying.
+---
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+## 4. What installation leaves in the target repository
 
-## What installation leaves in the target repository
+- `docs\relay\start-relay.ps1` — launcher
+- `docs\relay\relay-lock.ps1` — atomic lock
+- `docs\relay\relay-ledger.ps1` — ledger write gate (lock + CAS + append-only + read-back)
+- `docs\relay\relay-spawn.ps1` — spawn driver (CLI runtimes only; dry run by default, `-Execute` to run)
+- `docs\AGENT-RELAY.md`, `docs\RELAY-SOP.md`, `docs\RELAY-ADAPTATION.md` — protocol / procedure / project decisions
+- `docs\relay\ACTIVATION-PROMPT.txt`, `docs\relay\install-report.md` — activation packet / install report
+- `docs\plan-relay.md` — a plan document, generated only when no existing plan is found
+- a house-rules block in `AGENTS.md` (and `CLAUDE.md` for `claude-code`), delimited by `<!-- BEGIN RELAY-PORT -->` / `<!-- END RELAY-PORT -->`
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+**`docs\relay.json` (the ledger) is created by the launcher when the chain
+starts. The installer never writes it.**
 
-- `docs\relay\start-relay.ps1` + `docs\relay\relay-lock.ps1` + `docs\relay\relay-ledger.ps1`
-  - the device, byte-identical to `device\`. Ledger write-back must **only** go through
-  `relay-ledger.ps1` (lock + CAS + append-only + read-back), never a bare `Set-Content`.
-- `docs\AGENT-RELAY.md` + `docs\RELAY-SOP.md` + `docs\RELAY-ADAPTATION.md`
-  - protocol / operating procedure / per-project decision skeleton.
-- A house-rules block in `AGENTS.md` delimited by `<!-- BEGIN RELAY-PORT -->`, injected
-  idempotently. An existing block is **absorbed** (with markers added) rather than
-  duplicated; an equivalent paragraph whose title lacks the word "relay" is now also
-  recognized by the content-fingerprint criterion.
-- `docs\plan-relay.md` - a plan document, generated only when no existing plan is found.
-- `docs\relay\ACTIVATION-PROMPT.txt` and `docs\relay\install-report.md`.
+An existing relay section is **absorbed** (wrapped in the markers, text kept
+verbatim) rather than duplicated — by title criterion first, then by a
+content-fingerprint criterion. If two sections would qualify, the installer
+refuses to guess, appends a managed block and warns
+`WARN agents_relay_section_ambiguous matches=N`.
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+---
 
-**`docs\relay.json` (the ledger) is created by the launcher at the moment the chain starts.
-The installer never writes it.**
+## 5. Repository map
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+| Path | Contents |
+|---|---|
+| `tool/` | **the tool body** — installer, templates (device scripts, protocol, activation packets), evidence |
+| `device/` | device bodies `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` / `relay-spawn.ps1` + a design-sample ledger |
+| `protocol/` | the shared protocol layer, mirrored byte-for-byte from `tool\templates\AGENT-RELAY.md` |
+| `examples/practilog/` | a production landing site: real ledger, project decision record, chain artifacts, gate evidence |
+| `scripts/` | **this repository's own maintenance scripts** (not shipped): `selftest.ps1`, `publish-relay.ps1`, `refresh-manifest.ps1` |
+| `MANIFEST.txt` | every file as `<sha16>` / `<bytes>` / `<relative path>`; refresh with `scripts\refresh-manifest.ps1`, always as the **last** step |
+| `HANDOFF.md` | handoff: background / progress / verified / inferred / unverified / evidence paths / backlog / tool pitfalls |
+| `AGENTS.md` | this project's house rules |
 
-Four concurrency gates protect the chain: an atomic lock (`FileMode.CreateNew`), the
-ledger gate (refuses to start when a stage is `in_progress`, when `running` already has a
-`next_session_id`, when blocked, or when stages are exhausted), a write-set fingerprint
-(`git status --porcelain -uall` + `HEAD` + target file fingerprints), and CAS on write-back
-(re-read from disk, compare `sha256`, append only).
+---
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-## Directory map
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-| Path | Contents | Origin |
-|---|---|---|
-| `tool/` | **the tool body** (relay-port skill source): installer + 8 templates + manual + selftest evidence | `skills\relay-port\` |
-| `device/` | device bodies `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` + a design-sample ledger `relay.json` | PractiLog field version + `maintenance\relay\` |
-| `protocol/` | shared protocol layer: general protocol / SOP / relay prompt / pointer / evidence-driven notes (5 files) | `maintenance\relay\` |
-| `protocol/probe-ws/` | **real-chain probe on a generic repository** - complete artifacts of a 3-link run that was not executed in the PractiLog repo (5 files) | `maintenance\relay\probe-ws\` |
-| `examples/practilog/` | production landing site: full 22-key ledger + a project decision record + 6-link chain artifacts + gate and supervision evidence + the extracted relay section of its `AGENTS.md` | the PractiLog repository |
-| `scripts/` | **this repository's own maintenance scripts** (not the tool body): `selftest.ps1`, `publish-relay.ps1`, `refresh-manifest.ps1` | written here |
-| `MANIFEST.txt` | every file as `<sha16> \| <bytes> \| <relative path>`; entry count = file count - 1 (excludes itself). Refresh with `pwsh -File scripts\refresh-manifest.ps1`, always as the **last step** of a round | generated here |
-| `HANDOFF.md` | handoff: background / progress / verified / inferred / unverified / evidence paths / candidate backlog / tool pitfalls | written here |
-| `AGENTS.md` | this project's house rules | written here |
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-All file and directory names are ASCII, so the repository listing contains no non-ASCII
-entries in either README.
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-## The two one-shot scripts in this repository
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+## 6. Maintaining the tool
 
 ```powershell
-# House rule 1: mandatory selftest. Creates a throwaway git repo under %TEMP%, really runs
-# installer / launcher / lock (install, idempotent re-run, absorption, -PlanDoc resolution,
-# real activation, second start refused, lock mutual exclusion). Green = EXIT=0 and fail=0.
+# House rule 1: mandatory selftest after touching tool\ or device\.
+# Builds throwaway git repos under %TEMP% and really runs installer / launcher / lock /
+# ledger / encoding / byte-identity checks. Green = EXIT=0 and fail=0.
 pwsh -NoProfile -File scripts\selftest.ps1 -EvidencePath "$env:TEMP\relay-selftest.log"
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-# Publishing: device<->templates hard invariant + per-file sha16 reconciliation between
-# tool\ and the global skill. Sync and verification in one shot.
+# Publishing: device<->templates hard invariant + per-file reconciliation between tool\
+# and the global skill, in one shot.
 pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction verify    # report only
-pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish   # this dir -> global skill
+pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish   # this repo -> global skill
 ```
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+The order is fixed: **selftest → publish → refresh-manifest** (the manifest
+includes itself, so it goes last).
 
-`examples\practilog\docs\relay\` is a historical evidence snapshot: it only reports
-`SNAPSHOT_DRIFT`, takes no part in the verdict, and **must not** be synced for its sake.
+`examples\practilog\docs\relay\` is a historical evidence snapshot: it only
+reports `SNAPSHOT_DRIFT`, takes no part in the verdict, and **must not** be
+synced for its sake.
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+---
 
-## Current status
+## 7. Status
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+- The kit is implemented and verified by `scripts\selftest.ps1` — cases 1–16,
+  **135 assertions / 0 failures / `EXIT=0`**. The raw log and its note for each
+  round live in `tool\references\selftest-*.txt` / `.md`.
+- Fixed defects worth knowing about: **D1** an uninitialized output variable
+  truncated the target `AGENTS.md` to 0 bytes; **D2** dry-run evidence was 0 B;
+  **D3** CJK literals inside `.ps1` garbled under Windows PowerShell 5.1 without
+  a BOM; **D4** the launcher's `-PlanDoc` default was a project-specific path.
+- The runtime adaptation layer (B9) added `-Runtime`, the spawn driver
+  `relay-spawn.ps1`, per-runtime activation packets and protocol §10.
+- Not done: dogfooding the kit in this repository itself; a macOS/Linux
+  execution audit (those paths are inferred, not executed); a model pre-flight
+  check before starting a link. See the backlog in `HANDOFF.md`.
+- Not covered by any automated run: a real chain activation — it depends on
+  starting a new agent session, which the selftest never does.
 
-- Every file was copied into this directory with per-file sha16 matching its source
-  (`SHA_MATCH=42 / SHA_MISMATCH=0`). Across the whole repository:
-  `BOM=0`, non-ASCII `.ps1=0`, `CR=0` in `.md` and `.txt`. Reconciliation lives in
-  `MANIFEST.txt`.
-- The tool is implemented and verified end to end. `scripts\selftest.ps1` now runs cases 1-15 with
-  **106 assertions / 0 failures / `EXIT=0`**; the raw log and its note for this round are
-  `tool\references\selftest-2026-11-25l.txt` and `selftest-2026-11-25l.md`. Earlier rounds stay
-  recorded as `tool\references\selftest-2026-11-25.md` (first batch, 14 cases), the B2/B3
-  assertion suites `-b2.md` / `-b3.md`, and `selftest-2026-11-25k.txt` / `.md` (the B7 round,
-  100 assertions), each with its raw log alongside.
-- Fixed defects: **D1** an uninitialized output variable in the idempotent branch truncated
-  the target project's `AGENTS.md` to 0 bytes; **D2** dry-run evidence was 0 B; **D3** CJK
-  literals inside installer `.ps1` files would garble under Windows PowerShell 5.1 without a
-  BOM (now built from code points, retested `NON_ASCII=0 / PARSE_ERRORS=0`);
-  **D4** the launcher's `-PlanDoc` default was a PractiLog-specific path (replaced by the
-  resolution chain above, with an explicit error instead of a silent fallback).
-- Batch B3 added the **ledger write gate** `relay-ledger.ps1` (`-Action status` / `-Action commit`):
-  lock + CAS + append-only invariant + read-back. Every ledger write-back recipe points at it.
-- The repository is under git now and published to
-  [github.com/kizemo/agentask-relay](https://github.com/kizemo/agentask-relay).
-- Still not done: **dogfood** - installing `relay-port` into this repository itself so the
-  tool's own backlog advances by chain; cross-platform audit (macOS/Linux paths are inferred,
-  not executed); a model pre-flight check before starting a link. See the candidate backlog in
-  `HANDOFF.md`.
-- Not verified by any automated run: real chain activation depends on `session_create`, which
-  the selftest never calls - it asserts the generated activation package instead.
+---
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-## Relationship with the global skill
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+## 8. Relationship with the global skill
 
 | | Role | When to change |
 |---|---|---|
 | `tool\` (this repository) | working surface / source of truth / evolution spot | when changing the tool |
 | `<MCode data dir>\skills\relay-port\` | the copy sessions actually load | after a change here passes the selftest, **sync it over** |
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+Sync with `scripts\publish-relay.ps1 -Direction publish`, which covers
+`SKILL.md`, `scripts\`, `templates\`, `references\` and re-verifies every file.
+After editing a device template, `device\` must be kept byte-identical
+(`Copy-Item tool\templates\<f> device\<f> -Force`); otherwise
+`publish-relay.ps1` fails the hard invariant outright.
 
-Sync with `scripts\publish-relay.ps1 -Direction publish`, which covers `SKILL.md`,
-`scripts\`, `templates\`, `references\` and re-verifies every file. After editing a device
-template, `device\` must be kept byte-identical
-(`Copy-Item tool\templates\<f> device\<f> -Force`); otherwise `publish-relay.ps1` fails the
-hard invariant outright.
-
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
+---
 
 ## License
 
-[![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
-
-No license file has been added to this repository, so all rights are reserved by default.
-Choosing a license is an open item on the backlog (see `HANDOFF.md`).
+No license file has been added to this repository, so all rights are reserved by
+default. Choosing a license is an open item on the backlog (see `HANDOFF.md`).

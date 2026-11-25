@@ -1,7 +1,7 @@
-RELAY ACTIVATION PACKET（接力激活包）
+RELAY ACTIVATION PACKET (relay activation packet)
 =====================================
-
 repo        : {{REPO}}
+runtime     : {{RUNTIME}}
 target      : {{TARGET}}
 plan doc    : {{PLAN_DOC}}
 max stages  : {{MAX_STAGES}}
@@ -9,47 +9,27 @@ workspace   : {{REPO}}
 ledger      : {{REPO}}\docs\relay.json
 launcher    : {{REPO}}\docs\relay\start-relay.ps1
 lock script : {{REPO}}\docs\relay\relay-lock.ps1
+spawn driver: {{REPO}}\docs\relay\relay-spawn.ps1
 prompt file : {{REPO}}\docs\relay\next-relay-prompt.txt
 
-用户在**工作区就是本仓库**的会话里只需说一句：
+The user only has to say this in a session whose workspace IS this repo:
 
-    按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链
+    follow docs\relay\ACTIVATION-PROMPT.txt to start the relay chain
 
-会话按下面 4 步执行即可。
+The session then executes the steps below.
 
---- STEP 1：跑启动器（工作区校验 + 并发闸门 + 取锁 + 生成 prompt）---
+--- STEP 1: run the launcher (workspace check + concurrency gate + lock + prompt) ---
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\start-relay.ps1" -Target "{{TARGET}}" -PlanDoc "{{PLAN_DOC}}" -MaxStages {{MAX_STAGES}}
 
-退出码判读：
-  0 = 可起链，继续 STEP 2
-  2 = 工作区非法，停下汇报，**不得起环**
-  3 = 已有链在跑 / 有 in_progress 阶段 / 台账 blocked 或耗尽，停下汇报，**不得起环**
-  4 = 锁被别的会话持有（另一会话正在跑），停下汇报，**不得起环**
+Exit code reading:
+  0 = the chain may start, continue with STEP 2
+  2 = invalid workspace, stop and report, DO NOT start a link
+  3 = a chain is already running / a stage is in_progress / the ledger is blocked or exhausted, stop and report, DO NOT start a link
+  4 = the lock is held by another session, stop and report, DO NOT start a link
 
---- STEP 2：开第一环会话 ---
+{{SPAWN_STEPS}}
 
-读取 {{REPO}}\docs\relay\next-relay-prompt.txt 全文，然后：
-
-mcp_invoke(tool_name="session_create", arguments={
-  agent_name   : "me",
-  title        : "relay-1-<阶段短名>",
-  workspace_dir: "{{REPO}}",
-  model        : "<按 docs\RELAY-ADAPTATION.md 第 5 节的模型策略>",
-  content      : "<next-relay-prompt.txt 全文>"
-})
-
-禁止传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。
-`workspace_dir` 必须用上面这个**反斜杠绝对路径**；用正斜杠会静默落进私有 workspace，等于这一环没接上。
-
---- STEP 3：把锁转交给新会话 ---
-
-pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-lock.ps1" -Action adopt -SessionId <新 session id>
-
---- STEP 4：回读校验再汇报 ---
-
-mavis session get {"session_id":"<新 id>"} —— 核对 `workspace_dir` / `effective_model` / `status` 三要素。
-
-若 STEP 1 或 STEP 2 失败：执行
+If STEP 1 or STEP 2 fails: run
 pwsh -NoProfile -ExecutionPolicy Bypass -File "{{REPO}}\docs\relay\relay-lock.ps1" -Action release
-然后如实汇报，**不要重试起环**。
+then report honestly. DO NOT retry starting a link.

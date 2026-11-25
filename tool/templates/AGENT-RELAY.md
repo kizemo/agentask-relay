@@ -82,7 +82,7 @@
      `2` 参数/patch 键/意图非法（含 `missing_expect_sha256`）；`3` `cas_conflict` 或不变式违反；`4` 写锁超时；`5` patch 不可解析。
      拿到 `3 cas_conflict` 的**唯一正确动作**：重新 `-Action status` 取新 sha、按新台账重建 patch、再试一次；
      仍冲突就按第 4 步走停链分支，**绝不允许**改用裸写绕过闸门。判据：`exit=0` 且回显里自己的署名已入列。
-   - 3.3 调用 `session_create` 开下一环（配方见 §3）。
+   - 3.3 按运行时起下一环：MCode 用 `session_create`（配方见 §3），Claude Code / Codex CLI / OpenClaw 见 §10。
 4. **停链分支**：需要人工验收 / 缺权限 / 连续两轮无进展 / 已达 `max_stages` / 全部完成
    → 同样走 3.2 的闸门把 `status` 写成 `blocked`（并用 `blocked_on_append` 写明缺什么）或 `done`
    —— `set_status` 只接受 `idle` / `awaiting_user` / `blocked` / `done`，`running` 是人类专属（会话身份提交会判死），
@@ -92,7 +92,10 @@
 
 ---
 
-## 3. `session_create` 调用配方
+## 3. `session_create` 调用配方（MCode 运行时专用）
+
+> 本节只适用于 **MCode** 运行时（内置 `session_create` 工具）。Claude Code / Codex CLI / OpenClaw
+> 没有这个工具，它们的起环方式见 §10；家规块 §A.5 会按安装时的 `-Runtime` 注入对应起环规则。
 
 调用形状（MCode 桌面端 / 本机运行时实测）：
 
@@ -272,3 +275,53 @@ mcp_invoke(
 只有显式 `-Force` 会用最新模板替换标记对内的内容（标记对外的项目原文仍然保留）。
 安装器每次都会打一行机读复核判据 `AGENTS_MARKERS begin=<N> end=<N>`：收编成功应当是 `begin=1 end=1`，
 出现 `begin=2` 之类即托管块重叠，属于要人工处理的状态，别继续起链。
+
+---
+
+## 10. 运行时适配（MCode / Claude Code / Codex CLI / OpenClaw）
+
+本协议默认按 **MCode** 写：起环靠内置 `session_create` 工具（§3）。其它运行时没有这个工具，
+安装器 `install-relay.ps1 -Runtime <runtime>` 会把家规块、激活包、适配文档一起切成对应形状。
+
+### 10.1 运行时对照表
+
+| 运行时 | 家规落点 | 下一环怎么起 | 会话 id 从哪来 |
+|---|---|---|---|
+| `mcode`（默认） | `AGENTS.md` | `session_create` 工具（§3） | 工具返回值 |
+| `claude-code` | `AGENTS.md` **+** `CLAUDE.md` | `docs\relay\relay-spawn.ps1 -Runtime claude-code -Execute -AdoptLock`（无头 `claude -p` 子进程） | 输出里的 `"session_id"`，或预置的 `--session-id` |
+| `codex` | `AGENTS.md` | `docs\relay\relay-spawn.ps1 -Runtime codex -Execute -AdoptLock`（无头 `codex exec` 子进程） | 输出里的 `"thread_id"` |
+| `openclaw` | `AGENTS.md` | 运行时自带的 `sessions_spawn` 工具 | 工具返回值 |
+
+### 10.2 为什么 Claude Code 要写两个文件
+
+Claude Code 读 `CLAUDE.md`；**只有仓库没有 `CLAUDE.md` 时才回退读 `AGENTS.md`**。
+所以仓库里只要已经存在 `CLAUDE.md`，`AGENTS.md` 里的托管块就被整份遮蔽 —— 装完看着像成功，
+链却永远起不来。安装器因此对 `claude-code` 同时写两个文件，并对两份文件各打一行
+`AGENTS_MARKERS` / `CLAUDE_MARKERS` 复核判据。其余三个运行时只写 `AGENTS.md`。
+
+### 10.3 CLI 运行时的链形态与 MCode 不同
+
+MCode 的下一环是一个**常驻会话**，`session_create` 之后它自己接着干活；CLI 运行时的下一环是
+**跑完即退的无头子进程**，所以「起下一环」这一步由当前环自己再跑一次 spawn 命令完成。
+家规 §A.5 与 §B.9 的表述已改成运行时中立，起环方式由安装器按 `-Runtime` 注入。
+锁的转交统一走 `docs\relay\relay-lock.ps1 -Action adopt`（`relay-spawn.ps1 -AdoptLock` 会自动调它）。
+
+### 10.4 起环驱动 `relay-spawn.ps1`
+
+- 默认**只干跑**：打印将要执行的命令行（prompt 用 `<prompt from file>` 占位），不跑任何东西；
+  加 `-Execute` 才真跑。
+- prompt 从文件读（启动器写的 `docs\relay\next-relay-prompt.txt`），不过 shell 引号往返。
+- 退出码：`0` 建好命令（或起环成功且取到会话 id）/ `2` 参数非法、运行时不对、prompt 文件缺失或超 60000 字符 /
+  `3` 运行时 CLI 不存在、运行失败、锁转交失败 / `4` 跑完了但取不到会话 id。
+
+### 10.5 OpenClaw 的硬约束
+
+OpenClaw 只注入**它自己 workspace 根目录**的 `AGENTS.md`（子 agent 额外注入 `TOOLS.md`）。
+所以目标仓库必须就是该 OpenClaw agent 的 workspace；不是的话，先把托管块复制到 workspace 根的
+`AGENTS.md`，否则家规块根本不会进 system prompt。
+
+### 10.6 换运行时的规矩
+
+换运行时**必须重装**（`install-relay.ps1 -Runtime <新> -Force`），否则 `docs\RELAY-ADAPTATION.md`
+与家规块里还写着旧运行时，两边会各说各话。`install-relay.ps1` 遇到不认识的 `-Runtime`
+会响亮失败（`reason=runtime_unsupported`，退出码 2），不静默退回默认运行时。

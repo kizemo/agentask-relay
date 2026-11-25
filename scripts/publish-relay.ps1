@@ -166,6 +166,7 @@ $copyPairs = @(
   [pscustomobject]@{ Name = 'start-relay.ps1';  Tpl = (Join-Path $templateDir 'start-relay.ps1');  Dst = (Join-Path $deviceDir 'start-relay.ps1') },
   [pscustomobject]@{ Name = 'relay-lock.ps1';   Tpl = (Join-Path $templateDir 'relay-lock.ps1');   Dst = (Join-Path $deviceDir 'relay-lock.ps1') },
   [pscustomobject]@{ Name = 'relay-ledger.ps1'; Tpl = (Join-Path $templateDir 'relay-ledger.ps1'); Dst = (Join-Path $deviceDir 'relay-ledger.ps1') },
+  [pscustomobject]@{ Name = 'relay-spawn.ps1';  Tpl = (Join-Path $templateDir 'relay-spawn.ps1');  Dst = (Join-Path $deviceDir 'relay-spawn.ps1') },
   [pscustomobject]@{ Name = 'AGENT-RELAY.md';   Tpl = (Join-Path $templateDir 'AGENT-RELAY.md');   Dst = (Join-Path $repoRoot 'protocol\AGENT-RELAY.md') }
 )
 foreach ($cp in $copyPairs) {

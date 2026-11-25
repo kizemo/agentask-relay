@@ -14,6 +14,7 @@ description: Install the unattended relay (auto-advance) kit into any git projec
 | `<repo>\docs\relay\start-relay.ps1` | 启动器：工作区校验 + 并发闸门 + 取锁 + 台账初始化（只新建不覆写）+ 生成接力 prompt |
 | `<repo>\docs\relay\relay-ledger.ps1` | 台账写闸门：写锁 + CAS(`-ExpectSha256`) + 只追加不变式 + 写后回读；动作只有 `-Action status` / `-Action commit`，`-DryRun` 可先验 |
 | `<repo>\docs\relay\relay-lock.ps1` | 互斥锁：`FileMode.CreateNew` 原子创建，保证一个项目同时只有一个写会话 |
+| `<repo>\docs\relay\relay-spawn.ps1` | 起环驱动（**仅 CLI 运行时用**）：把接力 prompt 交给 `claude -p` / `codex exec` 无头子进程，取回会话 id 并转交锁；默认只干跑，加 `-Execute` 才真跑 |
 | `<repo>\docs\AGENT-RELAY.md` | 通用协议（自包含、仓库相对路径，可直接搬） |
 | `<repo>\docs\RELAY-SOP.md` | 操作规程 |
 | `<repo>\docs\RELAY-ADAPTATION.md` | **本项目裁决骨架**（写集 / 门禁 / 模型策略，装完须补全 TODO） |
@@ -34,10 +35,12 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-rel
   -Target "<本轮目标批次>" `
   [-PlanDoc "<仓库相对路径的计划文档>"] `
   [-StageTitles "1. xxx;2. yyy"] `
-  [-MaxStages 6] [-WorkspaceDir "<仓库根>"] [-TtlSeconds 1800] [-Force]
+  [-MaxStages 6] [-WorkspaceDir "<仓库根>"] [-TtlSeconds 1800] [-Force] `
+  [-Runtime mcode|claude-code|codex|openclaw]
 ```
 
 - 退出码 `0` = 装好；`2` = 参数/工作区非法；`5` = 自检不过。装完会顺带跑一次启动器干跑，干跑结果只记录不拉低退出码（`3` 链已在跑 / 台账 blocked 或耗尽、`4` 锁被占 —— 都不影响安装本身）。
+- `-Runtime` 指定目标会话跑在哪个运行时上（默认 `mcode`）。它同时决定**家规落到哪些文件**与**下一环怎么起**，见下面「运行时适配」。不认识的运行时响亮失败（`FAIL reason=runtime_unsupported`，退出码 `2`），不静默退回默认。
 - `-PlanDoc` 省略时会自动探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`；探测到多份会告警（`WARN plan_doc_ambiguous`）并退回新建 `docs\plan-relay.md`。**安装器是唯一允许创建计划文档的地方**，启动器只解析、绝不创建（见「装置契约」）。
 - **幂等**：重复执行不产生重复家规块、不覆盖项目自己改过的文件（`SKIP ... kept`）。要强制覆盖用 `-Force`。
 - 已有未受管的接力家规时**收编**（adopt）该段并加标记，不追加第二份。收编判据是双层的：
@@ -47,6 +50,27 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-rel
   4. **≥2 节都合格则不猜** → `WARN agents_relay_section_ambiguous matches=N` + 追加托管块，提示人工把接力规则合并成单一章节。
 
   原始内容一律保留，包裹不删字。
+
+## 运行时适配（MCode / Claude Code / Codex CLI / OpenClaw）
+
+装置本体一套，**运行时**决定两件事：**家规落到哪些文件** + **下一环怎么起**。
+
+| `-Runtime` | 家规落点 | 下一环怎么起 | 需要起环驱动 |
+|---|---|---|---|
+| `mcode`（默认） | `AGENTS.md` | 内置 `session_create` 工具 | 否 |
+| `claude-code` | `AGENTS.md` **+** `CLAUDE.md` | 无头 `claude -p` 子进程 | 是 |
+| `codex` | `AGENTS.md` | 无头 `codex exec` 子进程 | 是 |
+| `openclaw` | `AGENTS.md` | 运行时自带的 `sessions_spawn` 工具 | 否（但要手动转交锁） |
+
+- **Claude Code 必须双写**：它读 `CLAUDE.md`，只有仓库没有 `CLAUDE.md` 时才回退读 `AGENTS.md`；
+  仓库里只要存在 `CLAUDE.md`，`AGENTS.md` 里的家规就被整份遮蔽 ⇒ 装完看着像成功、链起不来。
+  装完复核看两行：`AGENTS_MARKERS begin=1 end=1` 与 `CLAUDE_MARKERS begin=1 end=1`。
+- **CLI 运行时的链形态不同**：下一环是**跑完即退的无头子进程**，链靠「本环自己再跑一次 spawn 命令」推进；
+  MCode 的下一环是常驻会话。
+- **锁转交只有一条路**：`relay-lock.ps1 -Action adopt -SessionId <id>`（`relay-spawn.ps1 -AdoptLock` 会自动调它）。
+- **换运行时必须重装**（`-Force`），否则家规块、`docs\RELAY-ADAPTATION.md`、激活包三处会各说各话。
+- 完整分析与各家踩坑见 `references\runtime-portability-2026-11-25.md`；
+  逐家部署步骤见 `references\deployment-claude-code.md` / `deployment-codex.md` / `deployment-openclaw.md`。
 
 ## 装完之后必须做的两件事
 
@@ -75,7 +99,13 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1'
 pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action renew  -SessionId '<sid>'
 pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action adopt  -SessionId '<new sid>'
 pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1' -Action release -SessionId '<sid>'
+
+# 起环驱动（仅 CLI 运行时 claude-code / codex；默认只干跑，加 -Execute 才真跑）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-spawn.ps1' -Runtime claude-code -PromptFile '<repo>\docs\relay\next-relay-prompt.txt' -WorkspaceDir '<repo>'
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-spawn.ps1' -Runtime claude-code -PromptFile '<repo>\docs\relay\next-relay-prompt.txt' -WorkspaceDir '<repo>' -Execute -AdoptLock
 ```
+
+起环驱动 `relay-spawn.ps1` 的退出码：`0` 建好命令（或起环成功且取到会话 id）/ `2` 参数非法、运行时不是 CLI 运行时、prompt 文件缺失或超 60000 字符 / `3` CLI 不存在、运行失败、锁转交失败 / `4` 跑完了但取不到会话 id。
 
 **启动器的计划文档解析链**（在取锁**之前**跑完，所以失败不会留下活锁）：
 `-PlanDoc` → 台账 `plan_doc` → 探测 `docs\plan-*.md` / `docs\plans\*.md` / `docs\superpowers\plans\*.md`。
@@ -95,8 +125,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-lock.ps1'
 
 ## 自检（安装器自动跑）
 
-- 两个 `.ps1` 的**非 ASCII 字节数 = 0**、**无 BOM**。
-- `AGENTS.md` 里 `BEGIN/END RELAY-PORT` 标记各 **1** 个。
+- 三个 `.ps1`（锁 / 台账 / 起环驱动）的**非 ASCII 字节数 = 0**、**无 BOM**。
+- 家规落点文件里 `BEGIN/END RELAY-PORT` 标记各 **1** 个（`claude-code` 是 `AGENTS.md` 与 `CLAUDE.md` 各一对 ⇒ 打两行 `AGENTS_MARKERS` / `CLAUDE_MARKERS`）。
 - `relay-lock.ps1 -Action status` 可执行。
 - `start-relay.ps1 -DryRun` 退出码 0（已有链在跑时是 3，只告警不判失败）。
 
@@ -158,4 +188,4 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps
 
 - 安装器**不碰** `docs\relay.json`、不碰 `apps/**`、`packages/**` 等产品代码，不改门禁脚本。
 - `.ps1` 一律纯 ASCII、无 BOM；仓库 Markdown 一律 LF。
-- 装置的 `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` 与 `tool\templates\`、`device\` 两侧**逐字一致**（sha16 见 `templates/`），`publish-relay.ps1` 按硬不变式判定，漂移 exit 2。项目差异一律落在参数与 `RELAY-ADAPTATION.md`，不改脚本本体。
+- 装置的 `start-relay.ps1` / `relay-lock.ps1` / `relay-ledger.ps1` / `relay-spawn.ps1` 与 `tool\templates\`、`device\` 两侧**逐字一致**（sha16 见 `templates/`），`publish-relay.ps1` 按硬不变式判定，漂移 exit 2。项目差异一律落在参数与 `RELAY-ADAPTATION.md`，不改脚本本体。

@@ -580,3 +580,127 @@ relay-port）⇒ 未实测；`profile_probe_disabled` 降级路径未实测；ca
 已含 `reports\selftest-2026-11-25j.txt` 与 `reports\selftest-2026-11-25k-console.txt` 两行
 （与 `tool\references\` 下的同名件同 hash），不入库则新克隆仓库跑 `refresh-manifest.ps1`
 必然报缺项而红。入库后回读 `TRACKED_FILES=74` = `MANIFEST_ROWS=73` + `MANIFEST.txt` 自身 ⇒ 逐件对得上。
+
+---
+
+## 批次 B9 实录（2026-11-25 21:3x → 21:5x）—— 运行时适配层 + README 重写 + push GitHub
+
+### 用户指令（2026-11-25，本轮）
+
+> 1. 提交到 github，撰写 readme 文档，写清楚这个工具的作用、价值、安装部署方法；
+> 2. 分析这个工具是否可以在 Claude code、Openclaw、codex 部署使用，如不行，请进行扩展，
+>    同时也为不同软件的部署方法撰写指导
+
+push 授权在本轮给出（此前 B7/B8 轮**未** push）。本轮结束状态：工作树已提交并 `git push origin main`。
+
+### ① 可移植性分析（不凭记忆，2026-11-25 查证）
+
+落盘 `tool\references\runtime-portability-2026-11-25.md`（10281 B）。核心结论：
+
+| 运行时 | 规则文件 | 起下一环的工具 | 结论 |
+|---|---|---|---|
+| MCode | `AGENTS.md` | 内置 `session_create` | 原生，不动 |
+| Claude Code | `CLAUDE.md`（**只有仓库没有 `CLAUDE.md` 时才回退读 `AGENTS.md`**） | 无 | **会被遮蔽 ⇒ 真缺陷，本轮修掉** |
+| Codex CLI | `AGENTS.md`（全局 `~/.codex/AGENTS.md` + 项目根向下，合并上限 32 KiB） | 无 | 规则文件天然兼容，起环方式要换 |
+| OpenClaw | **只注入它自己 workspace 根**的 `AGENTS.md`（子 agent 另加 `TOOLS.md`） | 自带 `sessions_spawn` | 能部署，但有**硬约束**：仓库必须就是那个 workspace |
+
+关键判断：**Claude Code 的遮蔽**与 **OpenClaw 的 workspace 约束**是同一类病（家规写了但运行时读不到），
+病根不同 ⇒ 修法不同（前者双写 `CLAUDE.md`，后者要求 workspace 对齐或手工复制）。
+三家都**没有** `session_create`，所以「下一环怎么起」必须换实现。
+
+### ② 扩展：运行时适配层（装置本体一套，运行时决定两件事）
+
+**家规落到哪些文件** + **下一环怎么起**。
+
+| 件 | 动作 |
+|---|---|
+| `tool\scripts\install-relay.ps1` | 重写（23773 B）：新增 `-Runtime`（`mcode` 默认 / `claude-code` / `codex` / `openclaw`）；原 AGENTS.md 注入逻辑整体搬进 `Install-RuleBlock`（多目标文件、逐文件 EOL 归一化、BOM 保留）；新增 spawn 脚本 ASCII/BOM 自检 + 按目标文件回读 marker |
+| `tool\templates\relay-spawn.ps1` | **新**（6946 B，sha16 `D267199D611CC109`）：起环驱动，**默认只干跑**（prompt 用 `<prompt from file>` 占位），`-Execute` 才真跑；抽 `"session_id"`（claude）/ `"thread_id"`（codex）；`-AdoptLock` 自动转交锁 |
+| `device\relay-spawn.ps1` | **新**：模板逐字副本 |
+| `tool\templates\ACTIVATION-SPAWN-{mcode,claude-code,codex,openclaw}.md` | **新** 4 份：`SPAWN_RULE_BEGIN/END` 单一真源 + STEP 2/3/4 |
+| `tool\templates\ACTIVATION-PROMPT.md` | 重写：runtime 参数化 + `{{SPAWN_STEPS}}` 占位 |
+| `tool\templates\AGENTS-RELAY-BLOCK.md` | §A.5 / §B.9 改成 runtime 中立 |
+| `tool\templates\RELAY-ADAPTATION.md` | 增第 9 节「运行时与起环方式」 |
+| `tool\templates\AGENT-RELAY.md` | 增 §10「运行时适配」（6 小节）；§3 标注「MCode 运行时专用」并指向 §10 |
+| `protocol\AGENT-RELAY.md` | 逐字镜像（硬不变式，case 13e 守住） |
+| `tool\SKILL.md` | 装置件清单 / 调用参数 / 新增「运行时适配」节 / 装置契约 / 自检口径 / 边界 全部同步 |
+| `scripts\publish-relay.ps1` | 装置件硬不变式表加 `relay-spawn.ps1`（templates ↔ device） |
+| `scripts\selftest.ps1` | 增 case 16（29 条断言）；前置件加 `relay-spawn.ps1`；交叉字面量 token 加 `CLAUDE_MARKERS` |
+| `tool\templates\` | 模板总数 13（原 9） |
+
+**设计取舍（别推翻）**：
+
+- `-Runtime` 不用 `ValidateSet` —— 它的绑定失败退 1，与装置退出码约定不符；改成显式白名单 + **响亮失败**（`reason=runtime_unsupported`，退出码 2），不静默退回默认。
+- `SPAWN_RULE` 单一真源放在 `ACTIVATION-SPAWN-<runtime>.md` 的标记块里，安装器正则抽出后**同时**注入家规块 §A.5 与 `RELAY-ADAPTATION.md` 第 9 节 ⇒ 文案只改一处，不会漂。
+- **换运行时必须重装（`-Force`）**，否则家规块 / `RELAY-ADAPTATION.md` / 激活包三处各说各话 —— 这条写进了 `RELAY-ADAPTATION.md` 第 9 节。
+- spawn **默认不执行**是安全默认；干跑打印命令但**不把 prompt 内联进命令行**（几十万字节的一行日志没法读也没法引号转义）。
+
+### ③ 文档
+
+- `README.md`（12789 B）/ `README.zh-CN.md`（11713 B）：**整篇重写**。原版每节都重复一遍 selftest badge（读起来像坏掉），本版只留顶部一个；补齐用户点名的三段：**作用**（没有/有装置对照表）、**价值**（五条）、**安装部署**（前置 → 安装命令 → 选运行时 → 装完必做两件事 → 启动器退出码表）。
+- `tool\references\deployment-claude-code.md`（6784 B）/ `deployment-codex.md`（4859 B）/ `deployment-openclaw.md`（5957 B）：逐家五段式（前置 / 装什么 / 激活 / 怎么判成功 / 常见坑），命令可复制。
+
+### ④ 实测数字（本轮权威回读）
+
+- **闸门① selftest**：`SUITE_END pass=135 fail=0` + `EXIT=0`（基线 106 → 本轮 135，净增 29 条 = case 16）。
+  raw `tool\references\selftest-2026-11-25m.txt` = `len=12715 cr=0 bom=False sha16=0B8246FFDD9F17F9`，139 行 / `CASE_PASS=135` / `CASE_FAIL=0`。
+  说明 `tool\references\selftest-2026-11-25m.md`。
+- **闸门② publish**：`-Direction publish -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\relay-port`
+  ⇒ `via=parameter tracked_files=41`、`STATUS=OK fail=0 warn=2`、两条 `SNAPSHOT_DRIFT` 属 `examples\` 历史快照（家规 8，不为它同步）、`PUBLISH_EXIT=0`。
+  装置件逐件 sha16：`start-relay.ps1 4A65572783501F9E:13633` / `relay-lock.ps1 23E51FB2619230DC:6429` /
+  `relay-ledger.ps1 6068012759F0D0A6:15672` / `relay-spawn.ps1 D267199D611CC109:6946` / `AGENT-RELAY.md 195EAB9E6AA15322:21489`。
+- **闸门③ refresh-manifest**：`REFRESH_MANIFEST verdict=PASS`、`FILE_COUNT=85`（MANIFEST 自身除外）、
+  `ENTRY_COUNT=85`、`INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、
+  `MANIFEST_BYTES=5649`、`MANIFEST_NON_ASCII=0`、`CHANGE_COUNT=24`、`MANIFEST_EXIT=0`。
+  逐项复核见本节末尾「清单复核」。
+
+### ⑤ 本轮工具坑（新增）
+
+1. **重写安装器时把机读字面量 `AGENTS_MARKERS` 变成了运行时拼接**（`$t.Label + '_MARKERS'`），
+   case 13f 的「文档 ↔ 代码交叉字面量检查」判红：`code_missing=[AGENTS_MARKERS]`。
+   修法：给规则目标加**显式** `Markers` 字段（`AGENTS_MARKERS` / `CLAUDE_MARKERS`），日志打 `$t.Markers`；
+   同时把 `CLAUDE_MARKERS` 加进 selftest token 清单，让双写这条新不变式也被守住。
+   **教训**：装置的机读字面量是 selftest 的**契约面**，重构时不能让字面量退化成拼接结果 ——
+   拼出来运行时对、源码里查不到，检查照样红。第一次跑 `pass=134 fail=1`，**只有这一条红** ⇒ 重写没改变既有行为。
+2. `tool\references\` 里的新文件**会进 publish 的 tracked 集合**（本轮 30 → 41）⇒
+   **留证说明必须写在 publish 之前**，否则下一轮 verify 立刻报漂移。
+
+### ⑥ 未验证 / 遗留（别当已解决）
+
+- **三家 CLI 运行时的真起链一律未实测**：本机只装了 Claude Code（`%USERPROFILE%\.local\bin\claude.exe`），
+  `codex` 与 `openclaw` **未安装**。case 16 只验证到「装配正确 + 命令构造正确 + 干跑不执行」。
+- OpenClaw 的 `sessions_spawn` **参数形状随版本演进**，激活包里给的是参考形状 ⇒ 第一次跑前先在交互会话里打一次看本机真实参数名。
+- **LICENSE 未决**：用户未授权选许可证 ⇒ 本轮**不擅自新增**；README 与本节保留「保留所有权利」并列为开放项。
+- `via=probe-multi` 多命中择优、`profile_probe_disabled` 降级路径仍未实测（沿用）。
+- case 15 在 CI（`windows-latest` 无已装 skill ⇒ 走 `loud_fail` 分支）的线上稳定性未验证。
+- 套件仍不调 `session_create`：真实起链一跳属人工。
+- 换运行时的**行为等价性**只在 `mcode` 上实测过（默认路径逐字等价）；`claude-code` 下的**真链**未跑。
+
+### ⑦ 清单复核（闸门③ 回读，2026-11-25）
+
+`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\refresh-manifest.ps1` 的实测输出：
+
+| 指标 | 值 | 含义 |
+|---|---|---|
+| `REFRESH_MANIFEST verdict` | `PASS` | 清单整体通过 |
+| `FILE_COUNT` | `85`（MANIFEST 自身除外） | 仓库纳管文件数（上批 73 → 本批 85，净增 12） |
+| `ENTRY_COUNT` | `85` | 清单条目数与文件数一致 |
+| `INVARIANT_OK` | `True` | 装置件硬不变式（`device\` ↔ `tool\templates\`）成立 |
+| `BOM_FILES` | `0` | 无 BOM 文件 |
+| `PS1_NON_ASCII_FILES` | `0` | 全部 `.ps1` 纯 ASCII（家规 4） |
+| `MD_TXT_CR_TOTAL` | `0` | 仓库 `.md` 与 `tool\references\*.txt` 全 LF（家规 4） |
+| `MANIFEST_BYTES` | `5649` | 清单本体字节数 |
+| `MANIFEST_NON_ASCII` | `0` | 清单纯 ASCII |
+| `CHANGE_COUNT` | `1` | 相对上一次清单只有 `HANDOFF.md` 变更（即本节回填本身） |
+| `MANIFEST_EXIT` | `0` | 脚本退出码 |
+
+**口径提醒**：本节文字本身写进 `HANDOFF.md` 后，清单会因 `HANDOFF.md` 字节数变化而重算（`MANIFEST_BYTES` / `CHANGE_COUNT` 可能 ±1），
+所以本节写完**又跑了一次**清单以对齐最终态；上表是**最终那次**运行的回读值。
+清单统计 `.md` 与 `.txt` 一起 ⇒ 改 `HANDOFF.md` 必须以最后一次 `refresh-manifest` 为准，别用本表去推断清单自身哈希。
+
+### ⑧ 提交与推送（2026-11-25）
+
+- 分支 `main`，远端 `origin = https://github.com/kizemo/agentask-relay.git`（push 已获用户授权）。
+- 本批入库：`git add -A`（新增 9 件 + 修改 14 件左右），一次提交；随后 `git push origin main`。
+- 推送后 `origin/main` 与本地 `main` 一致 ⇒ 下一轮新会话 clone 即得运行时适配层 + 新文档。
+

@@ -84,7 +84,7 @@ function Hash16([string]$Path) {
 
 # --- preconditions --------------------------------------------------------------
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Say 'ABORT reason=git_missing'; exit 2 }
-foreach ($need in @($installer, (Join-Path $tplDir 'start-relay.ps1'), (Join-Path $tplDir 'relay-lock.ps1'), (Join-Path $tplDir 'relay-ledger.ps1'), (Join-Path $tplDir 'AGENTS-RELAY-BLOCK.md'))) {
+foreach ($need in @($installer, (Join-Path $tplDir 'start-relay.ps1'), (Join-Path $tplDir 'relay-lock.ps1'), (Join-Path $tplDir 'relay-ledger.ps1'), (Join-Path $tplDir 'relay-spawn.ps1'), (Join-Path $tplDir 'AGENTS-RELAY-BLOCK.md'))) {
   if (-not (Test-Path -LiteralPath $need)) { Say ('ABORT reason=kit_file_missing path=' + $need); exit 2 }
 }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -495,7 +495,7 @@ function Cross([string]$DocPath, [string]$CodePath, [string[]]$Tokens, [string]$
 }
 $docRelay = Join-Path $tplDir 'AGENT-RELAY.md'
 $lauLiterals = @('workspace_missing', 'not_a_git_repo', 'ledger_unparsable', 'stage_in_progress', 'one_writer_per_project', 'chain_already_running', 'chain_exhausted', 'ledger_blocked', 'ledger_absent', 'plan_doc_not_found', 'plan_doc_missing', 'plan_doc_ambiguous', 'probe_newest_of_', 'by=newest_mtime', 'pass_-PlanDoc_to_disambiguate', 'lock_unavailable', 'DRYRUN skip=lock_acquire')
-$insLiterals = @('agents_markers_corrupt', 'stray_marker_removed', 'AGENTS_MARKERS', 'content_signature count=', 'agents_relay_section_ambiguous', 'appended_managed_block', 'keep_a_single_relay_section', 'present_kept', 'present_unparsed', 'replaced', 'adopted', 'appended')
+$insLiterals = @('agents_markers_corrupt', 'stray_marker_removed', 'AGENTS_MARKERS', 'CLAUDE_MARKERS', 'content_signature count=', 'agents_relay_section_ambiguous', 'appended_managed_block', 'keep_a_single_relay_section', 'present_kept', 'present_unparsed', 'replaced', 'adopted', 'appended')
 $crossLau = Cross $docRelay (Join-Path $tplDir 'start-relay.ps1') $lauLiterals 'LAUNCHER'
 $crossIns = Cross $docRelay $installer $insLiterals 'INSTALLER'
 Check 'protocol_documents_launcher_literals' ($crossLau -match 'doc_missing=\[\] code_missing=\[\]') $crossLau
@@ -570,6 +570,73 @@ if ($probeOk -and ($probeLine -match 'skill_root=(.*?) via=')) { $probeRoot = $M
 $probeExists = ($probeRoot -ne '') -and (Test-Path -LiteralPath $probeRoot -PathType Container)
 $loudFail = ($runProbe.Code -eq 3) -and $runProbe.Text.Contains('skill_root_not_found') -and $runProbe.Text.Contains('every_drive')
 Check 'publish_skill_root_probe_branch' (($probeOk -and $probeExists) -or $loudFail) ('line=' + $probeLine + ' code=' + $runProbe.Code + ' root_exists=' + $probeExists + ' loud_fail=' + $loudFail)
+
+# --- case 16: runtime adaptation layer (B9) -------------------------------------
+# One kit, four runtimes. The runtime decides two things: which instruction files
+# carry the managed rule block, and how the next link is started. Claude Code is the
+# case that needs the most care: it reads CLAUDE.md first and only falls back to
+# AGENTS.md when the repo has NO CLAUDE.md, so a repo that already ships a CLAUDE.md
+# would shadow the whole relay block -- the kit would look installed while the chain
+# never starts. Hence claude-code writes both files; the other three write AGENTS.md.
+$r16a = New-Repo 'repo-runtime-cc'
+Set-Content -LiteralPath (Join-Path $r16a 'docs\plan-cc.md') -Value '# cc plan' -Encoding utf8
+$c16a = Run $installer @('-RepoRoot', $r16a, '-Target', 'cc batch', '-PlanDoc', 'docs\plan-cc.md', '-MaxStages', '2', '-Runtime', 'claude-code')
+Check 'runtime_cc_install_exit_zero' ($c16a.Code -eq 0) ('exit=' + $c16a.Code)
+Check 'runtime_cc_install_verdict_pass' ($c16a.Text -match 'INSTALL_VERDICT=PASS') ('tail=' + (($c16a.Text -split "`n" | Select-Object -Last 3) -join ' | '))
+Check 'runtime_cc_agents_block' ((CountOf (Join-Path $r16a 'AGENTS.md') $beginMark) -eq 1) ('begin=' + (CountOf (Join-Path $r16a 'AGENTS.md') $beginMark))
+Check 'runtime_cc_claude_block' ((CountOf (Join-Path $r16a 'CLAUDE.md') $beginMark) -eq 1) ('begin=' + (CountOf (Join-Path $r16a 'CLAUDE.md') $beginMark))
+Check 'runtime_cc_markers_echoed' ($c16a.Text -match 'AGENTS_MARKERS begin=1 end=1' -and $c16a.Text -match 'CLAUDE_MARKERS begin=1 end=1') ''
+Check 'runtime_cc_reported' ($c16a.Text -match 'INSTALL_RUNTIME=claude-code') ''
+$blk16a = [IO.File]::ReadAllText((Join-Path $r16a 'AGENTS.md'))
+Check 'runtime_cc_block_carries_spawn_rule' ($blk16a.Contains('Claude Code has no `session_create` tool')) ''
+$act16a = [IO.File]::ReadAllText((Join-Path $r16a 'docs\relay\ACTIVATION-PROMPT.txt'))
+Check 'runtime_cc_activation_packet' ($act16a.Contains('-Runtime claude-code') -and $act16a.Contains('RELAY_SPAWN_OK runtime=claude-code')) ''
+
+$r16b = New-Repo 'repo-runtime-cx'
+Set-Content -LiteralPath (Join-Path $r16b 'docs\plan-cx.md') -Value '# cx plan' -Encoding utf8
+$c16b = Run $installer @('-RepoRoot', $r16b, '-Target', 'cx batch', '-PlanDoc', 'docs\plan-cx.md', '-MaxStages', '2', '-Runtime', 'codex')
+Check 'runtime_cx_install_exit_zero' ($c16b.Code -eq 0) ('exit=' + $c16b.Code)
+Check 'runtime_cx_agents_block' ((CountOf (Join-Path $r16b 'AGENTS.md') $beginMark) -eq 1) ''
+Check 'runtime_cx_no_claude_file' (-not (Test-Path (Join-Path $r16b 'CLAUDE.md'))) ''
+$blk16b = [IO.File]::ReadAllText((Join-Path $r16b 'AGENTS.md'))
+Check 'runtime_cx_block_carries_spawn_rule' ($blk16b.Contains('Codex CLI has no `session_create` tool')) ''
+
+$r16d = New-Repo 'repo-runtime-oc'
+Set-Content -LiteralPath (Join-Path $r16d 'docs\plan-oc.md') -Value '# oc plan' -Encoding utf8
+$c16d = Run $installer @('-RepoRoot', $r16d, '-Target', 'oc batch', '-PlanDoc', 'docs\plan-oc.md', '-MaxStages', '2', '-Runtime', 'openclaw')
+Check 'runtime_oc_install_exit_zero' ($c16d.Code -eq 0) ('exit=' + $c16d.Code)
+Check 'runtime_oc_agents_block' ((CountOf (Join-Path $r16d 'AGENTS.md') $beginMark) -eq 1) ''
+$blk16d = [IO.File]::ReadAllText((Join-Path $r16d 'AGENTS.md'))
+Check 'runtime_oc_block_carries_spawn_rule' ($blk16d.Contains('OpenClaw has no `session_create` tool')) ''
+
+$r16c = New-Repo 'repo-runtime-bad'
+Set-Content -LiteralPath (Join-Path $r16c 'docs\plan-bad.md') -Value '# bad plan' -Encoding utf8
+$c16c = Run $installer @('-RepoRoot', $r16c, '-Target', 'bad batch', '-PlanDoc', 'docs\plan-bad.md', '-MaxStages', '2', '-Runtime', 'gemini-cli')
+Check 'runtime_unknown_exit_2' ($c16c.Code -eq 2) ('exit=' + $c16c.Code)
+Check 'runtime_unknown_loud' ($c16c.Text -match 'reason=runtime_unsupported') ('line=' + ((($c16c.Text -split "`n") | Where-Object { $_ -match 'runtime_unsupported' } | Select-Object -First 1)))
+
+Check 'runtime_default_is_mcode' ($a.Text -match 'INSTALL_RUNTIME=mcode') ''
+$act16m = [IO.File]::ReadAllText((Join-Path $r1 'docs\relay\ACTIVATION-PROMPT.txt'))
+Check 'runtime_mcode_activation_uses_session_create' ($act16m.Contains('session_create')) ''
+$runtimeShards16 = @(Get-ChildItem -LiteralPath $tplDir -File -Filter 'ACTIVATION-SPAWN-*.md')
+Check 'runtime_shards_present' ($runtimeShards16.Count -eq 4) ('count=' + $runtimeShards16.Count)
+
+$spawnTpl16 = Join-Path $tplDir 'relay-spawn.ps1'
+Check 'spawn_installed_into_relay_dir' (Test-Path (Join-Path $r16a 'docs\relay\relay-spawn.ps1')) ''
+Check 'spawn_device_copy_matches_template' ((Hash16 $spawnTpl16) -eq (Hash16 (Join-Path $repoRoot 'device\relay-spawn.ps1'))) ('tpl=' + (Hash16 $spawnTpl16) + ' dev=' + (Hash16 (Join-Path $repoRoot 'device\relay-spawn.ps1')))
+$prompt16 = Join-Path $script:root 'relay-prompt-16.txt'
+[IO.File]::WriteAllText($prompt16, ("next link prompt body`n"), (New-Object Text.UTF8Encoding($false)))
+$s16e = Run $spawnTpl16 @('-Runtime', 'claude-code', '-PromptFile', $prompt16, '-WorkspaceDir', $r16a)
+Check 'spawn_dryrun_exit_zero' ($s16e.Code -eq 0) ('exit=' + $s16e.Code)
+Check 'spawn_dryrun_prints_command' ($s16e.Text -match 'SPAWN_COMMAND claude ' -and $s16e.Text -match '--output-format json') ''
+Check 'spawn_dryrun_does_not_run' ($s16e.Text -match 'SPAWN_EXECUTE=false') ''
+Check 'spawn_dryrun_prompt_not_inline' (-not ($s16e.Text -match 'next link prompt body')) ''
+$s16f = Run $spawnTpl16 @('-Runtime', 'codex', '-PromptFile', $prompt16, '-WorkspaceDir', $r16b)
+Check 'spawn_codex_dryrun' ($s16f.Code -eq 0 -and $s16f.Text -match 'SPAWN_COMMAND codex exec') ('exit=' + $s16f.Code)
+$s16g = Run $spawnTpl16 @('-Runtime', 'mcode', '-PromptFile', $prompt16)
+Check 'spawn_rejects_non_cli_runtime' ($s16g.Code -eq 2 -and $s16g.Text -match 'reason=runtime_not_cli') ('exit=' + $s16g.Code)
+$s16h = Run $spawnTpl16 @('-Runtime', 'claude-code', '-PromptFile', (Join-Path $script:root 'no-such-prompt-16.txt'))
+Check 'spawn_missing_prompt_file' ($s16h.Code -eq 2 -and $s16h.Text -match 'reason=prompt_file_missing') ('exit=' + $s16h.Code)
 
 # --- verdict -------------------------------------------------------------------
 Say ('SUITE_END pass=' + $script:pass + ' fail=' + $script:fail + ' root=' + $script:root)
