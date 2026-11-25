@@ -371,8 +371,10 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
 
 ## 未做 / 待下一轮
 
-- **等本批修复后的 CI 复跑结论**（`root_canonicalised` 修法是否让 runner 转绿）。
-  若仍红，优先看 runner 上其它 8.3 影响面（`Run` 的 `-f` 短exe、`Get-Content -Raw` 无关）。
+- ~~等本批修复后的 CI 复跑结论~~ **已闭合**：run `45586928582`（commit `d7875cf`）=
+  `completed / success` ⇒ `root_canonicalised` 修法在真 runner 上验证通过，闸门转绿。
+  对照：修复前同一 workflow 的 run `45585467312`（`4d939d5`）= `failure`。
+  徽章链接指向 workflow，main 分支现为绿。
 - **真实起链一跳未做**：本批只跑了套件（套件不调 `session_create`）。
   装置侧的「一次真激活 + 下一环自取锁」需在目标项目里人工发指令验证，历史留证见
   `tool/references/selftest-2026-11-25*.txt` 里登记的实测轮次。
@@ -416,6 +418,10 @@ B5 把仓库推上了公开 GitHub。随后实测量化出隐私暴露面，本�
 那次 run**，不能用「本地也过」冒充验证。修复后本机基线复跑：`SELFTEST_EXIT=0`、
 `SUITE_END pass=55 fail=0`，留证 `tool/references/selftest-2026-11-25j.txt`
 （无 `root_canonicalised` 提示 = 本机路径本就是长名，规范化为 no-op，符合预期）。
+
+**复跑结果（已实测）**：推送 `d7875cf` 后 run `45586928582` = `completed / success`。
+与修复前 run `45585467312`（同 workflow、同 runner 镜像）的 `failure` 构成**有效一红一绿对照**
+⇒ 修复成立，且判据文本一字未动（不是靠放宽断言变绿）。
 
 ## 本批工具坑（下一轮别再踩）
 
