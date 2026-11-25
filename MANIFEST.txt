@@ -1,7 +1,8 @@
 # MANIFEST.txt - agentask-relay relay corpus (content inventory, self-excluded)
-# generated: 2026-11-25 16:52:50
+# generated: 2026-11-25 16:55:59
 # format: sha16(sha256 first 16 hex) | bytes | relpath   [LF, no BOM]
 # refresh: pwsh -File scripts\refresh-manifest.ps1  (run last in any round)
+F411F9554EC9F026 | 378 | .gitattributes
 7FD870CED8B05774 | 423 | .gitignore
 F4AADA0058562C51 | 3815 | AGENTS.md
 6068012759F0D0A6 | 15672 | device\relay-ledger.ps1

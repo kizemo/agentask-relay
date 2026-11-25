@@ -1,0 +1,11 @@
+# The repo's gates (scripts/refresh-manifest.ps1: MD_TXT_CR_TOTAL must be 0) and the
+# MANIFEST.txt sha256 hashes assume LF on disk. Without this, a fresh clone on Windows
+# with core.autocrlf=true rewrites text files to CRLF and every gate fails.
+* text=auto eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
