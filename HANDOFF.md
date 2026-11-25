@@ -283,6 +283,17 @@ PractiLog 项目跑完一条 6 环无人值守接力链后，沉淀出一套「�
 ### 本轮工具坑
 
 - 侦察脚本的证据**写到 `$env:TEMP` 而不是仓库内**：否则「本机路径全清单」会被 push 进公开仓库。
+- **含中文的字面量不能走 bash 工具**：该层是 `/usr/bin/sh`，报 `setlocale: LC_ALL: cannot change
+  locale (zh-CN)` ⇒ 中文进命令后被静默改码，`-like`/`-match`/补丁锚点一律 **0 命中**（本轮连栽三次，
+  每次都表现为「锚点没找到」而不是报错）。改中文文档只用 `edit` 工具（JSON 传输，实测正常），
+  搜中文只用 `grep` 工具；bash 里只放 ASCII 判据。
+- **哈希口径只有一个**：`refresh-manifest.ps1` 记的是 **SHA256 前 16**；临时脚本用
+  `Get-FileHash -Algorithm SHA1` 会得出「看似漂移」的假差异（本轮 `README.md` 一度被误判）。
+- **清单不计 `MANIFEST.txt` 自身**：`FILE_COUNT=63 (MANIFEST excluded)` ⇒ `git ls-files` 为 64
+  不是多塞了一件。对账前先看清排除规则，别把设计当缺陷。
+- **提交是否成功只能回读**：一次 `add`+`commit`+`push` 拆着跑时出现过「显示过 root-commit 行、
+  实际 HEAD 无提交」的情形 ⇒ 判据是 `git log --oneline` / `git rev-parse HEAD` / `status --porcelain` 空，
+  以及 `git ls-remote origin main` 与本地一致。
 - 命令里避免出现凭据类中文词字面量，改用码点构造（`` `u{5BC6}`u{53E3}`u{94A5}`u{5319} ``）拼正则；
   拼 `'|'` 时必须 `'A' + '|' + $w`，把 `|` 不加空格塞进正则字面量会让 PowerShell 报
   「表达式只能作为管道的第一个元素」。
