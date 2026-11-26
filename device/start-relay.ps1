@@ -190,7 +190,14 @@ if (Test-Path -LiteralPath $ledgerPath) {
     }
     Say "FAIL reason=chain_at_stage_cap current_stage=$($ledger.current_stage) max_stages=$($ledger.max_stages) stages=$stageSummary all_done=$allDoneState"
     if ($allDoneState -eq 'true') {
-      Say 'HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. Close the chain with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.'
+      # B20: this is the one shape -AutoFinalize acts on, so the hint must not
+      # tell the reader to hand close a chain the same run closes. The token is
+      # kept identical in both wordings: it names the shape, not the remedy.
+      if ($AutoFinalize) {
+        Say 'HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. -AutoFinalize closes it through relay-ledger.ps1 on this run, and the outcome line below says whether it wrote or was skipped by a dry run; a refused write only warns. Do not raise -MaxStages to keep going.'
+      } else {
+        Say 'HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. Close the chain with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.'
+      }
     } elseif ($allDoneState -eq 'false') {
       Say 'HINT=stage_cap_reached_with_open_stage: the stage cap is reached but at least one declared stage is not done. Drive or unblock the open stage first, and close the chain only once every stage reads done. Do not raise -MaxStages to keep going.'
     } else {

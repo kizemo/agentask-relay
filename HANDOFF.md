@@ -1617,3 +1617,102 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
 ### 本批工作树状态
 
 用户未授权 commit / push，**本批未提交**，工作树留有 B19 全部改动。
+
+## 批次 B20 实录（2026-11-26）
+
+**本批范围**：只做 B19 §「未验证 / 遗留」第 1 条 —— 在**真链 + 真实台账 + 真实 `session_create`** 上
+端到端验证 `start-relay.ps1 -AutoFinalize` 自动收尾。验证过程中发现并修掉两个缺陷：触顶闸门 HINT 措辞
+自相矛盾（B19 遗留的表述 bug）、一次性验收器复跑会把「夹具已消耗」印成 7 条产品红灯。B19 另三条遗留
+（codex / openclaw 矩阵、`.log` 门禁、台账侧 `set_status=done` 守卫）原样未动。
+
+### 做了什么
+
+1. **真链夹具生成器 `reports\b20-e2e-setup.ps1`**（9352 B / 195 行 / CR=0 / sha16 `40AFCBE9AC764478`）：
+   在 `%TEMP%` 建一次性 git 仓库，真跑 `install-relay.ps1` 两遍（断言 pass1 `ADAPTATION_STATUS=pending`、
+   pass2 `confirmed` 且 `applied=8/8`）、真跑启动器 `-MaxStages 1`（`exit=0` + `ledger_bootstrapped` +
+   `prompt_written`，台账回读 `status=running current_stage=1 max_stages=1 stages=0`），并内置**负向控制**：
+   同一夹具再带 `-AutoFinalize` 起一次，要求 `exit=3` / `FAIL reason=chain_at_stage_cap ... all_done=unknown` /
+   `HINT=stage_cap_reached_with_no_stage_records:...`、**不得**出现 `AUTO_FINALIZED`、台账仍 `running`。
+2. **真链端到端**（`session_create` 真起一环）：`session_id=mvs_bbd188bdad554326b41db3872cb9754f`
+   （模型 `minimax/MiniMax-M3`），`relay-lock.ps1 -Action adopt` 收编成功；子会话写
+   `docs\relay\stage-1-inventory.md`（2969 B）加两个补丁文件，两次台账提交全走
+   `-Action status` → `-Action commit -DryRun` → `-Action commit -ExpectSha256`（sha 链
+   `44295922…` → `28892D10…` → `29CB450E…`），**故意不 `set_status=done`、不起下一环、不释放锁**，
+   把夹具钉在「触顶且 status 仍 running」这个待收尾形态上。
+3. **一次性验收器 `reports\b20-verify-finalize.ps1`**（8562 B / CR=0 / sha16 `1D6841033D910292`）：
+   25 条检查，核心判据是「`-AutoFinalize` 跑完 `AUTO_FINALIZED` 行存在、`before` 是收尾前 sha、
+   `after` 是收尾后 sha、盘上 `status=done`、`next_session_id` 未被写、重跑 `chain_exhausted` 且 sha 稳定」。
+4. **唯一产品改动**（`tool\templates\start-relay.ps1`，`:191-205` 触顶闸门）：`allDoneState=true` 分支原先
+   无论有没有 `-AutoFinalize` 都印同一句「触顶但没人收尾」的 HINT，与随后成功的 `AUTO_FINALIZED`
+   自相矛盾。改为按 `$AutoFinalize` 二选一措辞（带 flag 版 `:196-197` / 手工版 `:198-200`），
+   **共用同一 token** `HINT=all_stages_done_but_status_running:`，自测断言按 token 不按整句，故未改
+   `scripts\selftest.ps1`。
+5. **HINT 双跑见证 `reports\b20-hint-witness.ps1`**（6058 B / 102 行 / sha16 `66747B7FFBEF8761`）：
+   改完产品后不重跑真链（代价高、增量鉴别力低），改用同形态夹具双跑：一次不带 `-AutoFinalize`
+   印手工措辞，一次带 flag 印 `AUTO_FINALIZED` + `HINT=chain_closed_by_auto_finalize`，
+   断言 `witness_hints_differ`。
+6. **留证文档 `tool\references\selftest-2026-11-26-b20.md`**（14628 B / CR=0 / sha16 `FF99D74E6D0F0FEF`）：
+   10 节，含夹具与负向控制、真链、验收器与守卫、产品改动、双跑见证、门禁结果、证据路径、
+   已验证·推断·未验证、遗留、工具坑 38–42。
+
+### 已验证（盘上回读）
+
+- 夹具：`SETUP_EXIT=0`、`SUMMARY fail=0`、`SETUP_OK`，两遍安装与启动器断言全 PASS。
+- 真链一次性验收（首跑）：`VERIFY_EXIT=0`、`SUMMARY fail=0`、`VERIFY_OK`，25 条检查全 PASS。
+  夹具终态台账 `B62CEBF9D4708923EC49B6CC6E88050BCB0CF8811547522F64F886884EA08DEA`（2366 B），
+  回读 `status=done current_stage=2 max_stages=1 stages=1:done next_session_id=null`
+  —— 即「触顶（`current_stage=2 > max_stages=1`）+ 唯一阶段 done + 环已关」三条件同时成立。
+- 验收器**复跑**（对已 `done` 的夹具）：`VERIFY_EXIT=2`，印
+  `STALE_STATE fixture_no_longer_holds_the_crash_shape ... status=done` + `HINT=one_shot_verifier: ...` +
+  `SUMMARY fail=0 checks_run=0 refused_stale_state=true`，**不动任何字节**，事后台账仍 `B62CEBF9…`。
+  这是 B20 修掉的第二个缺陷：原版复跑会印 7 条 `FAIL`（与真回归不可区分）。
+- 双跑见证：`WITNESS_EXIT=0`、`SUMMARY fail=0`、`WITNESS_OK`；新夹具
+  `%TEMP%\relay-b20-e2e-20261126-224818`（head `c9f6483`）。日志 `reports\b20-hint-witness.log`
+  （12414 B / CR=179 / sha16 `0FC41BB5320E9640`）内含 `COPY start-relay.ps1 bytes=35754 sha16=753FBF3C03BB083E`、
+  `neg_*` 负向控制全 PASS、`PLAIN exit=3` 手工措辞、`AUTO exit=3` +
+  `AUTO_FINALIZED before=A72FAEED… after=2ABAC79D…` + `HINT=chain_closed_by_auto_finalize`、`witness_hints_differ`。
+- 一键自测（改完装置后）：`SUITE_END pass=323 fail=0`、`EXIT=0`；raw
+  `tool\references\selftest-2026-11-26-b20.txt`（29078 B / 328 行 / CR=0 / 无 BOM / sha16 `2C9CF3D77DA8F0D4`，
+  `:1` `SUITE_START`、`:327` `SUITE_END pass=323 fail=0`、`:328` `MANUAL_STEP`，`CASE_PASS auto_finalize` 23 条）。
+- 硬不变式：`tool\templates\start-relay.ps1` 与 `device\start-relay.ps1` 均 35754 B / 580 行 / CR=0 /
+  non_ascii=0 / 无 BOM / sha16 `753FBF3C03BB083E`（逐字一致，`Copy-Item` 同步）。
+
+### 发布（publish 回读）
+
+- `pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish` ⇒ `DIRECTION=publish STATUS=OK fail=0 warn=2`，
+  `tracked_files=80`（B19 是 78，+2 = 本批 `selftest-2026-11-26-b20.md` 与 `.txt`）；两条 warn 全是
+  `SNAPSHOT_DRIFT`（`examples\practilog\docs\relay\`，家规 8：历史快照只报不同步、不为它同步）。
+- 硬不变式 `templates_vs_copies` 全绿：`start-relay.ps1 753FBF3C03BB083E:35754`、
+  `relay-lock.ps1 23E51FB2619230DC:6429`、`relay-ledger.ps1 032C49C2BE21D1A7:19826`、
+  `relay-spawn.ps1 438D5C375C7D92F4:16484`、`AGENT-RELAY.md B6BF77AAF8CD3FBC:23617`。
+- 全局 skill 侧本批更新：`templates\start-relay.ps1 753FBF3C03BB083E:35754`、
+  `references\selftest-2026-11-26-b20.md FF99D74E6D0F0FEF:14628`、
+  `references\selftest-2026-11-26-b20.txt 2C9CF3D77DA8F0D4:29078`。
+- `-Direction verify` 同样 `STATUS=OK fail=0 warn=2`（同一组 `SNAPSHOT_DRIFT`），无漂移。
+- `refresh-manifest.ps1` 在本节定稿后**最后**跑一次；它的数字只留在 `MANIFEST.txt` 的生成行与门禁行里，
+  本节不重复抄 —— 本节写完之后不再改本文件，否则清单自指漂移。
+
+### 未验证 / 遗留
+
+- **首跑 PASS 的原始 stdout 未入库**：验收器首跑时我用 `*>` 把输出写进 `reports\b20-verify-finalize.log`，
+  之后为了验证守卫又跑了一次，同一路径被覆盖成守卫输出（635 B / CR=5 / sha16 `2A89432FD9D245D6`，
+  内容只有 `STALE_STATE`）。首次 25 条 PASS 只存在于当轮会话工具输出里，**没有盘上原生日志**。
+  文档（`selftest-2026-11-26-b20.md` §3/§7）已如实标注这一缺口，未伪造。修法（下一批）：
+  验收器输出名带运行序号或时间戳，或首跑前先追加写入，禁止覆盖。
+- **「真链证机制」与「见证证措辞」是两段拼起来的**：`-AutoFinalize` 端到端在真实 `session_create` 链上
+  验过（机制成立）；改完 HINT 措辞后**没有**重跑真链，措辞由同形态双跑见证验证。两者合起来才等于
+  「真链上的措辞也对」，单看任一段都不够。
+- 夹具小缺陷（**非产品缺陷**）：OPERATOR NOTE 补丁没给 stage 带 `session_id`，种子 `next_session_id=null`，
+  故 `LEDGER_SESSION_SKIPPED stage=1 reason=no_session_id`、`sessions=[]`。属夹具形态问题，原样留账。
+- codex / openclaw 真链矩阵（B18 遗留 1）原样未处理，本机缺这两个 CLI。
+- `.log` 是否纳入 `MD_TXT_CR_TOTAL`（B18 遗留 5）原样未裁决 —— 本批两份新 `.log` 带 CR
+  （`b20-verify-finalize.log` CR=5、`b20-hint-witness.log` CR=179，PowerShell `*>` 写 CRLF），
+  与 B17–B19 的 `.log` 同状，门禁不统计它们。
+- 台账侧是否给 `set_status=done` 加「阶段全 done」守卫：仍未加（B19 的裁定沿用：会切断人工裁决后手动收尾那条路）。
+- `protocol\practilog-agents-pointer.md:11` 仍是旧口径（非发布物，不进清单）。
+- 本批工具坑 38–42 见 `tool\references\selftest-2026-11-26-b20.md` §10，本文件不重复。
+
+### 本批工作树状态
+
+B19 已提交为 `8afd581`（"B19: stage-cap gate gets real teeth - two guard mutants, no-session-call assertion"，
+父 `81c952a`），当时未推送。B20 全部改动随本节一并提交。

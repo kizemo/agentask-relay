@@ -1,0 +1,179 @@
+=== SETUP exit=0 ===
+B20_ROOT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/plan-b20.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/inventory.ps1', LF will be replaced by CRLF the next time Git touches it
+OK fixture_committed
+=== INSTALL_PASS_1 exit=0 ===
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo
+REPO name=repo
+REPO head=c9f6483
+RUNTIME name=mcode spawn_template=ACTIVATION-SPAWN-mcode.md
+PLAN doc=docs\plan-b20.md created=False
+COPY relay-lock.ps1 bytes=6429 sha16=23E51FB2619230DC
+COPY start-relay.ps1 bytes=35754 sha16=753FBF3C03BB083E
+COPY relay-ledger.ps1 bytes=19826 sha16=032C49C2BE21D1A7
+COPY relay-spawn.ps1 bytes=16484 sha16=438D5C375C7D92F4
+COPY AGENT-RELAY.md bytes=23617 sha16=B6BF77AAF8CD3FBC
+COPY RELAY-SOP.md bytes=7129 sha16=52630B579FB8CDBF
+WRITE RELAY-ADAPTATION.md created source=defaults bytes=5731
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=defaults
+WRITE adaptation-questions.md questions=8 path=docs\relay\adaptation-questions.md
+WRITE adaptation-answers.template.json path=docs\relay\adaptation-answers.template.json
+WARN adaptation_defaults_unconfirmed ask_the_user_before_starting_the_chain packet=docs\relay\adaptation-questions.md
+AGENTS action=appended reason=n/a before=[absent] after=[bytes=3764 sha16=84554511C8EFC72A] bom=False
+WRITE relay-runtime.json bytes=508 mode=session_tool
+WRITE ACTIVATION-PROMPT.txt bytes=3573
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=35754
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=pending
+ADAPTATION_SOURCE=defaults
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=docs\relay\adaptation-questions.md
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=mcode
+WARN_COUNT=1
+=== INSTALL_PASS_2 exit=0 ===
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo
+REPO name=repo
+REPO head=c9f6483
+RUNTIME name=mcode spawn_template=ACTIVATION-SPAWN-mcode.md
+PLAN doc=docs\plan-b20.md created=False
+SKIP relay-lock.ps1 identical bytes=6429
+SKIP start-relay.ps1 identical bytes=35754
+SKIP relay-ledger.ps1 identical bytes=19826
+SKIP relay-spawn.ps1 identical bytes=16484
+SKIP AGENT-RELAY.md identical bytes=23617
+SKIP RELAY-SOP.md identical bytes=7129
+ADAPT answers=docs\adaptation-answers.json applied=8/8
+PATCH RELAY-ADAPTATION.md sections=3,4,5 missing= answers=docs\adaptation-answers.json
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=answers
+AGENTS action=present_kept reason=n/a before=[bytes=3764 sha16=84554511C8EFC72A] after=[bytes=3764 sha16=84554511C8EFC72A] bom=False
+WRITE relay-runtime.json bytes=508 mode=session_tool
+WRITE ACTIVATION-PROMPT.txt bytes=3573
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=35754
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=confirmed
+ADAPTATION_SOURCE=answers
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=mcode
+WARN_COUNT=0
+PASS install_pass1_pending exit=0
+PASS install_pass2_confirmed exit=0
+=== LAUNCHER exit=0 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-224818/repo
+OK head=c9f6483 dirty_files=16
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_absent path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json (will bootstrap)
+OK stage_titles source=descriptor
+OK plan_doc=docs\plan-b20.md source=probe bytes=1026
+LOCK_ACQUIRED holder=start-relay:72444 stage=1 ttl_s=1800 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\.relay.lock
+OK ledger_bootstrapped path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json bytes=2155
+OK prompt_written path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\next-relay-prompt.txt bytes=4301
+NEXT call session_create with agent_name=me, title=relay-01of01-<short stage name>, workspace_dir=<repoRoot backslashes>, content=<contents of the prompt file>
+NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>
+DONE exit=0 target=B20 auto finalize on a real chain: one stage, terminal flip left to the launcher
+PASS launcher_exit0 exit=0
+PASS launcher_bootstrap bootstrap line
+PASS launcher_prompt prompt line
+LEDGER status=running current_stage=1 max_stages=1 stages=0 next_session_id=[]
+PASS bootstrap_running status/current/max
+=== NEGATIVE_CONTROL exit=3 log=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\b20-negative.log ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-224818/repo
+OK head=c9f6483 dirty_files=19
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160 status=running current_stage=1 stages=0 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=1 max_stages=1 stages=none all_done=unknown
+HINT=stage_cap_reached_with_no_stage_records: the stage cap is reached but the ledger records no stage, so completion cannot be proven. Inspect the ledger with relay-ledger.ps1 -Action status, record the stage result, then close the chain. Do not raise -MaxStages to keep going.
+PASS neg_exit3 exit=3
+PASS neg_cap cap line
+PASS neg_all_done_unknown no stage record yet
+PASS neg_no_finalize must not close the chain
+PASS neg_ledger_untouched status=running
+RING_CONTENT_PATH=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\b20-ring-instruction.txt
+RING_CONTENT_BYTES=5451
+B20_REPO=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo
+B20_LEDGER=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json
+B20_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay\next-relay-prompt.txt
+SUMMARY fail=0
+SETUP_OK
+PASS setup_paths repo=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo
+PASS append_status_line lines=1
+PASS append_sha 590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160
+=== append_dryrun exit=0 ===
+LEDGER_CAS_OK sha256=590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160
+LEDGER_RULES_OK stages=0->1 sessions=0->0 notes=0->0
+LEDGER_DRYRUN verified=true before=590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160 would_be_stages=1
+PASS append_dryrun_ok exit=0
+=== append_commit exit=0 ===
+LEDGER_CAS_OK sha256=590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160
+LEDGER_RULES_OK stages=0->1 sessions=0->0 notes=0->0
+LEDGER_COMMITED before=590B04F8D9B236F92821945A7AC988099C4988F8DA8573726A3597925EEE6160 after=F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760 stages=0->1 sessions=0->0 current_stage=1->1 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json
+PASS append_commit_ok exit=0
+PASS finish_status_line lines=1
+PASS finish_sha F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760
+=== finish_dryrun exit=0 ===
+LEDGER_CAS_OK sha256=F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760
+LEDGER_SESSION_SKIPPED stage=1 reason=no_session_id
+LEDGER_RULES_OK stages=1->1 sessions=0->0 notes=0->0
+LEDGER_DRYRUN verified=true before=F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760 would_be_stages=1
+PASS finish_dryrun_ok exit=0
+=== finish_commit exit=0 ===
+LEDGER_CAS_OK sha256=F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760
+LEDGER_SESSION_SKIPPED stage=1 reason=no_session_id
+LEDGER_RULES_OK stages=1->1 sessions=0->0 notes=0->0
+LEDGER_COMMITED before=F3CB64A0F07D2997A4E57A8090978252A522116BF5EA8E3247C8B874100CD760 after=A72FAEEDBEED26F2738C3EEDF557799719DE171AB1166D691D0F389AFBB60447 stages=1->1 sessions=0->0 current_stage=1->2 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json
+PASS finish_commit_ok exit=0
+SHAPE status=running current_stage=2 max_stages=1 stages=1=done
+PASS shape_is_the_target_one running/2/1
+=== LAUNCHER_PLAIN exit=3 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-224818/repo
+OK head=c9f6483 dirty_files=22
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=A72FAEEDBEED26F2738C3EEDF557799719DE171AB1166D691D0F389AFBB60447 status=running current_stage=2 stages=1 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=2 max_stages=1 stages=1:done all_done=true
+HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. Close the chain with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.
+PASS plain_exit3 exit=3
+PASS plain_token_kept shape token
+PASS plain_hand_close_advice names the manual remedy
+PASS plain_no_finalize off by default
+PASS plain_ledger_running status=running
+=== LAUNCHER_AUTOFINALIZE exit=3 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-224818/repo
+OK head=c9f6483 dirty_files=22
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=A72FAEEDBEED26F2738C3EEDF557799719DE171AB1166D691D0F389AFBB60447 status=running current_stage=2 stages=1 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=2 max_stages=1 stages=1:done all_done=true
+HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. -AutoFinalize closes it through relay-ledger.ps1 on this run, and the outcome line below says whether it wrote or was skipped by a dry run; a refused write only warns. Do not raise -MaxStages to keep going.
+AUTO_FINALIZED status=done before=A72FAEEDBEED26F2738C3EEDF557799719DE171AB1166D691D0F389AFBB60447 after=2ABAC79D73282A914EFB1B152DD4DC957D4CDAF12B46C82F9939FDAF4CC50E99 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo\docs\relay.json
+HINT=chain_closed_by_auto_finalize: every declared stage is done and status is now done, so a re-run of the launcher reports chain_exhausted. To keep going, start a fresh chain with -MaxStages greater than the previous one, or archive the old ledger.
+PASS auto_exit3 exit=3
+PASS auto_token_kept shape token unchanged
+PASS auto_no_hand_close_advice the fix: no contradictory remedy
+PASS auto_names_itself hint names the actor
+PASS auto_finalized still closes the chain
+PASS auto_hint_swapped closing hint present
+PASS auto_ledger_done status=done
+PASS witness_hints_differ same state, flag decides the remedy
+SUMMARY fail=0 repo=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-224818\repo
+WITNESS_OK
