@@ -1548,3 +1548,72 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
   `git rev-parse HEAD` 与 `git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/main` 比对。
 - 推送后工作树 `DIRTY_AFTER=0`（`git status --porcelain --untracked-files=all` 输出为空）。
 - 远端：`https://github.com/kizemo/agentask-relay.git`，分支 `main`。
+
+## 批次 B19 实录（2026-11-26）
+
+**本批范围**：只做 B18 遗留里可自主推进的两条 —— 第 3 条（触顶后没人收尾，链永远挂在 `running`）与
+第 4 条（`status` 只说单阶段、不说整条链）。第 1 条（codex / openclaw 真链矩阵）缺 CLI 不装，
+第 5 条（`.log` 是否纳入 `MD_TXT_CR_TOTAL`）属人工验收点，两条都原样留到下一批。
+
+### 做了什么
+
+1. **`relay-ledger.ps1 -Action status` 增第二行 `LEDGER_CHAIN`**，字段顺序
+   `current_stage=<n> max_stages=<n> cap_reached=<true|false|unknown> stages=<a>,<b>,... all_done=<true|false|unknown> open_stages=<...>`。
+   - `stages=` 是**逐阶段列表**，与第一行 `LEDGER_STATE ... stages=<count>` **同名不同义**（那边是计数，这边逐列举）。
+   - 三态字段算不出来就写 `unknown`，不拿 `false` 兜底：`cap_reached` 靠 `[int]::TryParse` 双成功才比较。
+   - 无阶段记录时 `stages=none`、`all_done=unknown`、`open_stages=none`；词汇与启动器触顶 FAIL 行一致。
+   - 与启动器的形态计算**故意两台独立实现**，自测喂同一份台账交叉比对，谁漂移谁红。
+2. **`start-relay.ps1` 增 `[switch]$AutoFinalize`（默认关）**：只在「触顶 + `all_done=true` + 非 `-DryRun`」时
+   经台账闸门提交 `{"set_status":"done"}` 关环；写台账**只走 `relay-ledger.ps1`**（锁 + CAS + 只追加 + 写后回读），
+   失败只 `WARN auto_finalize=failed reason=...` 不抛。成功印
+   `AUTO_FINALIZED status=done before=<sha16> after=<sha16> path=<ledger>`，并把 HINT 换成
+   `HINT=chain_closed_by_auto_finalize: ...`（**不**补第二条 `FAIL reason=chain_exhausted`）。
+   无论成功失败，本次调用仍以 `exit 3` 结束 —— 语义是「这次没起链」，不是「失败」。
+   `-DryRun` 下印 `DRYRUN skip=auto_finalize ...`。
+3. **自测 case 25 / case 26**：case 25 五形态 + 跨实现交叉一致（22 条断言）；case 26 六个子场景
+   （开放阶段不写、`-DryRun` 不写、默认关、锁被占只 WARN 不夺锁、成功路径 `before≠after`、重跑 `chain_exhausted`）
+   （23 条断言）。
+4. **套件外鉴别力**：`reports\b19-guard-mutation.ps1` 两个变异体各跑一次全量自测，都判
+   `ASSERTION_HAS_TEETH`；期望红 / 必须保持绿两栏与源码级解释见 `tool\references\selftest-2026-11-26-b19.md` §4。
+
+### 已验证（盘上回读）
+
+- 一键自测：`SUITE_END pass=323 fail=0`、`EXIT=0`（B18 是 278，本批 +45 = case 25 的 22 + case 26 的 23）。
+  `MANUAL_STEP real_session_activation` 仍在 —— 套件从不调 `session_create`。
+- 变异体 1 `launcher_guard_removed`：变异 -30 字节、`pass=321 fail=2`、期望红 2/2、必须绿 0/2 红、`other_fails=0`。
+- 变异体 2 `ledger_all_done_pinned`：变异 -80 字节、`pass=320 fail=3`、期望红 3/3、必须绿 0/3 红、`other_fails=0`。
+- `device\` 与 `tool\templates\` 三个装置文件逐字一致：`relay-ledger.ps1` `032C49C2BE21D1A7`、
+  `start-relay.ps1` `28BBF7DF91990164`、`relay-lock.ps1` 本批未动 `23E51FB2619230DC`。
+- 留证：`tool\references\selftest-2026-11-26-b19.md`（17575 字节、260 行、CR=0、无占位符残留）/
+  `selftest-2026-11-26-b19.txt`（29078 字节、328 行、CR=0、无 BOM，末行 `MANUAL_STEP`）。
+
+### 发布（publish 回读）
+
+- `pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish` ⇒ `DIRECTION=publish STATUS=OK fail=0 warn=2`，
+  `tracked_files=78`；两条 warn 全是 `SNAPSHOT_DRIFT`（`examples\practilog\docs\relay\`，家规 8：历史快照只报不同步、
+  不为它同步）。
+- 硬不变式 `templates_vs_copies` 全绿：`start-relay.ps1 28BBF7DF91990164:35146`、
+  `relay-lock.ps1 23E51FB2619230DC:6429`、`relay-ledger.ps1 032C49C2BE21D1A7:19826`、
+  `relay-spawn.ps1 438D5C375C7D92F4:16484`、`AGENT-RELAY.md B6BF77AAF8CD3FBC:23617`。
+- 全局 skill 侧本批更新：`SKILL.md 0F466F3CAF16B648:19609`、`templates\start-relay.ps1 28BBF7DF91990164:35146`、
+  `templates\relay-ledger.ps1 032C49C2BE21D1A7:19826`、`templates\AGENT-RELAY.md B6BF77AAF8CD3FBC:23617`、
+  `references\selftest-2026-11-26-b19.md 6A179BEF0949F154:17575`、
+  `references\selftest-2026-11-26-b19.txt A12816A8C8A75C55:29078`。
+- `refresh-manifest.ps1` 在本节定稿后**最后**跑一次（清单必须包含本文件）。它的数字只留在 `MANIFEST.txt`
+  的生成行与门禁行里，不在本节重复抄 —— 本节写完之后不再改本文件，否则清单自指漂移。
+
+### 未验证 / 遗留
+
+- **真链上自动收尾的端到端未做**：本批自测用的是真实装置 + 真实台账 + 真子进程，但没有一条真实
+  `session_create` 起的链跑到触顶再自关。下一批候选，判据：盘上 `status` 回读 `status=done` 且
+  `current_stage > max_stages`。
+- codex / openclaw 真链矩阵（B18 遗留 1）原样未处理，本机缺这两个 CLI。
+- `.log` 是否纳入 `MD_TXT_CR_TOTAL`（B18 遗留 5）原样未裁决。
+- 台账侧是否给 `set_status=done` 加「阶段全 done」守卫：**本批故意不加**，会切断「人工裁决后手动收尾」这条
+  合法路径；要加需先确认那条路留不留。
+- `protocol\practilog-agents-pointer.md:11` 仍是旧口径（非发布物，不进清单）。
+- 本批工具坑 33–37 见 `tool\references\selftest-2026-11-26-b19.md` §8，本文件不重复。
+
+### 本批工作树状态
+
+用户未授权 commit / push，**本批未提交**，工作树留有 B19 全部改动。

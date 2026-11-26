@@ -1098,6 +1098,122 @@ Check 'cap_hint_open_stage_refuses_to_close_chain' (-not ($run24ByTag['open_stag
 Check 'cap_hint_all_done_says_how_to_close' ($run24ByTag['all_done'].Text -match '"set_status":"done"') ''
 Check 'cap_hint_reason_is_unchanged' ($run24ByTag['all_done'].Text -match 'FAIL reason=chain_at_stage_cap') ''
 
+# --- case 25: the ledger describes the chain in the launcher's words -----------
+# B19-a. -Action status prints a second line, LEDGER_CHAIN, carrying the same
+# vocabulary the launcher prints on its cap gate (cap_reached= / stages= /
+# all_done= / open_stages=). The two renderings are separate code on purpose, so
+# the cross check below feeds both the same ledger and compares them field by
+# field: a drift in either one goes red instead of being copied over from the
+# other. Five shapes are covered, including the two the launcher never prints a
+# cap line for (below the cap, and a ledger whose stage numbers are missing).
+$r25 = New-Repo 'repo-chain-status'
+New-Item -ItemType Directory -Path (Join-Path $r25 'docs\relay') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $r25 'docs\plans') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $r25 'docs\relay\start-relay.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $r25 'docs\relay\relay-lock.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $r25 'docs\relay\relay-ledger.ps1') -Force
+[IO.File]::WriteAllText((Join-Path $r25 'docs\plans\f9.md'), ('# plan' + "`n`n" + '1. first stage' + "`n" + '2. second stage' + "`n"), (New-Object Text.UTF8Encoding($false)))
+$chain25 = @(
+  @{ tag = 'all_done'; cur = 2; max = 2; stages = @(@{ id = 1; status = 'done' }, @{ id = 2; status = 'done' }); expect = 'cap_reached=true stages=1:done,2:done all_done=true open_stages=0'; cross = $true },
+  @{ tag = 'open_stage'; cur = 2; max = 2; stages = @(@{ id = 1; status = 'done' }, @{ id = 2; status = 'pending' }); expect = 'cap_reached=true stages=1:done,2:pending all_done=false open_stages=1'; cross = $true },
+  @{ tag = 'no_records'; cur = 2; max = 2; stages = @(); expect = 'cap_reached=true stages=none all_done=unknown open_stages=none'; cross = $true },
+  @{ tag = 'below_cap'; cur = 1; max = 2; stages = @(@{ id = 1; status = 'running' }, @{ id = 2; status = 'pending' }); expect = 'cap_reached=false stages=1:running,2:pending all_done=false open_stages=2'; cross = $false },
+  @{ tag = 'no_numbers'; cur = $null; max = $null; stages = @(@{ id = 1; status = 'done' }); expect = 'cap_reached=unknown stages=1:done all_done=true open_stages=0'; cross = $false }
+)
+$ledgerPath25 = Join-Path $r25 'docs\relay.json'
+foreach ($c25 in $chain25) {
+  $led25 = [ordered]@{
+    goal = 'chain status'; plan_doc = 'docs\plans\f9.md'; workspace_dir = $r25
+    status = 'running'; auto_relay = $true; current_stage = $c25.cur; max_stages = $c25.max
+    next_session_id = $null; stages = $c25.stages
+    sessions = @(); notes = @(); blocked_on = @()
+  }
+  [IO.File]::WriteAllText($ledgerPath25, ($led25 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+  $st25 = Run (Join-Path $r25 'docs\relay\relay-ledger.ps1') @('-Action', 'status', '-LedgerPath', $ledgerPath25)
+  $chainLine25 = (($st25.Text -split "`n") | Where-Object { $_ -match '^LEDGER_CHAIN ' } | Select-Object -First 1)
+  Check ('chain_status_' + $c25.tag + '_reads') ($st25.Code -eq 0 -and [bool]$chainLine25) ('exit=' + $st25.Code + ' line=' + $chainLine25)
+  Check ('chain_status_' + $c25.tag + '_reports_its_shape') ([bool]($chainLine25 -match [regex]::Escape($c25.expect))) ('expect=' + $c25.expect + ' line=' + $chainLine25)
+  Check ('chain_status_' + $c25.tag + '_keeps_the_state_line') ([bool]($st25.Text -match '(?m)^LEDGER_STATE ')) ''
+  if ($c25.cross) {
+    $run25 = Run (Join-Path $r25 'docs\relay\start-relay.ps1') @('-Target', 'f9', '-DryRun')
+    $fail25 = (($run25.Text -split "`n") | Where-Object { $_ -match 'FAIL reason=chain_at_stage_cap' } | Select-Object -First 1)
+    $lStages25 = ''; if ($chainLine25 -match ' stages=([^ ]+) ') { $lStages25 = $Matches[1] }
+    $lDone25 = ''; if ($chainLine25 -match ' all_done=([a-z]+) ') { $lDone25 = $Matches[1] }
+    $fStages25 = ''; if ($fail25 -match ' stages=([^ ]+) ') { $fStages25 = $Matches[1] }
+    $fDone25 = ''; if ($fail25 -match ' all_done=([a-z]+)') { $fDone25 = $Matches[1] }
+    Check ('chain_status_' + $c25.tag + '_agrees_with_launcher_stages') ($lStages25 -ne '' -and $lStages25 -eq $fStages25) ('ledger=' + $lStages25 + ' launcher=' + $fStages25)
+    Check ('chain_status_' + $c25.tag + '_agrees_with_launcher_all_done') ($lDone25 -ne '' -and $lDone25 -eq $fDone25) ('ledger=' + $lDone25 + ' launcher=' + $fDone25)
+  }
+}
+Check 'chain_status_keeps_the_stage_count_distinct' ([bool]($st25.Text -match '(?m)^LEDGER_STATE .* stages=\d+ ') -and [bool]($chainLine25 -match ' stages=[0-9]+:')) 'the count and the list share a key name; the line prefix must tell them apart'
+
+# --- case 26: the managed close goes through the ledger gate -------------------
+# B19-b. -AutoFinalize is opt in and only fires in the one shape where every
+# declared stage is done. Six scenes: an open stage is never closed, a dry run
+# announces the skip and writes nothing, the switch is off by default, a held
+# writer lock makes the close fail as a gate, the happy path reaches status=done,
+# and the re-run reports an exhausted chain instead of finalizing twice. The
+# locked scene is what proves the write really goes through relay-ledger.ps1: a
+# bare Set-Content would not care about that lock at all.
+$r26 = New-Repo 'repo-auto-finalize'
+New-Item -ItemType Directory -Path (Join-Path $r26 'docs\relay') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $r26 'docs\plans') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $r26 'docs\relay\start-relay.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $r26 'docs\relay\relay-lock.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $r26 'docs\relay\relay-ledger.ps1') -Force
+[IO.File]::WriteAllText((Join-Path $r26 'docs\plans\f10.md'), ('# plan' + "`n`n" + '1. first stage' + "`n" + '2. second stage' + "`n"), (New-Object Text.UTF8Encoding($false)))
+$ledgerPath26 = Join-Path $r26 'docs\relay.json'
+$lockPath26 = Join-Path $r26 'docs\relay\.ledger.lock'
+$launcher26 = Join-Path $r26 'docs\relay\start-relay.ps1'
+$writeLedger26 = {
+  param([string]$LastStageStatus)
+  $st26 = @(@{ id = 1; title = 'first stage'; status = 'done' }, @{ id = 2; title = 'second stage'; status = $LastStageStatus })
+  $led26 = [ordered]@{
+    goal = 'auto finalize'; plan_doc = 'docs\plans\f10.md'; workspace_dir = $r26
+    status = 'running'; auto_relay = $true; current_stage = 2; max_stages = 2
+    next_session_id = $null; stages = $st26
+    sessions = @(); notes = @(); blocked_on = @()
+  }
+  [IO.File]::WriteAllText($ledgerPath26, ($led26 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+}
+$readStatus26 = { ([IO.File]::ReadAllText($ledgerPath26) | ConvertFrom-Json).status }
+& $writeLedger26 'pending'
+$s1 = Run $launcher26 @('-Target', 'f10', '-AutoFinalize')
+Check 'auto_finalize_open_stage_is_not_closed' (-not ($s1.Text -match 'AUTO_FINALIZED')) ''
+Check 'auto_finalize_open_stage_raises_no_warn' (-not ($s1.Text -match 'WARN auto_finalize')) ''
+Check 'auto_finalize_open_stage_leaves_ledger_running' ((& $readStatus26) -eq 'running') ('status=' + (& $readStatus26))
+Check 'auto_finalize_open_stage_still_exits_three' ($s1.Code -eq 3) ('exit=' + $s1.Code)
+& $writeLedger26 'done'
+$s2 = Run $launcher26 @('-Target', 'f10', '-AutoFinalize', '-DryRun')
+Check 'auto_finalize_dry_run_announces_the_skip' ([bool]($s2.Text -match 'DRYRUN skip=auto_finalize')) ''
+Check 'auto_finalize_dry_run_writes_nothing' (-not ($s2.Text -match 'AUTO_FINALIZED') -and (& $readStatus26) -eq 'running') ('status=' + (& $readStatus26))
+Check 'auto_finalize_dry_run_still_exits_three' ($s2.Code -eq 3) ('exit=' + $s2.Code)
+& $writeLedger26 'done'
+$s3 = Run $launcher26 @('-Target', 'f10')
+Check 'auto_finalize_is_off_by_default' (-not ($s3.Text -match 'AUTO_FINALIZED') -and (& $readStatus26) -eq 'running') ('status=' + (& $readStatus26))
+Check 'auto_finalize_off_keeps_the_cap_fail' ([bool]($s3.Text -match 'FAIL reason=chain_at_stage_cap')) ''
+& $writeLedger26 'done'
+[IO.File]::WriteAllText($lockPath26, ('pid=' + $PID + ' host=selftest taken_at=' + [DateTimeOffset]::Now.ToString('o')), (New-Object Text.UTF8Encoding($false)))
+$s4 = Run $launcher26 @('-Target', 'f10', '-AutoFinalize')
+Check 'auto_finalize_held_lock_is_refused' ([bool]($s4.Text -match 'WARN auto_finalize=failed')) ('warn=' + [bool]($s4.Text -match 'WARN auto_finalize=failed'))
+Check 'auto_finalize_held_lock_reason_names_the_gate' ([bool]($s4.Text -match 'writer_lock_timeout')) ''
+Check 'auto_finalize_held_lock_leaves_ledger_running' ((& $readStatus26) -eq 'running') ('status=' + (& $readStatus26))
+Check 'auto_finalize_held_lock_still_exits_three' ($s4.Code -eq 3) ('exit=' + $s4.Code)
+Check 'auto_finalize_held_lock_is_not_stolen' (Test-Path -LiteralPath $lockPath26) ''
+Remove-Item -LiteralPath $lockPath26 -Force -ErrorAction SilentlyContinue
+& $writeLedger26 'done'
+$s5 = Run $launcher26 @('-Target', 'f10', '-AutoFinalize')
+Check 'auto_finalize_closes_the_chain' ([bool]($s5.Text -match 'AUTO_FINALIZED status=done')) ''
+Check 'auto_finalize_ledger_reaches_done' ((& $readStatus26) -eq 'done') ('status=' + (& $readStatus26))
+Check 'auto_finalize_reports_both_hashes' ([bool]($s5.Text -match 'AUTO_FINALIZED status=done before=[0-9a-f]{64} after=[0-9a-f]{64}')) ''
+Check 'auto_finalize_swaps_in_its_own_hint' ([bool]($s5.Text -match 'HINT=chain_closed_by_auto_finalize')) ''
+Check 'auto_finalize_invents_no_second_reason' (-not ($s5.Text -match 'FAIL reason=chain_exhausted')) ''
+Check 'auto_finalize_close_still_exits_three' ($s5.Code -eq 3) ('exit=' + $s5.Code)
+$s6 = Run $launcher26 @('-Target', 'f10', '-AutoFinalize')
+Check 'auto_finalize_rerun_reports_exhausted' ([bool]($s6.Text -match 'FAIL reason=chain_exhausted')) ('fail=' + (($s6.Text -split "`n") | Where-Object { $_ -match '^FAIL ' } | Select-Object -First 1))
+Check 'auto_finalize_rerun_never_finalizes_twice' (-not ($s6.Text -match 'AUTO_FINALIZED')) ''
+Check 'auto_finalize_rerun_exits_three' ($s6.Code -eq 3) ('exit=' + $s6.Code)
+
 # --- verdict -------------------------------------------------------------------
 Say ('SUITE_END pass=' + $script:pass + ' fail=' + $script:fail + ' root=' + $script:root)
 Say ('MANUAL_STEP real_session_activation: this suite never calls session_create. One live chain per changed ' +

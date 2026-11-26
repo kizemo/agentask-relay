@@ -177,6 +177,45 @@ if ($Action -eq 'status') {
     " sessions=" + @($l.sessions).Count +
     " notes=" + @($l.notes).Count +
     " updated_at=" + [string]$l.updated_at)
+  # B19-a: the chain shape in the same words the launcher prints on its cap gate
+  # (FAIL reason=chain_at_stage_cap). stages= here is the per-stage id:status
+  # list, not the count on LEDGER_STATE above; the line prefix separates the two.
+  # The two renderings are computed by separate code on purpose: the self test
+  # feeds both the same ledger and compares them, so a drift in either one goes
+  # red instead of being copied over from the other.
+  $declaredStages = @(@($l.stages) | Where-Object { $null -ne $_ })
+  $chainParts = @()
+  $doneStages = 0
+  foreach ($s in $declaredStages) {
+    $stageStatus = [string]$s.status
+    if ([string]::IsNullOrWhiteSpace($stageStatus)) { $stageStatus = 'unknown' }
+    if ($stageStatus -eq 'done') { $doneStages++ }
+    $chainParts += ('{0}:{1}' -f [string]$s.id, $stageStatus)
+  }
+  $chainStages = 'none'
+  $chainAllDone = 'unknown'
+  $chainOpen = 'none'
+  if ($declaredStages.Count -gt 0) {
+    $chainStages = ($chainParts -join ',')
+    $chainOpen = [string]($declaredStages.Count - $doneStages)
+    if ($doneStages -eq $declaredStages.Count) { $chainAllDone = 'true' } else { $chainAllDone = 'false' }
+  }
+  # cap_reached stays unknown when either number is missing: reporting false there
+  # would read as "there is room left" on a ledger that cannot even be compared.
+  $capReached = 'unknown'
+  $curStageNum = 0
+  $maxStageNum = 0
+  $curStageOk = [int]::TryParse([string]$l.current_stage, [ref]$curStageNum)
+  $maxStageOk = [int]::TryParse([string]$l.max_stages, [ref]$maxStageNum)
+  if ($curStageOk -and $maxStageOk) {
+    if ($curStageNum -ge $maxStageNum) { $capReached = 'true' } else { $capReached = 'false' }
+  }
+  Say ("LEDGER_CHAIN current_stage=" + [string]$l.current_stage +
+    " max_stages=" + [string]$l.max_stages +
+    " cap_reached=" + $capReached +
+    " stages=" + $chainStages +
+    " all_done=" + $chainAllDone +
+    " open_stages=" + $chainOpen)
   exit 0
 }
 

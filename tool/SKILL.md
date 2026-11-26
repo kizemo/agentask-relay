@@ -136,7 +136,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-spawn.ps1
 ## 四道并发闸门
 
 1. `FileMode.CreateNew` 原子锁 —— 抢不到就退出，不存在「两个会话同时写」。
-2. 台账闸门 —— 有 `in_progress` 阶段 / `status=running` 且有 `next_session_id` / `status=running` 且 `current_stage >= max_stages`（`chain_at_stage_cap`，触顶；判据行带 `stages=` 与 `all_done=`，HINT 按「全 done / 还有阶段没跑 / 台账无阶段记录」三种形态分开给，**只有全 done 才可提交 `{"set_status":"done"}` 收尾**）/ 台账 blocked / `status=done` 且耗尽 ⇒ 拒绝起链。
+2. 台账闸门 —— 有 `in_progress` 阶段 / `status=running` 且有 `next_session_id` / `status=running` 且 `current_stage >= max_stages`（`chain_at_stage_cap`，触顶；判据行带 `stages=` 与 `all_done=`，HINT 按「全 done / 还有阶段没跑 / 台账无阶段记录」三种形态分开给，**只有全 done 才可提交 `{"set_status":"done"}` 收尾**；显式传 `-AutoFinalize` 时启动器只在该形态下替你提交这一步，写仍走 `relay-ledger.ps1`，失败只 WARN、台账不动，退码仍是 3）/ 台账 blocked / `status=done` 且耗尽 ⇒ 拒绝起链。
 3. 写集指纹 —— 每环先读 `docs\relay.json` 的阶段写集与 `RELAY-ADAPTATION.md` 的并发检测口径。
 4. 台账回写 CAS —— 由 `relay-ledger.ps1` 机制化：回写前必须先 `-Action status` 取在盘 `sha256`，提交时用 `-ExpectSha256` 传入（锁外、锁内各比一次）。sha 陈旧 = 视图过期，直接被 `cas_conflict` 判死，只能重取 sha、重建 patch、重试一次。
 
@@ -178,7 +178,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\publish-relay.ps1 -Directi
 `docs\relay.json` 的回写不靠散文约束：闸门脚本是**唯一**允许的程序化写入口。
 
 ```powershell
-# 1) 读在盘版本与它的 sha256（输出 LEDGER_STATE ... sha256=<64hex>）
+# 1) 读在盘版本与它的 sha256（输出两行：LEDGER_STATE ... sha256=<64hex>，
+#    以及 LEDGER_CHAIN ... cap_reached=<true|false|unknown> stages=<id:status,...|none>
+#    all_done=<true|false|unknown> open_stages=<n|none>；阶段数与阶段列表同名不同义，靠行前缀区分）
 pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action status
 
 # 2) 把本轮意图写成 ASCII JSON patch（放 docs\relay\ 下），只用追加式键：

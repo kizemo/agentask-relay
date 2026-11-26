@@ -42,7 +42,14 @@ param(
   # absent too, the launcher falls back to mcode, which is exactly what this
   # script did before the runtime adaptation layer existed.
   [string]$Runtime = '',
-  [switch]$DryRun
+  [switch]$DryRun,
+  # Opt-in managed close (B19). When the chain sits at its stage cap and every
+  # declared stage already reads done, the cap gate may flip the terminal status
+  # itself instead of only telling the reader how to do it. Off by default: a
+  # launcher that silently rewrote the ledger would break the promise that only a
+  # human starts a chain. Even when on, the write still goes through
+  # relay-ledger.ps1 (writer lock + CAS + append only rules + readback).
+  [switch]$AutoFinalize
 )
 
 $ErrorActionPreference = 'Stop'
@@ -188,6 +195,62 @@ if (Test-Path -LiteralPath $ledgerPath) {
       Say 'HINT=stage_cap_reached_with_open_stage: the stage cap is reached but at least one declared stage is not done. Drive or unblock the open stage first, and close the chain only once every stage reads done. Do not raise -MaxStages to keep going.'
     } else {
       Say 'HINT=stage_cap_reached_with_no_stage_records: the stage cap is reached but the ledger records no stage, so completion cannot be proven. Inspect the ledger with relay-ledger.ps1 -Action status, record the stage result, then close the chain. Do not raise -MaxStages to keep going.'
+    }
+    # Opt-in managed close (B19). Reaching this point means every declared stage
+    # is done and only the terminal status is missing - exactly the shape the
+    # first HINT above describes. With -AutoFinalize the launcher performs that
+    # writeback instead of leaving it to the reader. It never edits the ledger by
+    # itself: the one line patch is handed to relay-ledger.ps1, which owns the
+    # writer lock, the CAS check, the append only rules and the readback. Any
+    # failure only warns, the ledger is left as it was, and the exit code stays 3
+    # because this invocation did not start a chain.
+    if ($AutoFinalize -and $allDoneState -eq 'true') {
+      if ($DryRun) {
+        Say 'DRYRUN skip=auto_finalize reason=every_declared_stage_is_done_but_a_dry_run_never_writes'
+      } else {
+        $finalizeErr = ''
+        $finalizeAfter = 'unknown'
+        try {
+          $childHost = ''
+          try { $childHost = (Get-Process -Id $PID).Path } catch { }
+          if ([string]::IsNullOrWhiteSpace($childHost)) { throw 'child_host_unresolved' }
+          $statusOut = @(& $childHost -NoProfile -ExecutionPolicy Bypass -File $ledgerGate -Action status -LedgerPath $ledgerPath 2>&1 | ForEach-Object { [string]$_ })
+          if ($LASTEXITCODE -ne 0) { throw ('status_exit=' + $LASTEXITCODE) }
+          $stateLine = @($statusOut | Where-Object { $_ -match '^LEDGER_STATE ' })
+          if ($stateLine.Count -lt 1) { throw 'status_line_missing' }
+          $ledgerSha = ''
+          if ($stateLine[0] -match ' sha256=([0-9a-f]{64})') { $ledgerSha = $Matches[1] }
+          if ([string]::IsNullOrWhiteSpace($ledgerSha)) { throw 'status_sha256_missing' }
+          # The patch is written outside the repo: it is a one shot input to the
+          # gate, not an artifact anyone should find later and trust.
+          $patchFile = Join-Path ([IO.Path]::GetTempPath()) ('relay-autofinalize-' + [guid]::NewGuid().ToString('N') + '.json')
+          try {
+            [IO.File]::WriteAllText($patchFile, '{"set_status":"done"}', [Text.UTF8Encoding]::new($false))
+            $commitOut = @(& $childHost -NoProfile -ExecutionPolicy Bypass -File $ledgerGate -Action commit -LedgerPath $ledgerPath -ExpectSha256 $ledgerSha -Patch $patchFile 2>&1 | ForEach-Object { [string]$_ })
+            $commitCode = $LASTEXITCODE
+            if ($commitCode -ne 0) {
+              $whyLine = @($commitOut | Where-Object { $_ -match '^LEDGER_FAIL ' })
+              $whyText = 'no_ledger_fail_line'
+              if ($whyLine.Count -gt 0) { $whyText = $whyLine[0] }
+              throw ('commit_exit=' + $commitCode + ' ' + $whyText)
+            }
+          } finally {
+            Remove-Item -LiteralPath $patchFile -Force -ErrorAction SilentlyContinue
+          }
+          $verifyOut = @(& $childHost -NoProfile -ExecutionPolicy Bypass -File $ledgerGate -Action status -LedgerPath $ledgerPath 2>&1 | ForEach-Object { [string]$_ })
+          $verifyLine = @($verifyOut | Where-Object { $_ -match '^LEDGER_STATE ' })
+          if ($verifyLine.Count -lt 1) { throw 'readback_line_missing' }
+          if (-not ($verifyLine[0] -match ' status=done ')) { throw 'readback_status_not_done' }
+          if ($verifyLine[0] -match ' sha256=([0-9a-f]{64})') { $finalizeAfter = $Matches[1] }
+          Say ('AUTO_FINALIZED status=done before=' + $ledgerSha + ' after=' + $finalizeAfter + ' path=' + $ledgerPath)
+          Say 'HINT=chain_closed_by_auto_finalize: every declared stage is done and status is now done, so a re-run of the launcher reports chain_exhausted. To keep going, start a fresh chain with -MaxStages greater than the previous one, or archive the old ledger.'
+        } catch {
+          $finalizeErr = $_.Exception.Message
+        }
+        if ($finalizeErr -ne '') {
+          Say ('WARN auto_finalize=failed reason=' + ($finalizeErr -replace '\s+', '_'))
+        }
+      }
     }
     exit 3
   }

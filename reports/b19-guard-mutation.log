@@ -1,0 +1,29 @@
+B19 guard mutation probe
+generated=2026-11-26 22:11:05
+root=C:\Users\Duanyi\AppData\Local\Temp\relay-b19-guardmut-20261126-220502
+
+MUTANT launcher_guard_removed
+  copy=C:\Users\Duanyi\AppData\Local\Temp\relay-b19-guardmut-20261126-220502\repo-guard
+  delta_bytes=-30
+  mutant_exit=1
+  suite=22:08:39 SUITE_END pass=321 fail=2 root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-220503
+  expected_reds=2 matched=2
+  red: 22:08:25 CASE_FAIL auto_finalize_open_stage_is_not_closed 
+  red: 22:08:25 CASE_FAIL auto_finalize_open_stage_leaves_ledger_running status=done
+  must_stay_green=2 went_red=0
+  other_fails=0
+
+MUTANT ledger_all_done_pinned
+  copy=C:\Users\Duanyi\AppData\Local\Temp\relay-b19-guardmut-20261126-220502\repo-alldone
+  delta_bytes=-80
+  mutant_exit=1
+  suite=22:11:04 SUITE_END pass=320 fail=3 root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-220840
+  expected_reds=3 matched=3
+  red: 22:10:45 CASE_FAIL chain_status_open_stage_reports_its_shape expect=cap_reached=true stages=1:done,2:pending all_done=false open_stages=1 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=1:done,2:pending all_done=true open_stages=1
+  red: 22:10:46 CASE_FAIL chain_status_open_stage_agrees_with_launcher_all_done ledger=true launcher=false
+  red: 22:10:49 CASE_FAIL chain_status_below_cap_reports_its_shape expect=cap_reached=false stages=1:running,2:pending all_done=false open_stages=2 line=LEDGER_CHAIN current_stage=1 max_stages=2 cap_reached=false stages=1:running,2:pending all_done=true open_stages=2
+  must_stay_green=3 went_red=0
+  other_fails=0
+
+MUTATION_VERDICT launcher_guard_removed=ASSERTION_HAS_TEETH
+MUTATION_VERDICT ledger_all_done_pinned=ASSERTION_HAS_TEETH
