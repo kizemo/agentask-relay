@@ -109,4 +109,44 @@ relay-spawn.ps1
 
 ## 5. 真链结果
 
-（本节在真链跑完后填；见下方 §6 证据路径。）
+> 本节由 **B13（2026-11-26）** 回填 —— B10 当时只验到「单次 CLI 调用被正确喊起来」，整链端到端留白；B13 在干净真链仓跑通了完整两环。
+> 完整实录见 `tool\references\live-chain-b13.md`。
+
+### 5.1 整链结论：通过
+
+干净夹具仓（`claude-code` 运行时，git HEAD `08e6009`）里跑通全链：
+
+```
+install(两段)  →  start-relay 起链  →  spawn 子环
+      ↓
+第 1 环：写 docs\relay\stage-1-inventory.md → 台账 stage_done → bump_current_stage → 写 next_session_id
+      ↓
+第 2 环（自举）：写 docs\relay\stage-2-inventory.md → 锁最终释放（LOCK_ABSENT）
+```
+
+关键数字：`chain_session_id=b47a9c35-c96a-4b13-b501-27b7463c431f`；第 1 环 `tool_calls=23`；第 2 环 `tool_calls=12`；终态 `current_stage=3 / max_stages=2`；**transcript 里 `is_error=true` 计数 = 0**。
+
+### 5.2 真链逼出来的两个真缺陷（B13 已修）
+- **D1 反斜杠路径**：Claude Code 的 Bash 工具是真 bash，prompt 里的 `docs\relay\relay-ledger.ps1` 被吃掉成 `docsrelayrelay-ledger.ps1` ⇒ `exit 64`。修法：CLI 分支 prompt 内所有路径统一正斜杠。
+- **D2 阶段清单没下发**：安装器收了 `-StageTitles` 但启动器不读描述符 ⇒ 阶段名退回默认。修法：启动器按「参数 > 台账 > 描述符 > 默认」解析，并打印 `OK stage_titles source=…`。
+
+### 5.3 没变的硬要求
+mcode 分支的 prompt **必须逐字节不变**（B10 硬要求）。B13 的阶段清单只在用户显式配置时才进描述符，因此未配置阶段的既有安装不受影响。证明方式：`git show HEAD:tool/templates/start-relay.ps1` 与工作区新版在同一夹具渲染出的 mcode prompt 逐字节相同（`MCODE_PROMPT_BYTE_IDENTICAL=True`）。
+
+### 5.4 遗留（本轮有意不改）
+- **F5**：链跑完终态 `status=blocked` 而非 `done`（`current_stage 3 > max_stages 2`）。改它要么动 mcode prompt（违反 5.3），要么让 mcode/CLI 语义分叉 ⇒ 下一批候选。
+- **F6**：终态台账 `sessions=[]` 为空，session 信息只在 `stages[].session_id`。
+
+---
+
+## 6. 证据路径
+
+- `tool\references\live-chain-b13.md` —— B13 整链实录（主证据）
+- `tool\references\live-chain-b13-stdout.txt` —— 起链 + spawn 原始输出
+- `tool\references\live-chain-b13-ledger-final.txt` —— 终态台账全文
+- `tool\references\live-chain-b13-artifacts.txt` —— 两环产物内容
+- `tool\references\live-chain-b13-prompts.txt` / `live-chain-b13-prompt-stage1.txt` —— prompt 全文
+- `tool\references\live-chain-b13-transcript-1.txt` / `-transcript-2.txt` —— 两环 transcript（`is_error` 判据）
+- `tool\references\selftest-2026-11-26.txt` / `.md` —— 门禁 raw 日志与小结（pass=233 fail=0 / EXIT=0）
+- `scripts\selftest.ps1` case 19 —— 本轮新增 18 条断言
+- `HANDOFF.md` 批次 B13 实录 —— 修复清单与取舍

@@ -1,0 +1,105 @@
+===== install-1.log =====
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo
+REPO name=repo
+REPO head=08e6009
+RUNTIME name=claude-code spawn_template=ACTIVATION-SPAWN-claude-code.md
+PLAN doc=docs\plan-b13.md created=False
+COPY relay-lock.ps1 bytes=6429 sha16=23E51FB2619230DC
+COPY start-relay.ps1 bytes=26942 sha16=BD04C11F9E432581
+COPY relay-ledger.ps1 bytes=15672 sha16=6068012759F0D0A6
+COPY relay-spawn.ps1 bytes=16484 sha16=438D5C375C7D92F4
+SKIP AGENT-RELAY.md identical bytes=21489
+SKIP RELAY-SOP.md identical bytes=7129
+SKIP RELAY-ADAPTATION.md exists kept (no -AnswersFile: the project adjudication stays authoritative)
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=defaults
+WRITE adaptation-questions.md questions=8 path=docs\relay\adaptation-questions.md
+WRITE adaptation-answers.template.json path=docs\relay\adaptation-answers.template.json
+WARN adaptation_defaults_unconfirmed ask_the_user_before_starting_the_chain packet=docs\relay\adaptation-questions.md
+AGENTS action=present_kept reason=n/a before=[bytes=3648 sha16=35C409333C7F8E3B] after=[bytes=3648 sha16=35C409333C7F8E3B] bom=False
+CLAUDE action=present_kept reason=n/a before=[bytes=3648 sha16=35C409333C7F8E3B] after=[bytes=3648 sha16=35C409333C7F8E3B] bom=False
+WRITE relay-runtime.json bytes=819 mode=cli_driver
+WRITE ACTIVATION-PROMPT.txt bytes=4551
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=26942
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+CLAUDE_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=pending
+ADAPTATION_SOURCE=defaults
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=docs\relay\adaptation-questions.md
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=claude-code
+WARN_COUNT=1
+
+===== install-2.log =====
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo
+REPO name=repo
+REPO head=08e6009
+RUNTIME name=claude-code spawn_template=ACTIVATION-SPAWN-claude-code.md
+PLAN doc=docs\plan-b13.md created=False
+SKIP relay-lock.ps1 identical bytes=6429
+SKIP start-relay.ps1 identical bytes=26942
+SKIP relay-ledger.ps1 identical bytes=15672
+SKIP relay-spawn.ps1 identical bytes=16484
+SKIP AGENT-RELAY.md identical bytes=21489
+SKIP RELAY-SOP.md identical bytes=7129
+ADAPT answers=docs\relay\adaptation-answers.json applied=8/8
+PATCH RELAY-ADAPTATION.md sections=3,4,5 missing= answers=docs\relay\adaptation-answers.json
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=answers
+AGENTS action=present_kept reason=n/a before=[bytes=3648 sha16=35C409333C7F8E3B] after=[bytes=3648 sha16=35C409333C7F8E3B] bom=False
+CLAUDE action=present_kept reason=n/a before=[bytes=3648 sha16=35C409333C7F8E3B] after=[bytes=3648 sha16=35C409333C7F8E3B] bom=False
+WRITE relay-runtime.json bytes=819 mode=cli_driver
+WRITE ACTIVATION-PROMPT.txt bytes=4551
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=26942
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+CLAUDE_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=confirmed
+ADAPTATION_SOURCE=answers
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=claude-code
+WARN_COUNT=0
+
+===== start-relay.log =====
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b13-e2e2-20261126-153941/repo
+OK head=08e6009 dirty_files=18
+OK runtime=claude-code source=descriptor
+OK link_mode=cli_driver chain_session_id=b47a9c35-c96a-4b13-b501-27b7463c431f
+OK ledger_absent path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay.json (will bootstrap)
+OK stage_titles source=descriptor
+OK plan_doc=docs\plan-b13.md source=probe bytes=1087
+LOCK_ACQUIRED holder=start-relay:296240 stage=1 ttl_s=1800 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\.relay.lock
+OK ledger_bootstrapped path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay.json bytes=2086
+OK prompt_written path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\next-relay-prompt.txt bytes=5989
+NEXT run this command to start the first link: pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\relay-spawn.ps1 -Runtime claude-code -PromptFile C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\next-relay-prompt.txt -WorkspaceDir C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo -Execute -AdoptLock
+NEXT the driver hands the lock over to the new link before it starts
+DONE exit=0 target=B13 end-to-end rehearsal: stage 1 inventory, stage 2 summary
+
+===== spawn-stage1.log =====
+SPAWN_RUNTIME runtime=claude-code
+SPAWN_COMMAND claude --output-format json --session-id b47a9c35-c96a-4b13-b501-27b7463c431f --add-dir C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\relay-settings.json -p <prompt from file>
+SPAWN_PROMPT_FILE file=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\next-relay-prompt.txt chars=5989
+SPAWN_WORKSPACE dir=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo
+SPAWN_SESSION_ID id=b47a9c35-c96a-4b13-b501-27b7463c431f source=ledger
+SPAWN_SETTINGS_JSON {"autoQuestion":{"enabled":false},"defaultMode":"bypassPermissions","permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Bash(pwsh:*)","Bash(powershell:*)","Read","Write","Edit","Glob","Grep"]}}
+SPAWN_SETTINGS_FILE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\relay-settings.json bytes=207
+LOCK_ADOPTED holder=b47a9c35-c96a-4b13-b501-27b7463c431f prev_holder=start-relay:296240 stage=1
+SPAWN_LOCK_PRE_ADOPTED session_id=b47a9c35-c96a-4b13-b501-27b7463c431f
+SPAWN_OUTPUT_FILE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b13-e2e2-20261126-153941\repo\docs\relay\relay-spawn-output\b47a9c35-c96a-4b13-b501-27b7463c431f.txt bytes=2497
+SPAWN_LOCK_ADOPTED session_id=b47a9c35-c96a-4b13-b501-27b7463c431f mode=pre
+RELAY_SPAWN_OK runtime=claude-code session_id=b47a9c35-c96a-4b13-b501-27b7463c431f
+

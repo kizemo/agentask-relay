@@ -1,55 +1,62 @@
-RELAY ACTIVATION PACKET（接力激活包）
+RELAY ACTIVATION PACKET (relay activation packet)
 =====================================
+repo        : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions
+runtime     : mcode
+target      : adapt batch
+plan doc    : docs\plan-18.md
+max stages  : 2
+workspace   : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions
+ledger      : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay.json
+launcher    : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\start-relay.ps1
+lock script : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\relay-lock.ps1
+spawn driver: C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\relay-spawn.ps1
+prompt file : C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\next-relay-prompt.txt
 
-repo        : F:\soft\00selfmade\_relay-port-selftest
-target      : selftest batch
-plan doc    : docs\plan-relay.md
-max stages  : 6
-workspace   : F:\soft\00selfmade\_relay-port-selftest
-ledger      : F:\soft\00selfmade\_relay-port-selftest\docs\relay.json
-launcher    : F:\soft\00selfmade\_relay-port-selftest\docs\relay\start-relay.ps1
-lock script : F:\soft\00selfmade\_relay-port-selftest\docs\relay\relay-lock.ps1
-prompt file : F:\soft\00selfmade\_relay-port-selftest\docs\relay\next-relay-prompt.txt
+The user only has to say this in a session whose workspace IS this repo:
 
-用户在**工作区就是本仓库**的会话里只需说一句：
+    follow docs\relay\ACTIVATION-PROMPT.txt to start the relay chain
 
-    按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链
+The session then executes the steps below.
 
-会话按下面 4 步执行即可。
+--- STEP 1: run the launcher (workspace check + concurrency gate + lock + prompt) ---
 
---- STEP 1：跑启动器（工作区校验 + 并发闸门 + 取锁 + 生成 prompt）---
+pwsh -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\start-relay.ps1" -Target "adapt batch" -PlanDoc "docs\plan-18.md" -MaxStages 2
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File "F:\soft\00selfmade\_relay-port-selftest\docs\relay\start-relay.ps1" -Target "selftest batch" -PlanDoc "docs\plan-relay.md" -MaxStages 6
+Exit code reading:
+  0 = the chain may start, continue with STEP 2
+  2 = invalid workspace, stop and report, DO NOT start a link
+  3 = a chain is already running / a stage is in_progress / the ledger is blocked or exhausted, stop and report, DO NOT start a link
+  4 = the lock is held by another session, stop and report, DO NOT start a link
 
-退出码判读：
-  0 = 可起链，继续 STEP 2
-  2 = 工作区非法，停下汇报，**不得起环**
-  3 = 已有链在跑 / 有 in_progress 阶段 / 台账 blocked 或耗尽，停下汇报，**不得起环**
-  4 = 锁被别的会话持有（另一会话正在跑），停下汇报，**不得起环**
+<!-- SPAWN_RULE_BEGIN -->
+Start the next link with the built-in `session_create` tool: pass only `agent_name` / `title` / `workspace_dir` (backslash absolute path) / `model` / `content`; never pass `effort` / `defer_first_turn` / `parent_session_id`.
+<!-- SPAWN_RULE_END -->
 
---- STEP 2：开第一环会话 ---
+--- STEP 2: start the first link session (runtime = mcode) ---
 
-读取 F:\soft\00selfmade\_relay-port-selftest\docs\relay\next-relay-prompt.txt 全文，然后：
+Read C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\next-relay-prompt.txt in full, then:
 
 mcp_invoke(tool_name="session_create", arguments={
   agent_name   : "me",
-  title        : "relay-1-<阶段短名>",
-  workspace_dir: "F:\soft\00selfmade\_relay-port-selftest",
-  model        : "<按 docs\RELAY-ADAPTATION.md 第 5 节的模型策略>",
-  content      : "<next-relay-prompt.txt 全文>"
+  title        : "relay-01of<MM>-<short stage name>",
+  workspace_dir: "C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions",
+  model        : "<model policy in section 5 of docs\RELAY-ADAPTATION.md>",
+  content      : "<full text of next-relay-prompt.txt>"
 })
 
-禁止传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。
-`workspace_dir` 必须用上面这个**反斜杠绝对路径**；用正斜杠会静默落进私有 workspace，等于这一环没接上。
+Never pass `effort` / `defer_first_turn` / `parent_session_id` (the schema has no such fields).
+`workspace_dir` must be the backslash absolute path above; a forward slash silently lands
+in a private workspace, which means the link never sees the repo.
 
---- STEP 3：把锁转交给新会话 ---
+--- STEP 3: hand the lock over to the new session ---
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File "F:\soft\00selfmade\_relay-port-selftest\docs\relay\relay-lock.ps1" -Action adopt -SessionId <新 session id>
+pwsh -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\relay-lock.ps1" -Action adopt -SessionId <new session id>
 
---- STEP 4：回读校验再汇报 ---
+--- STEP 4: read the session back and verify ---
 
-mavis session get {"session_id":"<新 id>"} —— 核对 `workspace_dir` / `effective_model` / `status` 三要素。
+mavis session get {"session_id":"<new id>"} -- check `workspace_dir` / `effective_model` / `status`.
 
-若 STEP 1 或 STEP 2 失败：执行
-pwsh -NoProfile -ExecutionPolicy Bypass -File "F:\soft\00selfmade\_relay-port-selftest\docs\relay\relay-lock.ps1" -Action release
-然后如实汇报，**不要重试起环**。
+
+If STEP 1 or STEP 2 fails: run
+pwsh -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-173430\repo-adapt-questions\docs\relay\relay-lock.ps1" -Action release
+then report honestly. DO NOT retry starting a link.

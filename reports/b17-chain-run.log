@@ -1,0 +1,9 @@
+SPAWN_RUNTIME runtime=claude-code
+SPAWN_COMMAND claude --output-format json --session-id 0c0a05de-5232-449a-a22a-72b135660346 --add-dir C:\Users\Duanyi\AppData\Local\Temp\relay-b17-e2e-20261126-172536\repo --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\relay-b17-e2e-20261126-172536\repo\docs\relay\relay-settings.json -p <prompt from file>
+SPAWN_PROMPT_FILE file=C:\Users\Duanyi\AppData\Local\Temp\relay-b17-e2e-20261126-172536\repo\docs\relay\next-relay-prompt.txt chars=5974
+SPAWN_WORKSPACE dir=C:\Users\Duanyi\AppData\Local\Temp\relay-b17-e2e-20261126-172536\repo
+SPAWN_SESSION_ID id=0c0a05de-5232-449a-a22a-72b135660346 source=ledger
+SPAWN_SETTINGS_JSON {"autoQuestion":{"enabled":false},"defaultMode":"bypassPermissions","permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Bash(pwsh:*)","Bash(powershell:*)","Read","Write","Edit","Glob","Grep"]}}
+SPAWN_SETTINGS_FILE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b17-e2e-20261126-172536\repo\docs\relay\relay-settings.json bytes=207
+LOCK_ADOPTED holder=0c0a05de-5232-449a-a22a-72b135660346 prev_holder=start-relay:68204 stage=1
+SPAWN_LOCK_PRE_ADOPTED session_id=0c0a05de-5232-449a-a22a-72b135660346

@@ -1,0 +1,7 @@
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b18-cap-20261126-204955/cap-two-stages
+OK head=6347cd1 dirty_files=16
+OK runtime=mcode source=parameter
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=4988E49D67DEC6A29A83FDB2BDAEA2F42450569284B91432B6E740AE74A8DA21 status=running current_stage=2 stages=0 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+HINT=every declared stage is done but status is still running: close it with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.

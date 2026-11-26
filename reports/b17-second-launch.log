@@ -1,0 +1,7 @@
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b17-e2e-20261126-172536/repo
+OK head=d2c2b20 dirty_files=26
+OK runtime=claude-code source=descriptor
+OK link_mode=cli_driver chain_session_id=f04f9f85-aabc-4af2-b959-6e0d1cd1c411
+OK ledger_sha256=083274A28FA6F364A31FC3432C92CE8C91CC8A068EC5C72210C461A06296B50C status=done current_stage=3 stages=2 sessions=2
+FAIL reason=chain_exhausted current_stage=3 max_stages=2
+HINT=start a fresh chain by passing -MaxStages greater than the previous chain, or archive the old ledger.

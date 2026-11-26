@@ -1,0 +1,18 @@
+B18 cap hint mutation probe
+generated=2026-11-26 21:04:38
+root=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-capmut-20261126-210153
+mutant_exit=1
+suite=21:04:38 SUITE_END pass=268 fail=10 root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261126-210155
+cap_hint_fails=10
+other_fails=0
+verdict=ASSERTION_HAS_TEETH
+cap_fail: 21:04:35 CASE_FAIL cap_hint_all_done_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:35 CASE_FAIL cap_hint_all_done_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:35 CASE_FAIL cap_hint_all_done_picks_its_own_hint expect=all_stages_done_but_status_running
+cap_fail: 21:04:37 CASE_FAIL cap_hint_open_stage_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:37 CASE_FAIL cap_hint_open_stage_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:37 CASE_FAIL cap_hint_open_stage_picks_its_own_hint expect=stage_cap_reached_with_open_stage
+cap_fail: 21:04:38 CASE_FAIL cap_hint_no_records_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:38 CASE_FAIL cap_hint_no_records_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+cap_fail: 21:04:38 CASE_FAIL cap_hint_no_records_picks_its_own_hint expect=stage_cap_reached_with_no_stage_records
+cap_fail: 21:04:38 CASE_FAIL cap_hint_open_stage_refuses_to_close_chain text_has_set_status=True

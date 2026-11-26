@@ -1,0 +1,8 @@
+MUTATION_ANCHOR_HITS=1
+MUTATION_WROTE=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-mutation-20261126-204819\start-relay-legacy.ps1
+BASELINE exit=0 new_form_hits=5 legacy_hits=0
+MUTANT exit=0 new_form_hits=0 legacy_hits=1
+BASELINE_CASE23_GREEN=True
+MUTANT_CASE23_RED=True
+MUTATION_VERDICT=ASSERTION_HAS_TEETH
+ROOT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-mutation-20261126-204819

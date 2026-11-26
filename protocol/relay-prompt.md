@@ -21,7 +21,7 @@
    3.1 把本阶段结论写进 <PLAN> 所在仓库的 docs/（handoff 文档），含全路径指针、已验证 / 推断 / 未验证三档、证据路径；
    3.2 回写 relay.json：本阶段 status=done、current_stage 前进一步、sessions[] 追加本次会话 ID、updated_at 刷新；
    3.3 按本文件「B. 接力 prompt」的内容，调用 session_create 开下一会话，workspace_dir=<WORKSPACE>，
-       title="relay-<N+1>-<阶段短名>"，并在其 content 里明确要求：完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
+       title="relay-<NN>of<MM>-<阶段短名>"（NN=<N+1> 零填充两位、MM=<最大阶段数> 零填充两位，如 relay-02of05），并在其 content 里明确要求：完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
 4. 若 relay.json 不存在、status 非 running、或 current_stage 已达 max_stages，或本阶段需要我做人工验收：
    不要新建会话。把 relay.json 的 status 写成 blocked（人工验收点）或 done（全部完成），
    在回答里说明阻塞原因或收链结论，等我介入。
@@ -48,7 +48,7 @@
    3.1 阶段结论落盘进该仓库 docs/（handoff-*.md 续编，不新建跨项目指针）；
    3.2 回写 relay.json：本阶段 status=done、current_stage +1、sessions[] 追加自身会话 ID、updated_at 刷新；
    3.3 调 session_create 开下一环，workspace_dir 沿用 relay.json.workspace_dir，
-       title="relay-<N+1>-<阶段短名>"，content 用本模板正文、把 <N> 换成 <N+1>，
+       title="relay-<NN>of<MM>-<阶段短名>"（NN 为 <N+1> 零填充两位，如 relay-02of05），content 用本模板正文、把 <N> 换成 <N+1>，
        并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
 4. 必须停下、不得接力的情形：命中 stop_conditions；本阶段涉及提交/发布/删除数据/付费/不可逆操作；
    缺权限或缺外部输入；连续两轮同一阶段无实质进展。

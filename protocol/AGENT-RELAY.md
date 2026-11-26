@@ -40,7 +40,8 @@
     "status 变为 blocked 或 done",
     "命中 plan_doc 声明的人工验收点（提交/发布/删数据/付费/不可逆）",
     "同一阶段连续两轮无实质进展",
-    "current_stage >= max_stages",
+    "current_stage > max_stages with every stage done -> status=done (chain complete)",
+    "current_stage > max_stages with an open blocked_on item -> status=blocked",
     "存在未终态的后台任务"
   ],
   "stages": [
@@ -70,12 +71,18 @@
      （键只有 10 个：`stage_done` / `stage_fields` / `append_stage` / `sessions_append` / `notes_append` /
      `ledger_docs_append` / `blocked_on_append` / `set_status` / `bump_current_stage` / `next_session_id`；
      未知键直接 `exit 2`，防拼错静默失效；`*_append` 去重后追加 ⇒ 同环重跑幂等）；
+     **会话流水由闸门兜底**：`stage_done` 提交时闸门自己把本环会话 ID 登记进 `sessions[]`
+     （先取 `stages[N].session_id`；没有就取台账里的 `next_session_id` —— 那正是当前在跑的这一环），
+     只追加、不改写、已登记过的不重复 ⇒ 忘了写 `sessions_append` 也不会留下空会话流水
+     （回显 `LEDGER_SESSION_REGISTERED session=… stage=… source=…`；两个来源都没有时回显
+     `LEDGER_SESSION_SKIPPED reason=no_session_id`，**不编造**会话 ID）；
      ③ 加 `-DryRun` 先验一次（`LEDGER_DRYRUN_OK`，不写盘、不留锁文件）；
      ④ `-Action commit -Patch <p.json> -ExpectSha256 <第①步的sha>` 正式提交。
-     闸门内部保证四件事：**独占写锁**（`docs\relay\.ledger.lock`，`FileMode.CreateNew`，被占 5s 超时、
+     闸门内部保证五件事：**独占写锁**（`docs\relay\.ledger.lock`，`FileMode.CreateNew`，被占 5s 超时、
      陈旧锁 30s 后接管）、**CAS**（sha 在锁外比一次、锁内再比一次，陈旧视图必被判死）、
      **只追加不变式**（`stages`/`sessions`/`notes`/`ledger_docs`/`blocked_on`/`human_checkpoints`/`stop_conditions`
-     只许增长、别人的条目逐字保留，改写别人的 stage 条目判死）、**写后回读**（同卷 tmp + 原子 move，再回读逐字比对）。
+     只许增长、别人的条目逐字保留，改写别人的 stage 条目判死）、**写后回读**（同卷 tmp + 原子 move，再回读逐字比对）、
+     **会话流水兜底**（`stage_done` 自动登记本环会话 ID，只追加不重复，见上）。
      这就是「重读盘再合并」的机制化：2026-11-24 实测第 3 环读到比第 2 环最终落盘更早的台账，
      那种跨会话竞态现在由 CAS 判死，不再靠自觉。
      退出码：`0` 已提交（回显 `LEDGER_COMMITED before= after=`，`before` 必须等于你传的 sha）；
@@ -84,9 +91,10 @@
      仍冲突就按第 4 步走停链分支，**绝不允许**改用裸写绕过闸门。判据：`exit=0` 且回显里自己的署名已入列。
    - 3.3 按运行时起下一环：MCode 用 `session_create`（配方见 §3），Claude Code / Codex CLI / OpenClaw 见 §10。
 4. **停链分支**：需要人工验收 / 缺权限 / 连续两轮无进展 / 已达 `max_stages` / 全部完成
-   → 同样走 3.2 的闸门把 `status` 写成 `blocked`（并用 `blocked_on_append` 写明缺什么）或 `done`
+   → 同样走 3.2 的闸门写 `status`：**全部阶段完成且 `blocked_on` 无未结项 ⇒ `done`**
+   （`current_stage > max_stages` 是完成信号，不是故障），其余停链原因 ⇒ `blocked` + `blocked_on_append` 写明缺什么
    —— `set_status` 只接受 `idle` / `awaiting_user` / `blocked` / `done`，`running` 是人类专属（会话身份提交会判死），
-   在回答里说明，**不得**新建会话，等人介入。
+   在回答里说明，**不得**新建会话；`blocked` 的等人介入，`done` 的如实收尾。
 
 **链条能自转的唯一支点 = 每一环都执行了 3.3。任何一环漏写，链当场断。**
 
@@ -104,7 +112,7 @@ mcp_invoke(
   tool_name = "session_create",
   arguments = {
     "agent_name": "me",
-    "title": "relay-<N+1>-<阶段短名>",
+    "title": "relay-<NN>of<MM>-<阶段短名>",
     "workspace_dir": "<relay.json.workspace_dir，必须显式传>",
     "content": "<§4 的接力 prompt 正文，把 <N> 换成 <N+1>>"
   }
@@ -132,10 +140,11 @@ mcp_invoke(
    3.2 回写 docs/relay.json：一律走闸门 `docs/relay/relay-ledger.ps1`
       （status 取 sha -> 写 patch -> commit -ExpectSha256），禁止裸写整文件；
    3.3 调 session_create 开下一环：workspace_dir 沿用 relay.json.workspace_dir，
-       title="relay-<N+1>-<阶段短名>"，content 用本段正文、<N> 换成 <N+1>，
+       title="relay-<NN>of<MM>-<阶段短名>"，content 用本段正文、<N> 换成 <N+1>，
        并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
-4. 命中停链条件（提交/发布/删数据/付费/不可逆、缺权限、无进展、达 max_stages）：
-   写 blocked 或 done 并汇报，不得新建会话。
+4. 命中停链条件（提交/发布/删数据/付费/不可逆、缺权限、无进展）：
+   写 blocked（blocked_on 写明缺什么）并汇报，不得新建会话。
+   全部阶段完成（current_stage > max_stages 且 stages 全 done）⇒ 写 done，同样不建会话。
 5. 回执条款：你的结果会被运行时自动回传给创建你的会话并唤醒它。若你本轮开头收到的
    是**下游会话的回执消息**（形如 STAGE-<N+1> RECEIVED），而不是新指令：
    只输出一行 `STAGE-<N> RECEIVED|<下游 session id>` 后立即结束本轮，
@@ -217,6 +226,7 @@ mcp_invoke(
 | 台账存在但 `ConvertFrom-Json` 失败 | `FAIL reason=ledger_unparsable path=...` | `3` |
 | 有阶段 `in_progress`（一人一棒被占） | `CONFLICT stage=... session=... status=in_progress` + `FAIL reason=stage_in_progress rule=one_writer_per_project` | `3` |
 | `status=running` 且 `next_session_id` 非空 | `FAIL reason=chain_already_running next_session_id=...` | `3` |
+| `status=running` 且 `current_stage >= max_stages`（触顶：末阶段已跑完却没人翻终态；**也可能还有阶段没跑**） | `FAIL reason=chain_at_stage_cap ... stages=<id:status,...\|none> all_done=<true\|false\|unknown>` + HINT 按形态三选一：`all_stages_done_but_status_running`（全 done，可提交 `{"set_status":"done"}` 收尾）/ `stage_cap_reached_with_open_stage`（还有阶段没跑，**禁止**收尾，先把该阶段跑完或解卡）/ `stage_cap_reached_with_no_stage_records`（台账里一条阶段记录都没有，完成性无法证明，先补记录） | `3` |
 | `status=done` 且 `current_stage >= max_stages` | `FAIL reason=chain_exhausted ...` + `HINT=start a fresh chain...` | `3` |
 | `status=blocked` | `WARN reason=ledger_blocked blocked_on=...` + `HINT=blocked chains need a human decision first...` | `3` |
 | 无台账 | `OK ledger_absent path=... (will bootstrap)` | 继续 |

@@ -32,7 +32,7 @@ Concretely, installing the kit gives the target repository:
 
 - **a launcher** — validates the workspace, runs the concurrency gates, takes the lock, creates the ledger (never overwrites it), and writes the next-stage prompt;
 - **an atomic lock** — `FileMode.CreateNew`, so two sessions can never hold the same project;
-- **a ledger write gate** — lock + compare-and-swap (`sha256`) + append-only invariant + read-back after write;
+- **a ledger write gate** — lock + compare-and-swap (`sha256`) + append-only invariant + read-back after write + a session trail the gate fills in by itself;
 - **a protocol** (`docs\AGENT-RELAY.md`), an **operating procedure** (`docs\RELAY-SOP.md`) and a **per-project decision skeleton** (`docs\RELAY-ADAPTATION.md`);
 - **a house-rules block** injected into the project's instruction file, idempotently, without duplicating or overwriting what the project already wrote;
 - **an activation packet** — the exact four steps plus the one sentence a human says to start the chain.
@@ -149,7 +149,7 @@ created just to satisfy chain start.**
 
 - `docs\relay\start-relay.ps1` — launcher
 - `docs\relay\relay-lock.ps1` — atomic lock
-- `docs\relay\relay-ledger.ps1` — ledger write gate (lock + CAS + append-only + read-back)
+- `docs\relay\relay-ledger.ps1` — ledger write gate (lock + CAS + append-only + read-back + session trail)
 - `docs\relay\relay-spawn.ps1` — spawn driver (CLI runtimes only; dry run by default, `-Execute` to run)
 - `docs\AGENT-RELAY.md`, `docs\RELAY-SOP.md`, `docs\RELAY-ADAPTATION.md` — protocol / procedure / project decisions
 - `docs\relay\ACTIVATION-PROMPT.txt`, `docs\relay\install-report.md` — activation packet / install report

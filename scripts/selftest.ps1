@@ -494,7 +494,7 @@ function Cross([string]$DocPath, [string]$CodePath, [string[]]$Tokens, [string]$
   return ($Tag + ' doc_missing=[' + ($dm -join ',') + '] code_missing=[' + ($cm -join ',') + ']')
 }
 $docRelay = Join-Path $tplDir 'AGENT-RELAY.md'
-$lauLiterals = @('workspace_missing', 'not_a_git_repo', 'ledger_unparsable', 'stage_in_progress', 'one_writer_per_project', 'chain_already_running', 'chain_exhausted', 'ledger_blocked', 'ledger_absent', 'plan_doc_not_found', 'plan_doc_missing', 'plan_doc_ambiguous', 'probe_newest_of_', 'by=newest_mtime', 'pass_-PlanDoc_to_disambiguate', 'lock_unavailable', 'DRYRUN skip=lock_acquire')
+$lauLiterals = @('workspace_missing', 'not_a_git_repo', 'ledger_unparsable', 'stage_in_progress', 'one_writer_per_project', 'chain_already_running', 'chain_at_stage_cap', 'chain_exhausted', 'ledger_blocked', 'ledger_absent', 'plan_doc_not_found', 'plan_doc_missing', 'plan_doc_ambiguous', 'probe_newest_of_', 'by=newest_mtime', 'pass_-PlanDoc_to_disambiguate', 'lock_unavailable', 'DRYRUN skip=lock_acquire')
 $insLiterals = @('agents_markers_corrupt', 'stray_marker_removed', 'AGENTS_MARKERS', 'CLAUDE_MARKERS', 'content_signature count=', 'agents_relay_section_ambiguous', 'appended_managed_block', 'keep_a_single_relay_section', 'present_kept', 'present_unparsed', 'replaced', 'adopted', 'appended')
 $crossLau = Cross $docRelay (Join-Path $tplDir 'start-relay.ps1') $lauLiterals 'LAUNCHER'
 $crossIns = Cross $docRelay $installer $insLiterals 'INSTALLER'
@@ -837,6 +837,266 @@ Check 'adapt_answers_source_marked' ((([regex]::Matches($adaptTxt18b, 'source: a
 Check 'adapt_answers_kept_later_sections' ($adaptTxt18b -match '## 6\.' -and $adaptTxt18b -match '## 9\.') ''
 $c18c = Run $installer @('-RepoRoot', $r18, '-Target', 'adapt batch', '-PlanDoc', 'docs\plan-18.md', '-MaxStages', '2', '-AnswersFile', 'docs\relay\missing-answers.json')
 Check 'adapt_missing_answers_exit_two' ($c18c.Code -eq 2 -and $c18c.Text -match 'reason=answers_file_missing') ('exit=' + $c18c.Code)
+
+# --- case 19: what the first unattended Claude Code link proved (B13) ---------
+# The B13 live chain ran a whole unattended Claude Code chain end to end in a
+# clean repository: stage 1 wrote its artifact, committed the hand-off through
+# the ledger gate and started stage 2 by itself, stage 2 closed the chain.
+# Two things came out of it that no dry run could see:
+#   * the installer was given a stage list and the launcher ignored it, so
+#     every link of the chain was told "1. stage 1 scope inventory";
+#   * the command style rule of a cli prompt prescribed the Bash tool and
+#     showed a Windows path. The Bash tool is a real bash and it eats the
+#     backslashes, so the link lost two commands to exit 64
+#     ("docsrelayrelay-ledger.ps1" not found) before it converted the paths
+#     itself.
+# Case 19 locks both down, and keeps the mcode prompt on Windows paths: only a
+# stage list the user actually declared travels to the launcher.
+$r19 = New-Repo 'repo-b13-stage-list'
+Set-Content -LiteralPath (Join-Path $r19 'docs\plan-19.md') -Value '# plan 19' -Encoding utf8
+$c19a = Run $installer @('-RepoRoot', $r19, '-Target', 'b13 batch', '-PlanDoc', 'docs\plan-19.md', '-MaxStages', '3', '-Runtime', 'claude-code', '-StageTitles', '1. alpha stage;2. beta stage;3. gamma stage')
+Check 'b13_install_with_stage_titles_exit_zero' ($c19a.Code -eq 0) ('exit=' + $c19a.Code)
+$desc19 = Get-Content -LiteralPath (Join-Path $r19 'docs\relay\relay-runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Check 'b13_descriptor_carries_stage_titles' ($null -ne $desc19 -and ([string]$desc19.stage_titles) -match 'alpha stage' -and ([string]$desc19.stage_titles) -match 'gamma stage') ('titles=' + [string]$desc19.stage_titles)
+$s19a = Run (Join-Path $r19 'docs\relay\start-relay.ps1') @('-Target', 'b13 batch', '-MaxStages', '3', '-DryRun')
+Check 'b13_launcher_reports_stage_titles_source' ($s19a.Text -match 'OK stage_titles source=descriptor') ('line=' + ((($s19a.Text -split "`n") | Where-Object { $_ -match 'OK stage_titles' } | Select-Object -First 1)))
+$prompt19 = ($s19a.Text -split 'DRYRUN prompt_preview_begin', 2)[1]
+$prompt19 = ($prompt19 -split 'DRYRUN prompt_preview_end', 2)[0]
+Check 'b13_cli_prompt_has_real_stage_list' ($prompt19 -match '1\. alpha stage' -and $prompt19 -match '3\. gamma stage') ''
+Check 'b13_cli_prompt_has_no_generic_stage_list' (-not ($prompt19 -match '1\. stage 1 scope inventory')) ''
+Check 'b13_cli_prompt_gate_path_uses_forward_slashes' ($prompt19 -match 'docs/relay/relay-ledger\.ps1') ''
+Check 'b13_cli_prompt_has_no_backslash_gate_path' (-not ($prompt19 -match 'docs\\relay\\relay-ledger\.ps1')) ''
+Check 'b13_cli_prompt_has_no_backslash_relay_path' (-not ($prompt19 -match 'docs\\relay\\')) ''
+Check 'b13_cli_prompt_spawn_command_uses_forward_slashes' ($prompt19 -match 'relay-spawn\.ps1 -Runtime claude-code -PromptFile [A-Za-z]:/') ''
+Check 'b13_cli_prompt_spawn_command_has_no_backslash' (-not ($prompt19 -match 'relay-spawn\.ps1 -Runtime claude-code -PromptFile [A-Za-z]:\\')) ''
+Check 'b13_cli_prompt_command_style_rule_survives' ($prompt19 -match 'Command style for this runtime' -and $prompt19 -match 'one command per call') ''
+
+$r19m = New-Repo 'repo-b13-mcode-prompt'
+Set-Content -LiteralPath (Join-Path $r19m 'docs\plan-19m.md') -Value '# plan 19m' -Encoding utf8
+$c19m = Run $installer @('-RepoRoot', $r19m, '-Target', 'b13 mcode', '-PlanDoc', 'docs\plan-19m.md', '-MaxStages', '2')
+Check 'b13_mcode_install_exit_zero' ($c19m.Code -eq 0) ('exit=' + $c19m.Code)
+$desc19m = Get-Content -LiteralPath (Join-Path $r19m 'docs\relay\relay-runtime.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Check 'b13_mcode_descriptor_has_no_stage_titles' ([string]::IsNullOrWhiteSpace([string]$desc19m.stage_titles)) ('titles=' + [string]$desc19m.stage_titles)
+$s19m = Run (Join-Path $r19m 'docs\relay\start-relay.ps1') @('-Target', 'b13 mcode', '-DryRun')
+$prompt19m = ($s19m.Text -split 'DRYRUN prompt_preview_begin', 2)[1]
+$prompt19m = ($prompt19m -split 'DRYRUN prompt_preview_end', 2)[0]
+Check 'b13_mcode_prompt_keeps_windows_gate_path' ($prompt19m -match 'docs\\relay\\relay-ledger\.ps1') ''
+Check 'b13_mcode_prompt_has_no_forward_slash_gate_path' (-not ($prompt19m -match 'docs/relay/relay-ledger\.ps1')) ''
+Check 'b13_mcode_prompt_keeps_generic_stage_list' ($prompt19m -match '1\. stage 1 scope inventory') ''
+Check 'b13_mcode_prompt_has_no_spawn_command_prompt_form' (-not ($prompt19m -match 'relay-spawn\.ps1 -Runtime claude-code -PromptFile')) ''
+Check 'b13_mcode_prompt_keeps_windows_relay_paths' ($prompt19m -match 'docs\\relay\\relay-lock\.ps1' -and $prompt19m -match 'docs\\relay\\\.relay\.lock') ''
+
+# --- case 20: the gate keeps the session trail by itself (F6) --------------------
+# The B13 live chain ended with sessions=[]: the session trail was only a prose
+# request (sessions_append), and the link that finished the last stage did not
+# send it, so the ledger had no independent record of which sessions ran.
+# The gate now registers the session of a stage_done commit itself. Case 20
+# locks that down: the id is registered once, a repeat commit does not
+# duplicate it, a link that follows the protocol and also sends sessions_append
+# does not duplicate it either, and the trail only ever grows.
+function New-GateRepo([string]$Name, [hashtable]$Over) {
+  $d = New-Repo $Name
+  New-Item -ItemType Directory -Path (Join-Path $d 'docs\relay') -Force | Out-Null
+  Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $d 'docs\relay\relay-ledger.ps1') -Force
+  $seed = [ordered]@{
+    goal = 'F6 session trail'; plan_doc = 'docs\plan.md'; workspace_dir = $d
+    status = 'running'; auto_relay = $true; current_stage = 1; max_stages = 3
+    next_session_id = $null; stages = @(); sessions = @(); notes = @(); blocked_on = @()
+  }
+  foreach ($k in $Over.Keys) { $seed[$k] = $Over[$k] }
+  [IO.File]::WriteAllText((Join-Path $d 'docs\relay.json'), ($seed | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+  return $d
+}
+$r20 = New-GateRepo 'repo-f6-session-trail' @{}
+$g20 = Join-Path $r20 'docs\relay\relay-ledger.ps1'
+$l20 = Join-Path $r20 'docs\relay.json'
+function G20Sha { [regex]::Match((Run $g20 @('-Action','status')).Text, 'sha256=([0-9A-Fa-f]{64})').Groups[1].Value }
+function P20([string]$Name, [string]$Body) {
+  $p = Join-Path (Join-Path $r20 'docs\relay') $Name
+  [IO.File]::WriteAllText($p, $Body, (New-Object Text.UTF8Encoding($false)))
+  return $p
+}
+$p20a = P20 'p20a.json' '{"append_stage":{"id":1,"title":"F6 stage one","session_id":"sess-f6-alpha"}}'
+$c20a = Run $g20 @('-Action','commit','-ExpectSha256',(G20Sha),'-Patch',$p20a)
+Check 'f6_append_stage_ok' ($c20a.Code -eq 0 -and $c20a.Text -match 'LEDGER_COMMITED') ('exit=' + $c20a.Code)
+$p20b = P20 'p20b.json' '{"stage_done":1,"stage_fields":{"result":"alpha done"}}'
+$c20b = Run $g20 @('-Action','commit','-ExpectSha256',(G20Sha),'-Patch',$p20b)
+Check 'f6_stage_done_committed' ($c20b.Code -eq 0 -and $c20b.Text -match 'LEDGER_COMMITED') ('exit=' + $c20b.Code)
+Check 'f6_session_registered_by_gate' ($c20b.Text -match 'LEDGER_SESSION_REGISTERED session=sess-f6-alpha stage=1') ('line=' + (($c20b.Text -split "`n") | Where-Object { $_ -match 'LEDGER_SESSION_' } | Select-Object -First 1))
+$led20 = Get-Content -LiteralPath $l20 -Raw | ConvertFrom-Json
+Check 'f6_sessions_trail_has_the_session' (@($led20.sessions).Count -eq 1 -and [string]@($led20.sessions)[0] -eq 'sess-f6-alpha') ('count=' + @($led20.sessions).Count)
+# a repeat commit of the same stage must not grow the trail
+$p20c = P20 'p20c.json' '{"stage_done":1,"stage_fields":{"result":"alpha done"}}'
+$c20c = Run $g20 @('-Action','commit','-ExpectSha256',(G20Sha),'-Patch',$p20c)
+$led20c = Get-Content -LiteralPath $l20 -Raw | ConvertFrom-Json
+Check 'f6_repeat_commit_does_not_duplicate_session' ($c20c.Code -eq 0 -and @($led20c.sessions).Count -eq 1 -and $c20c.Text -match 'LEDGER_SESSION_ALREADY_REGISTERED') ('exit=' + $c20c.Code + ' count=' + @($led20c.sessions).Count)
+# a link that follows the protocol and also sends sessions_append is still one entry
+$p20d = P20 'p20d.json' '{"stage_done":1,"sessions_append":["sess-f6-alpha"]}'
+$c20d = Run $g20 @('-Action','commit','-ExpectSha256',(G20Sha),'-Patch',$p20d)
+$led20d = Get-Content -LiteralPath $l20 -Raw | ConvertFrom-Json
+Check 'f6_sessions_append_does_not_duplicate_session' ($c20d.Code -eq 0 -and @($led20d.sessions).Count -eq 1) ('exit=' + $c20d.Code + ' count=' + @($led20d.sessions).Count)
+Check 'f6_trail_is_append_only' (@($led20d.sessions).Count -eq 1 -and [string]@($led20d.sessions)[0] -eq 'sess-f6-alpha' -and [string]@($led20d.stages)[0].status -eq 'done') ('sessions=' + (@($led20d.sessions) -join '|'))
+
+# a stage without a session id falls back to the id of the link that is running
+$r20e = New-GateRepo 'repo-f6-fallback' @{ next_session_id = 'sess-f6-beta'; stages = @(@{ id = 1; title = 'F6 beta'; status = 'in_progress' }) }
+$g20e = Join-Path $r20e 'docs\relay\relay-ledger.ps1'
+$l20e = Join-Path $r20e 'docs\relay.json'
+$p20e = Join-Path (Join-Path $r20e 'docs\relay') 'p20e.json'
+[IO.File]::WriteAllText($p20e, '{"stage_done":1,"stage_fields":{"result":"beta done"}}', (New-Object Text.UTF8Encoding($false)))
+$c20e = Run $g20e @('-Action','commit','-ExpectSha256',(Get-FileHash -Algorithm SHA256 -LiteralPath $l20e).Hash, '-Patch', $p20e)
+Check 'f6_fallback_uses_running_link_id' ($c20e.Code -eq 0 -and $c20e.Text -match 'LEDGER_SESSION_REGISTERED session=sess-f6-beta stage=1 source=ledger_next_session_id') ('line=' + (($c20e.Text -split "`n") | Where-Object { $_ -match 'LEDGER_SESSION_' } | Select-Object -First 1))
+
+# no session id anywhere: the gate says so instead of inventing one
+$r20f = New-GateRepo 'repo-f6-no-session' @{ stages = @(@{ id = 1; title = 'F6 gamma'; status = 'in_progress' }) }
+$g20f = Join-Path $r20f 'docs\relay\relay-ledger.ps1'
+$l20f = Join-Path $r20f 'docs\relay.json'
+$p20f = Join-Path (Join-Path $r20f 'docs\relay') 'p20f.json'
+[IO.File]::WriteAllText($p20f, '{"stage_done":1,"stage_fields":{"result":"gamma done"}}', (New-Object Text.UTF8Encoding($false)))
+$c20f = Run $g20f @('-Action','commit','-ExpectSha256',(Get-FileHash -Algorithm SHA256 -LiteralPath $l20f).Hash, '-Patch', $p20f)
+$led20f = Get-Content -LiteralPath $l20f -Raw | ConvertFrom-Json
+Check 'f6_no_session_id_is_skipped_not_faked' ($c20f.Code -eq 0 -and $c20f.Text -match 'LEDGER_SESSION_SKIPPED stage=1 reason=no_session_id' -and @($led20f.sessions).Count -eq 0) ('exit=' + $c20f.Code + ' count=' + @($led20f.sessions).Count)
+
+# --- case 21: finishing the chain is done, not blocked (F5) ---------------------
+# B13's live chain ended with status=blocked because the shipped rule said
+# "current_stage >= max_stages -> status=blocked": the last stage finishing
+# looked like a failure. The terminal state is now done, and blocked stays
+# reserved for a real stop. The launcher's own gate already keys
+# chain_exhausted on (status=done and current_stage >= max_stages), so the
+# wording is checked together with the code that consumes it.
+$blockTpl = Get-Content -LiteralPath (Join-Path $tplDir 'AGENTS-RELAY-BLOCK.md') -Raw
+$rule11 = @($blockTpl -split "`n" | Where-Object { $_ -match 'current_stage > max_stages' })
+Check 'f5_house_rule_names_done' ($rule11.Count -eq 1 -and $rule11[0] -match 'status="done"') ('lines=' + $rule11.Count)
+$seedTpl = Get-Content -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Raw
+Check 'f5_ledger_seed_names_done' ($seedTpl -match 'current_stage > max_stages with every stage done -> status=done') ''
+Check 'f5_ledger_seed_has_no_old_rule' (-not ($seedTpl -match 'current_stage >= max_stages -> status=blocked')) ''
+$protoTpl = Get-Content -LiteralPath (Join-Path $tplDir 'AGENT-RELAY.md') -Raw
+Check 'f5_protocol_stop_conditions_name_done' ($protoTpl -match 'current_stage > max_stages with every stage done -> status=done') ''
+Check 'f5_protocol_has_no_old_stop_rule' (-not ($protoTpl -match 'current_stage >= max_stages"')) ''
+Check 'f5_protocol_copies_are_byte_identical' ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $tplDir 'AGENT-RELAY.md')).Hash -eq (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $repoRoot 'protocol\AGENT-RELAY.md')).Hash) ''
+
+$r21 = New-Repo 'repo-f5-done'
+New-Item -ItemType Directory -Path (Join-Path $r21 'docs\relay') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $r21 'docs\plans') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $r21 'docs\relay\start-relay.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $r21 'docs\relay\relay-lock.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $r21 'docs\relay\relay-ledger.ps1') -Force
+[IO.File]::WriteAllText((Join-Path $r21 'docs\plans\f5.md'), '# plan' + "`n`n" + '1. one stage' + "`n", (New-Object Text.UTF8Encoding($false)))
+$done21 = [ordered]@{
+  goal = 'F5 done'; plan_doc = 'docs\plans\f5.md'; workspace_dir = $r21
+  status = 'done'; auto_relay = $true; current_stage = 2; max_stages = 1
+  next_session_id = $null; stages = @(@{ id = 1; title = 'only stage'; status = 'done' })
+  sessions = @(); notes = @(); blocked_on = @()
+}
+[IO.File]::WriteAllText((Join-Path $r21 'docs\relay.json'), ($done21 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+$k21 = Run (Join-Path $r21 'docs\relay\start-relay.ps1') @('-Target', 'f5', '-DryRun')
+Check 'f5_done_chain_is_exhausted_not_runnable' ($k21.Code -eq 3 -and $k21.Text -match 'chain_exhausted') ('exit=' + $k21.Code + ' line=' + ((($k21.Text -split "`n") | Where-Object { $_ -match 'chain_exhausted|FAIL reason' } | Select-Object -First 1)))
+
+# --- case 22: a running chain already at the stage cap is refused (B16) --------
+# B15 left one hole: when the last stage finished but nobody flipped status to
+# done, both older gates pass (no in_progress stage, empty next_session_id) and
+# the launcher would boot stage N+1, i.e. work outside the declared plan. The
+# backstop keys on (status=running and current_stage >= max_stages). Both
+# directions are checked here: the cap case must be refused, the mid-chain case
+# must still start, otherwise the new branch has no discriminating power.
+$r22 = New-Repo 'repo-stage-cap'
+New-Item -ItemType Directory -Path (Join-Path $r22 'docs\relay') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $r22 'docs\plans') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $r22 'docs\relay\start-relay.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $r22 'docs\relay\relay-lock.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $r22 'docs\relay\relay-ledger.ps1') -Force
+[IO.File]::WriteAllText((Join-Path $r22 'docs\plans\f7.md'), ('# plan' + "`n`n" + '1. first stage' + "`n" + '2. second stage' + "`n"), (New-Object Text.UTF8Encoding($false)))
+$cap22 = [ordered]@{
+  goal = 'stage cap'; plan_doc = 'docs\plans\f7.md'; workspace_dir = $r22
+  status = 'running'; auto_relay = $true; current_stage = 2; max_stages = 2
+  next_session_id = $null; stages = @(@{ id = 1; title = 'first stage'; status = 'done' }, @{ id = 2; title = 'second stage'; status = 'done' })
+  sessions = @(); notes = @(); blocked_on = @()
+}
+[IO.File]::WriteAllText((Join-Path $r22 'docs\relay.json'), ($cap22 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+$k22 = Run (Join-Path $r22 'docs\relay\start-relay.ps1') @('-Target', 'f7', '-DryRun')
+Check 'gate_refuses_running_chain_at_stage_cap' ($k22.Code -eq 3 -and $k22.Text -match 'chain_at_stage_cap') ('exit=' + $k22.Code + ' line=' + ((($k22.Text -split "`n") | Where-Object { $_ -match 'chain_at_stage_cap|FAIL reason' } | Select-Object -First 1)))
+
+$mid22 = [ordered]@{
+  goal = 'stage cap'; plan_doc = 'docs\plans\f7.md'; workspace_dir = $r22
+  status = 'running'; auto_relay = $true; current_stage = 1; max_stages = 2
+  next_session_id = $null; stages = @(@{ id = 1; title = 'first stage'; status = 'done' }, @{ id = 2; title = 'second stage'; status = 'pending' })
+  sessions = @(); notes = @(); blocked_on = @()
+}
+[IO.File]::WriteAllText((Join-Path $r22 'docs\relay.json'), ($mid22 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+$m22 = Run (Join-Path $r22 'docs\relay\start-relay.ps1') @('-Target', 'f7', '-DryRun')
+Check 'gate_still_starts_below_stage_cap' ($m22.Code -eq 0 -and -not ($m22.Text -match 'chain_at_stage_cap') -and $m22.Text -match 'DRYRUN skip=lock_acquire') ('exit=' + $m22.Code + ' cap_hit=' + [bool]($m22.Text -match 'chain_at_stage_cap'))
+
+# --- case 23: the link naming rule is asserted on the generated artifacts ---
+# B17 shipped the zero padded naming (relay-01of02) but left it unasserted: the
+# rule lived only in the prompt text, so a silent revert to the old form
+# (relay-1-<stage>) would not turn anything red. These checks read the GENERATED
+# prompt of a real launcher run: the new form must hit, the old form must hit
+# zero times, and a legacy sample must not satisfy the new pattern (that last
+# one is the discriminating power inside the suite). The out of suite proof that
+# a template revert really turns these checks red is reports\b18-naming-mutation.ps1.
+$linkRuns = @(@{ rt = 'claude-code'; dir = 'repo-link-naming-cli' }, @{ rt = 'mcode'; dir = 'repo-link-naming-mcode' })
+foreach ($lr in $linkRuns) {
+  $rr = New-Repo $lr.dir
+  New-Item -ItemType Directory -Path (Join-Path $rr 'docs\relay') -Force | Out-Null
+  New-Item -ItemType Directory -Path (Join-Path $rr 'docs\plans') -Force | Out-Null
+  Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $rr 'docs\relay\start-relay.ps1') -Force
+  Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $rr 'docs\relay\relay-lock.ps1') -Force
+  Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $rr 'docs\relay\relay-ledger.ps1') -Force
+  [IO.File]::WriteAllText((Join-Path $rr 'docs\plans\link.md'), ('# plan' + "`n`n" + '1. first stage' + "`n" + '2. second stage' + "`n"), (New-Object Text.UTF8Encoding($false)))
+  $run23 = Run (Join-Path $rr 'docs\relay\start-relay.ps1') @('-Target', 'link batch', '-MaxStages', '2', '-Runtime', $lr.rt, '-PlanDoc', 'docs\plans\link.md')
+  Check ('link_naming_' + $lr.rt + '_launcher_exit_zero') ($run23.Code -eq 0) ('exit=' + $run23.Code)
+  $prompt23 = [IO.File]::ReadAllText((Join-Path $rr 'docs\relay\next-relay-prompt.txt'))
+  $newHits23 = [regex]::Matches($prompt23, 'relay-\d{2}of\d{2}').Count
+  $legacyHits23 = [regex]::Matches($prompt23, 'relay-\d+-').Count
+  Check ('link_naming_' + $lr.rt + '_uses_zero_padded_form') ($newHits23 -gt 0) ('new_form_hits=' + $newHits23)
+  Check ('link_naming_' + $lr.rt + '_has_no_legacy_form') ($legacyHits23 -eq 0) ('legacy_hits=' + $legacyHits23)
+}
+$promptCli23 = [IO.File]::ReadAllText((Join-Path $script:root 'repo-link-naming-cli\docs\relay\next-relay-prompt.txt'))
+Check 'link_naming_cli_header_names_the_link' ($promptCli23 -match 'RELAY_LINK=relay-\d{2}of\d{2}') ''
+Check 'link_naming_cli_handoff_names_next_link' ($promptCli23 -match 'change RELAY_LINK=relay-01of02 to RELAY_LINK=relay-02of02') ''
+Check 'link_naming_rule_rejects_legacy_sample' (-not ('relay-1-inventory' -match 'relay-\d{2}of\d{2}')) ('legacy_sample_matched=' + [bool]('relay-1-inventory' -match 'relay-\d{2}of\d{2}'))
+
+# --- case 24: the stage cap gate tells the truth about the shape it hit ------
+# B18 proved on the real device that the cap branch always claimed "every
+# declared stage is done" and advised closing the chain - advice that silently
+# drops a stage when the last stage never ran. The gate now reports the shape
+# on the FAIL line (stages= and all_done=) and picks the HINT from it. All
+# three shapes are checked, and the open-stage case asserts that the closing
+# advice is NOT given, so a revert to one blanket HINT turns this red.
+$r24 = New-Repo 'repo-cap-hint'
+New-Item -ItemType Directory -Path (Join-Path $r24 'docs\relay') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $r24 'docs\plans') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $tplDir 'start-relay.ps1') -Destination (Join-Path $r24 'docs\relay\start-relay.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-lock.ps1') -Destination (Join-Path $r24 'docs\relay\relay-lock.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $tplDir 'relay-ledger.ps1') -Destination (Join-Path $r24 'docs\relay\relay-ledger.ps1') -Force
+[IO.File]::WriteAllText((Join-Path $r24 'docs\plans\f8.md'), ('# plan' + "`n`n" + '1. first stage' + "`n" + '2. second stage' + "`n"), (New-Object Text.UTF8Encoding($false)))
+$cap24 = @(
+  @{ tag = 'all_done'; stages = @(@{ id = 1; title = 'first stage'; status = 'done' }, @{ id = 2; title = 'second stage'; status = 'done' }); expect_state = 'true'; expect_summary = 'stages=1:done,2:done'; expect_token = 'all_stages_done_but_status_running' },
+  @{ tag = 'open_stage'; stages = @(@{ id = 1; title = 'first stage'; status = 'done' }, @{ id = 2; title = 'second stage'; status = 'pending' }); expect_state = 'false'; expect_summary = 'stages=1:done,2:pending'; expect_token = 'stage_cap_reached_with_open_stage' },
+  @{ tag = 'no_records'; stages = @(); expect_state = 'unknown'; expect_summary = 'stages=none'; expect_token = 'stage_cap_reached_with_no_stage_records' }
+)
+$capTokens = @('all_stages_done_but_status_running', 'stage_cap_reached_with_open_stage', 'stage_cap_reached_with_no_stage_records')
+$run24ByTag = @{}
+foreach ($c24 in $cap24) {
+  $led24 = [ordered]@{
+    goal = 'cap hint'; plan_doc = 'docs\plans\f8.md'; workspace_dir = $r24
+    status = 'running'; auto_relay = $true; current_stage = 2; max_stages = 2
+    next_session_id = $null; stages = $c24.stages
+    sessions = @(); notes = @(); blocked_on = @()
+  }
+  [IO.File]::WriteAllText((Join-Path $r24 'docs\relay.json'), ($led24 | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+  $run24 = Run (Join-Path $r24 'docs\relay\start-relay.ps1') @('-Target', 'f8', '-DryRun')
+  $run24ByTag[$c24.tag] = $run24
+  $fail24 = (($run24.Text -split "`n") | Where-Object { $_ -match 'FAIL reason=chain_at_stage_cap' } | Select-Object -First 1)
+  Check ('cap_hint_' + $c24.tag + '_is_refused') ($run24.Code -eq 3 -and [bool]$fail24) ('exit=' + $run24.Code + ' line=' + $fail24)
+  Check ('cap_hint_' + $c24.tag + '_reports_stage_summary') ([bool]($fail24 -match [regex]::Escape($c24.expect_summary))) ('line=' + $fail24)
+  Check ('cap_hint_' + $c24.tag + '_reports_all_done_state') ([bool]($fail24 -match ('all_done=' + $c24.expect_state))) ('line=' + $fail24)
+  Check ('cap_hint_' + $c24.tag + '_picks_its_own_hint') ($run24.Text -match ('HINT=' + $c24.expect_token)) ('expect=' + $c24.expect_token)
+  $leaked24 = @($capTokens | Where-Object { $_ -ne $c24.expect_token -and ($run24.Text -match ('HINT=' + $_)) })
+  Check ('cap_hint_' + $c24.tag + '_hints_are_exclusive') ($leaked24.Count -eq 0) ('leaked=' + ($leaked24 -join '|'))
+}
+Check 'cap_hint_open_stage_refuses_to_close_chain' (-not ($run24ByTag['open_stage'].Text -match '"set_status":"done"')) ('text_has_set_status=' + [bool]($run24ByTag['open_stage'].Text -match '"set_status":"done"'))
+Check 'cap_hint_all_done_says_how_to_close' ($run24ByTag['all_done'].Text -match '"set_status":"done"') ''
+Check 'cap_hint_reason_is_unchanged' ($run24ByTag['all_done'].Text -match 'FAIL reason=chain_at_stage_cap') ''
 
 # --- verdict -------------------------------------------------------------------
 Say ('SUITE_END pass=' + $script:pass + ' fail=' + $script:fail + ' root=' + $script:root)

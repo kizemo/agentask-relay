@@ -136,7 +136,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-spawn.ps1
 ## 四道并发闸门
 
 1. `FileMode.CreateNew` 原子锁 —— 抢不到就退出，不存在「两个会话同时写」。
-2. 台账闸门 —— 有 `in_progress` 阶段 / `status=running` 且有 `next_session_id` / 台账 blocked 或耗尽 ⇒ 拒绝起链。
+2. 台账闸门 —— 有 `in_progress` 阶段 / `status=running` 且有 `next_session_id` / `status=running` 且 `current_stage >= max_stages`（`chain_at_stage_cap`，触顶；判据行带 `stages=` 与 `all_done=`，HINT 按「全 done / 还有阶段没跑 / 台账无阶段记录」三种形态分开给，**只有全 done 才可提交 `{"set_status":"done"}` 收尾**）/ 台账 blocked / `status=done` 且耗尽 ⇒ 拒绝起链。
 3. 写集指纹 —— 每环先读 `docs\relay.json` 的阶段写集与 `RELAY-ADAPTATION.md` 的并发检测口径。
 4. 台账回写 CAS —— 由 `relay-ledger.ps1` 机制化：回写前必须先 `-Action status` 取在盘 `sha256`，提交时用 `-ExpectSha256` 传入（锁外、锁内各比一次）。sha 陈旧 = 视图过期，直接被 `cas_conflict` 判死，只能重取 sha、重建 patch、重试一次。
 
@@ -197,6 +197,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps
 退出码：`0` 提交或干跑通过 / `2` 参数与 patch 键非法（含 `commit` 未带 `-ExpectSha256`、`stage_fields` 未配 `stage_done`）/ `3` 拒绝（CAS 冲突、规则违反、台账缺文件）/ `4` 锁超时 / `5` patch 不可解析。
 
 - **动作只有 `status` 与 `commit`**，没有 `-Action blocked` 这类便捷动作；blocked 状态由 patch 里 `set_status` + `blocked_on_append` 表达。
+- **会话流水由闸门兜底（F6）**：`stage_done` 提交时，闸门自己把本环会话 ID 登记进 `sessions[]` —— 先取 `stages[N].session_id`，没有就取台账里的 `next_session_id`（那正是当前在跑的那一环）；只追加、不改写、已登记过的不重复。⇒ 环忘了写 `sessions_append` 也不会留下空会话流水（B13 真链终态 `sessions=[]`，本条为此新增）；两个来源都没有时回显 `LEDGER_SESSION_SKIPPED reason=no_session_id`，**不编造**会话 ID。
 - `set_status: "running"` 是**人类专用**（起链时由人写入），会话侧提交一律被拒。
 - 正常收尾与停链分支（blocked / done）一律走闸门，不许手工编辑 `docs\relay.json`。
 - 脚本按 `$PSScriptRoot\..\..` 推仓库根，所以它**必须**放在 `<repo>\docs\relay\` 下才能跑。

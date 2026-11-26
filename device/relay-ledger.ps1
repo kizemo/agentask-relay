@@ -11,7 +11,7 @@
 
   This script turns that prose into a gate. A session never hand-edits the
   ledger; it declares its intent in a small ASCII JSON patch file and this
-  script applies it under four rules:
+  script applies it under five rules:
 
     1. writer lock  - docs\relay\.ledger.lock, created with CreateNew (atomic on
                       NTFS). A lock older than -LockStaleSeconds is provably
@@ -34,6 +34,12 @@
     4. read-back    - the bytes go to a temp file, move into place, then are
                       re-read and compared verbatim. LEDGER_COMMITED carries the
                       before/after hashes and the element counts.
+    5. session trail- a stage_done commit registers the session that ran the
+                      stage in sessions[] by itself, so the ledger keeps an
+                      independent trail of every session even when a link
+                      forgets the sessions_append intent. The registration is
+                      append only, and a session id that is already in
+                      sessions[] is never added twice.
 
   Protocol rules are enforced in code, not prose: set_status may never be
   "running" (AGENT-RELAY.md: only a human starts a chain). Unknown patch keys
@@ -230,6 +236,43 @@ try {
     Set-NoteProp -Target $entry -Name 'status' -Value 'done'
     if (-not ((Keys $entry) -contains 'finished_at')) {
       Set-NoteProp -Target $entry -Name 'finished_at' -Value ([DateTimeOffset]::Now.ToString('o'))
+    }
+  }
+
+  # --- rule 5: session trail -----------------------------------------------------
+  # The session trail used to be a prose request only: a link had to add
+  # sessions_append by itself, and a link that forgot left sessions[] empty
+  # (that is what the B13 live chain ended with). The gate registers the
+  # session that ran the stage by itself, so the ledger keeps an independent
+  # trail of every session. Only an append is possible, and a session id that
+  # is already in sessions[] is never added twice.
+  if ($ownedIndex -ge 0) {
+    $doneStage = @($new.stages)[$ownedIndex]
+    $sessionId = [string]$doneStage.session_id
+    $sessionSource = 'stage_field'
+    if ([string]::IsNullOrWhiteSpace($sessionId)) {
+      # The id of the link that is running right now is the one the previous
+      # link wrote into next_session_id (the launcher writes it for the first
+      # link of a cli chain).
+      $sessionId = [string]$old.next_session_id
+      $sessionSource = 'ledger_next_session_id'
+    }
+    if ([string]::IsNullOrWhiteSpace($sessionId)) {
+      Say ("LEDGER_SESSION_SKIPPED stage=" + [string]$doneStage.id + " reason=no_session_id")
+    } else {
+      $known = $false
+      foreach ($s in @($new.sessions)) {
+        $probe = $s
+        if (-not ($s -is [string])) { $probe = Ser $s }
+        if (([string]$probe).IndexOf($sessionId, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $known = $true; break }
+      }
+      if ($known) {
+        Say ("LEDGER_SESSION_ALREADY_REGISTERED session=" + $sessionId)
+      } else {
+        Set-NoteProp -Target $new -Name 'sessions' -Value (@(@($new.sessions) + @($sessionId)))
+        Say ("LEDGER_SESSION_REGISTERED session=" + $sessionId +
+          " stage=" + [string]$doneStage.id + " source=" + $sessionSource)
+      }
     }
   }
 

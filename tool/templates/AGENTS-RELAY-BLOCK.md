@@ -18,6 +18,6 @@
 8. 锁的持有者每几轮跑一次 `docs\relay\relay-lock.ps1 -Action renew` 续心跳（TTL 默认 1800 秒）；超时未续视为环已死，后继会话 `acquire` 会回收并留 `.stale.*` 存证。
 9. `status == "running"` 且本环 acceptance 达成 ⇒ **回复用户之前**必须：先只追加方式回写 `relay.json`（本环 `status/session_id/model/tool_calls/finished_at` + `current_stage += 1` + `stages` 追加下一环），**回写前必须重读盘**，回读核对条数与署名；再按 §A.5 的起环方式起下一环（模型策略见 `docs\RELAY-ADAPTATION.md` 第 5 节），把返回的 `session_id` 回写 `next_session_id`；再 `relay-lock.ps1 -Action adopt -SessionId <新 id>` 转交锁。
 10. 命中人工验收点 / 停链条件 / 写集冲突 ⇒ 写 `status="blocked"` + `note`，**不起新会话**，停下等人，并 `relay-lock.ps1 -Action release` 释放锁。
-11. `current_stage > max_stages` ⇒ 写 `status="blocked"` 停链。不得自行加长 `max_stages`。
+11. **终态口径**：全部阶段完成且 `blocked_on` 无未结项 ⇒ 写 `status="done"`（`current_stage > max_stages` 是完成信号，不是故障）；命中停链条件且尚未完成 ⇒ 写 `status="blocked"`。不得自行加长 `max_stages`。
 12. `docs\relay.json` 的 `status` 改成 `running` 只有人能做。**agent 不得自行起链** —— 唯一例外是满足 §A 全部条件（用户在本项目内明确指令 + 启动器放行 + 拿到锁）。
 <!-- END RELAY-PORT -->

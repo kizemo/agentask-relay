@@ -1,0 +1,103 @@
+===== mcode prompt: git HEAD template vs working tree template =====
+
+You are relay stage 1 of an unattended relay chain in this repository.
+
+WORKSPACE: C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode (absolute path, backslashes). Work only inside it.
+
+READ FIRST (full paths, read in this order):
+1. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay.json            (state machine truth)
+2. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\AGENT-RELAY.md        (protocol)
+3. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\RELAY-ADAPTATION.md   (project adjudication)
+4. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\plan-v.md                   (source of truth for the target batch)
+5. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\start-relay.ps1 (this launcher, for the next stage)
+6. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\relay-lock.ps1  (lock protocol)
+7. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\relay-ledger.ps1 (ledger write gate)
+
+TARGET: b13 verify
+
+STAGE PLAN:
+1. stage 1 scope inventory
+
+RULES:
+- Validate docs\relay.json before touching anything: status must be running, current_stage must equal your stage, current_stage must not exceed max_stages. If any check fails, commit status=blocked through the ledger gate (see RULES), explain what is missing, and stop.
+- Exactly one stage per session. A stage owns a declared write set; the controller never edits product code directly, dispatch a worker sub-session for code changes and state the single allowed write set in the dispatch brief.
+- Never pass an effort field to session_create (the schema has no such field).
+- Concurrency: the lock file docs\relay\.relay.lock is owned by you. Call relay-lock.ps1 -Action renew every few turns. Do not create a second chain while the ledger has an in_progress stage.
+- Ledger writes go through the gate docs\relay\relay-ledger.ps1, never by hand. Recipe: (1) run pwsh -NoProfile -File docs\relay\relay-ledger.ps1 -Action status and read sha256 from its LEDGER_STATE line. (2) Write an ASCII JSON patch file under docs\relay\ using only append-only intent: stage_done, stage_fields, append_stage, sessions_append, notes_append, ledger_docs_append, blocked_on_append, set_status, bump_current_stage, next_session_id. (3) Validate it with -DryRun on the same command. (4) Commit it with -Action commit and that same sha256. A stale sha means the ledger moved under you: re-read status, rebuild the patch, retry once. Exit codes: 0 committed, 2 bad argument, 3 refused (CAS conflict or rule violation), 4 lock timeout, 5 unreadable patch. status=running is reserved for the human who starts the chain. If the gate refuses and you cannot satisfy it, stop and report rather than editing the ledger directly.
+- Git write operations (commit, push, tag, stash, checkout) are a human checkpoint: never perform them, stop and report instead.
+- Write intermediate artifacts to files. Keep the conversation to pointers and conclusions. Do not fabricate acceptance evidence.
+- On completion: write docs\relay\stage-1-inventory.md, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create), then start the next stage with session_create using the same recipe, then call relay-lock.ps1 -Action adopt -SessionId <new session id>.
+- If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release, and explain in the final reply. Never start a next session in that case.
+The gate holds its own lock docs\relay\.ledger.lock, separate from the chain lock, so a ledger write cannot interleave with another writer.
+
+===== END HEAD PROMPT =====
+
+You are relay stage 1 of an unattended relay chain in this repository.
+
+WORKSPACE: C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode (absolute path, backslashes). Work only inside it.
+
+READ FIRST (full paths, read in this order):
+1. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay.json            (state machine truth)
+2. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\AGENT-RELAY.md        (protocol)
+3. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\RELAY-ADAPTATION.md   (project adjudication)
+4. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\plan-v.md                   (source of truth for the target batch)
+5. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\start-relay.ps1 (this launcher, for the next stage)
+6. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\relay-lock.ps1  (lock protocol)
+7. C:\Users\Duanyi\AppData\Local\Temp\relay-b13-verify-20261126-154056\repo-mcode\docs\relay\relay-ledger.ps1 (ledger write gate)
+
+TARGET: b13 verify
+
+STAGE PLAN:
+1. stage 1 scope inventory
+
+RULES:
+- Validate docs\relay.json before touching anything: status must be running, current_stage must equal your stage, current_stage must not exceed max_stages. If any check fails, commit status=blocked through the ledger gate (see RULES), explain what is missing, and stop.
+- Exactly one stage per session. A stage owns a declared write set; the controller never edits product code directly, dispatch a worker sub-session for code changes and state the single allowed write set in the dispatch brief.
+- Never pass an effort field to session_create (the schema has no such field).
+- Concurrency: the lock file docs\relay\.relay.lock is owned by you. Call relay-lock.ps1 -Action renew every few turns. Do not create a second chain while the ledger has an in_progress stage.
+- Ledger writes go through the gate docs\relay\relay-ledger.ps1, never by hand. Recipe: (1) run pwsh -NoProfile -File docs\relay\relay-ledger.ps1 -Action status and read sha256 from its LEDGER_STATE line. (2) Write an ASCII JSON patch file under docs\relay\ using only append-only intent: stage_done, stage_fields, append_stage, sessions_append, notes_append, ledger_docs_append, blocked_on_append, set_status, bump_current_stage, next_session_id. (3) Validate it with -DryRun on the same command. (4) Commit it with -Action commit and that same sha256. A stale sha means the ledger moved under you: re-read status, rebuild the patch, retry once. Exit codes: 0 committed, 2 bad argument, 3 refused (CAS conflict or rule violation), 4 lock timeout, 5 unreadable patch. status=running is reserved for the human who starts the chain. If the gate refuses and you cannot satisfy it, stop and report rather than editing the ledger directly.
+- Git write operations (commit, push, tag, stash, checkout) are a human checkpoint: never perform them, stop and report instead.
+- Write intermediate artifacts to files. Keep the conversation to pointers and conclusions. Do not fabricate acceptance evidence.
+- On completion: write docs\relay\stage-1-inventory.md, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create), then start the next stage with session_create using the same recipe, then call relay-lock.ps1 -Action adopt -SessionId <new session id>.
+- If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release, and explain in the final reply. Never start a next session in that case.
+The gate holds its own lock docs\relay\.ledger.lock, separate from the chain lock, so a ledger write cannot interleave with another writer.
+
+===== END NEW PROMPT =====
+===== cli prompt (working tree) =====
+
+RELAY_STAGE=1
+RELAY_ARTIFACT=docs/relay/stage-1-inventory.md
+RELAY_SESSION_ID=660d9d8d-f239-4634-ba9d-f8d4dd5084ff
+
+You are relay stage 1 of an unattended relay chain in this repository.
+
+WORKSPACE: C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli (absolute path, forward slashes). Work only inside it.
+
+READ FIRST (full paths, read in this order):
+1. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay.json            (state machine truth)
+2. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/AGENT-RELAY.md        (protocol)
+3. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/RELAY-ADAPTATION.md   (project adjudication)
+4. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/plan-v.md                   (source of truth for the target batch)
+5. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/start-relay.ps1 (this launcher, for the next stage)
+6. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/relay-lock.ps1  (lock protocol)
+7. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/relay-ledger.ps1 (ledger write gate)
+8. C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/relay-spawn.ps1 (spawn driver: starts the next link in this runtime)
+
+TARGET: b13 verify
+
+STAGE PLAN:
+1. write docs/relay/stage-1-inventory.md
+2. write docs/relay/stage-2-inventory.md
+
+RULES:
+- Validate docs/relay.json before touching anything: status must be running, current_stage must equal your stage, current_stage must not exceed max_stages. If any check fails, commit status=blocked through the ledger gate (see RULES), explain what is missing, and stop.
+- Exactly one stage per session. A stage owns a declared write set; the controller never edits product code directly, dispatch a worker sub-session for code changes and state the single allowed write set in the dispatch brief.
+- This runtime has no session_create tool: never call it. The next link is started by the spawn driver, see the hand-off rule below. Command style for this runtime: one command per call, no chained commands and no quoted flag values. Paths: the Bash tool runs a real bash and eats the backslashes of a Windows path, so write every path with forward slashes there (docs/relay/relay-ledger.ps1); the native PowerShell tool takes Windows backslash paths. Example for the Bash tool: pwsh -NoProfile -ExecutionPolicy Bypass -File docs/relay/relay-ledger.ps1 -Action status . A chained or quoted command is refused by the runtime permission layer and a headless link cannot approve it.
+- Concurrency: the lock file docs/relay/.relay.lock is owned by you. Call relay-lock.ps1 -Action renew every few turns. Do not create a second chain while the ledger has an in_progress stage.
+- Ledger writes go through the gate docs/relay/relay-ledger.ps1, never by hand. Recipe: (1) run pwsh -NoProfile -File docs/relay/relay-ledger.ps1 -Action status and read sha256 from its LEDGER_STATE line. (2) Write an ASCII JSON patch file under docs/relay/ using only append-only intent: stage_done, stage_fields, append_stage, sessions_append, notes_append, ledger_docs_append, blocked_on_append, set_status, bump_current_stage, next_session_id. (3) Validate it with -DryRun on the same command. (4) Commit it with -Action commit and that same sha256. A stale sha means the ledger moved under you: re-read status, rebuild the patch, retry once. Exit codes: 0 committed, 2 bad argument, 3 refused (CAS conflict or rule violation), 4 lock timeout, 5 unreadable patch. status=running is reserved for the human who starts the chain. If the gate refuses and you cannot satisfy it, stop and report rather than editing the ledger directly.
+- Git write operations (commit, push, tag, stash, checkout) are a human checkpoint: never perform them, stop and report instead.
+- Write intermediate artifacts to files. Keep the conversation to pointers and conclusions. Do not fabricate acceptance evidence.
+- On completion: write the file named in RELAY_ARTIFACT, then commit that hand-off through the ledger gate (recipe above; it re-reads what it wrote and refuses to rewrite entries you did not create) with THREE intents in ONE patch: stage_done=<your stage id>, bump_current_stage, and next_session_id=<a fresh UUID that you allocate for the next link>; then write the next-stage prompt: copy this prompt file over docs/relay/next-relay-prompt.txt, change RELAY_STAGE=1 to RELAY_STAGE=2, change the phrase "relay stage 1" to "relay stage 2", change RELAY_ARTIFACT=docs/relay/stage-1-inventory.md to RELAY_ARTIFACT=docs/relay/stage-2-inventory.md, change RELAY_SESSION_ID=660d9d8d-f239-4634-ba9d-f8d4dd5084ff to RELAY_SESSION_ID=<the fresh UUID you wrote into the ledger as next_session_id>, and change nothing else; then start the next link with: pwsh -NoProfile -ExecutionPolicy Bypass -File C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/relay-spawn.ps1 -Runtime claude-code -PromptFile C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli/docs/relay/next-relay-prompt.txt -WorkspaceDir C:/Users/Duanyi/AppData/Local/Temp/relay-b13-verify-20261126-154056/repo-cli -Execute -AdoptLock (the driver reads next_session_id from the ledger and hands the lock over before the new link starts).
+- If the chain must stop: commit status=blocked with what is missing through the ledger gate (blocked_on_append plus set_status=blocked and an empty next_session_id), release the lock with relay-lock.ps1 -Action release -SessionId <the RELAY_SESSION_ID value above>, and explain in the final reply. Never start a next session in that case.
+The gate holds its own lock docs/relay/.ledger.lock, separate from the chain lock, so a ledger write cannot interleave with another writer.
+

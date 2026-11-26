@@ -1,0 +1,29 @@
+=== PART 1: injected "at cap, not closed" state (2 stages) ===
+PART1_FIRST_LAUNCH exit=0 (expect 0: the chain can start)
+PART1_LEDGER_BEFORE status=running current_stage=1 max_stages=2 stages=
+PART1_LOCK_RELEASE exit=0
+PART1_GATE_SHA len=64
+PART1_COMMIT_EXIT=0
+PART1_LEDGER_AFTER status=running current_stage=2 max_stages=2 stages=
+PART1_VERDICT refused_with_cap_reason=True
+
+=== PART 2: one stage chain, cap predicate already true while the stage is pending ===
+PART2_FIRST_LAUNCH exit=0 (expect 0: a one stage chain must still start)
+PART2_LEDGER_BEFORE status=running current_stage=1 max_stages=1 stages=
+PART2_SECOND_LAUNCH exit=3 reason=chain_at_stage_cap
+PART2_HINT_CLAIMS_ALL_DONE=True (a pending stage means this claim is false)
+KIT cap-two-stages install_exit=0
+LAUNCH part1-first exit=0 reason=NONE
+  GATE> LEDGER_CAS_OK sha256=C732E198D8FD218C04A7753476959420EF21F57CA8190D28C4B251216290E9C1
+  GATE> LEDGER_RULES_OK stages=0->0 sessions=0->0 notes=0->0
+  GATE> LEDGER_COMMITED before=C732E198D8FD218C04A7753476959420EF21F57CA8190D28C4B251216290E9C1 after=4988E49D67DEC6A29A83FDB2BDAEA2F42450569284B91432B6E740AE74A8DA21 stages=0->0 sessions=0->0 current_stage=1->2 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955\cap-two-stages\docs\relay.json
+LAUNCH part1-second exit=3 reason=chain_at_stage_cap
+  2ND> FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2
+  2ND> HINT=every declared stage is done but status is still running: close it with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.
+KIT cap-one-stage install_exit=0
+LAUNCH part2-first exit=0 reason=NONE
+LAUNCH part2-second exit=3 reason=chain_at_stage_cap
+  2ND> FAIL reason=chain_at_stage_cap current_stage=1 max_stages=1
+  2ND> HINT=every declared stage is done but status is still running: close it with relay-ledger.ps1 -Action status, then submit a patch {"set_status":"done"}. Do not raise -MaxStages to keep going.
+
+ROOT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955

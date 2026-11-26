@@ -438,6 +438,7 @@ Log "PLAN doc=$planRel created=$planWillBeCreated"
 
 # --- 3. stage list ------------------------------------------------------------
 $stageList = New-Object System.Collections.Generic.List[string]
+$stageTitlesExplicit = ''
 if ([string]::IsNullOrWhiteSpace($StageTitles)) {
   $stageList.Add('1. scope inventory and acceptance criteria')
   $stageList.Add('2. implementation against the declared write set')
@@ -451,6 +452,7 @@ if ([string]::IsNullOrWhiteSpace($StageTitles)) {
 }
 if ($stageList.Count -eq 0) { $stageList.Add('1. stage 1 scope inventory') }
 $stageText = ($stageList -join "`n")
+if (-not [string]::IsNullOrWhiteSpace($StageTitles)) { $stageTitlesExplicit = $stageText }
 
 # --- 4. install the device ----------------------------------------------------
 $docsDir  = Join-Path $repo 'docs'
@@ -743,6 +745,7 @@ elseif ($Runtime -eq 'openclaw') { $nextLinkMode = 'sessions_spawn_tool' }
 $descriptor = [ordered]@{
   runtime        = $Runtime
   next_link_mode = $nextLinkMode
+  stage_titles   = $stageTitlesExplicit
   spawn_rule     = $spawnRule
   spawn_command  = $spawnCommand
   rule_files     = @($ruleTargets | ForEach-Object { Split-Path -Leaf $_.Path })

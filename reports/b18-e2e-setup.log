@@ -1,0 +1,101 @@
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/plan-b18.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/inventory.ps1', LF will be replaced by CRLF the next time Git touches it
+OK fixture repo=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo
+=== INSTALL PASS 1 (expect ADAPTATION_STATUS=pending) ===
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo
+REPO name=repo
+REPO head=49a97d1
+RUNTIME name=mcode spawn_template=ACTIVATION-SPAWN-mcode.md
+PLAN doc=docs\plan-b18.md created=False
+COPY relay-lock.ps1 bytes=6429 sha16=23E51FB2619230DC
+COPY start-relay.ps1 bytes=28880 sha16=0D9A5AAF5C83F239
+COPY relay-ledger.ps1 bytes=17904 sha16=7E9601DE9A1CBFF3
+COPY relay-spawn.ps1 bytes=16484 sha16=438D5C375C7D92F4
+COPY AGENT-RELAY.md bytes=22805 sha16=4D921A73FF8E22C5
+COPY RELAY-SOP.md bytes=7129 sha16=52630B579FB8CDBF
+WRITE RELAY-ADAPTATION.md created source=defaults bytes=5772
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=defaults
+WRITE adaptation-questions.md questions=8 path=docs\relay\adaptation-questions.md
+WRITE adaptation-answers.template.json path=docs\relay\adaptation-answers.template.json
+WARN adaptation_defaults_unconfirmed ask_the_user_before_starting_the_chain packet=docs\relay\adaptation-questions.md
+AGENTS action=appended reason=n/a before=[absent] after=[bytes=3764 sha16=84554511C8EFC72A] bom=False
+WRITE relay-runtime.json bytes=561 mode=session_tool
+WRITE ACTIVATION-PROMPT.txt bytes=3555
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=28880
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=pending
+ADAPTATION_SOURCE=defaults
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=docs\relay\adaptation-questions.md
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=mcode
+WARN_COUNT=1
+INSTALL1_EXIT=0
+=== INSTALL PASS 2 (expect ADAPTATION_STATUS=confirmed) ===
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo
+REPO name=repo
+REPO head=49a97d1
+RUNTIME name=mcode spawn_template=ACTIVATION-SPAWN-mcode.md
+PLAN doc=docs\plan-b18.md created=False
+SKIP relay-lock.ps1 identical bytes=6429
+SKIP start-relay.ps1 identical bytes=28880
+SKIP relay-ledger.ps1 identical bytes=17904
+SKIP relay-spawn.ps1 identical bytes=16484
+SKIP AGENT-RELAY.md identical bytes=22805
+SKIP RELAY-SOP.md identical bytes=7129
+ADAPT answers=docs\adaptation-answers.json applied=8/8
+PATCH RELAY-ADAPTATION.md sections=3,4,5 missing= answers=docs\adaptation-answers.json
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=answers
+AGENTS action=present_kept reason=n/a before=[bytes=3764 sha16=84554511C8EFC72A] after=[bytes=3764 sha16=84554511C8EFC72A] bom=False
+WRITE relay-runtime.json bytes=561 mode=session_tool
+WRITE ACTIVATION-PROMPT.txt bytes=3555
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=6429
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=28880
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=16484
+AGENTS_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=confirmed
+ADAPTATION_SOURCE=answers
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=mcode
+WARN_COUNT=0
+INSTALL2_EXIT=0
+=== LAUNCHER (real, expect exit 0) ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b18-e2e-20261126-204529/repo
+OK head=49a97d1 dirty_files=16
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_absent path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay.json (will bootstrap)
+OK stage_titles source=descriptor
+OK plan_doc=docs\plan-b18.md source=probe bytes=764
+LOCK_ACQUIRED holder=start-relay:120764 stage=1 ttl_s=1800 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\.relay.lock
+OK ledger_bootstrapped path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay.json bytes=2190
+OK prompt_written path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\next-relay-prompt.txt bytes=4342
+NEXT call session_create with agent_name=me, title=relay-01of02-<short stage name>, workspace_dir=<repoRoot backslashes>, content=<contents of the prompt file>
+NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>
+DONE exit=0 target=B18 real chain on the MCode runtime: stage 1 inventory, stage 2 summary
+LAUNCH_EXIT=0
+=== LEDGER (read back) ===
+LEDGER status=running current_stage=1 max_stages=2
+LEDGER next_session_id=[]
+LEDGER workspace_dir=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo
+LEDGER model_policy=minimax/MiniMax-M3
+=== LOCK (read back) ===
+LOCK_STATE state=LIVE holder=start-relay:120764 prev_holder= stage=1 age_s=1 ttl_s=1800 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\.relay.lock
+PROMPT_PATH=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529\repo\docs\relay\next-relay-prompt.txt
+PROMPT_BYTES=4342
+E2E_ROOT=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-e2e-20261126-204529

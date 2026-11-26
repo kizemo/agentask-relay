@@ -1,0 +1,13 @@
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b18-cap-20261126-204955/cap-two-stages
+OK head=6347cd1 dirty_files=13
+OK runtime=mcode source=parameter
+OK link_mode=session_tool chain_session_id=none
+OK ledger_absent path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955\cap-two-stages\docs\relay.json (will bootstrap)
+OK stage_titles source=default
+OK plan_doc=docs\plans\cap.md source=argument bytes=39
+LOCK_ACQUIRED holder=start-relay:86116 stage=1 ttl_s=1800 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955\cap-two-stages\docs\relay\.relay.lock
+OK ledger_bootstrapped path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955\cap-two-stages\docs\relay.json bytes=1970
+OK prompt_written path=C:\Users\Duanyi\AppData\Local\Temp\relay-b18-cap-20261126-204955\cap-two-stages\docs\relay\next-relay-prompt.txt bytes=4278
+NEXT call session_create with agent_name=me, title=relay-01of02-<short stage name>, workspace_dir=<repoRoot backslashes>, content=<contents of the prompt file>
+NEXT then run relay-lock.ps1 -Action adopt -SessionId <new session id>
+DONE exit=0 target=B18 cap probe

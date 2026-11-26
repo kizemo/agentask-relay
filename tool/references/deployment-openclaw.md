@@ -71,7 +71,7 @@ follow docs\relay\ACTIVATION-PROMPT.txt to start the relay chain
    tool      : sessions_spawn
    workspace : <仓库绝对路径>
    prompt    : <next-relay-prompt.txt 全文>
-   task      : relay-1-<短阶段名>
+   task      : relay-01of<MM>-<短阶段名>
    ```
 
    返回值里带新的会话 id。

@@ -12,7 +12,7 @@ Read {{REPO}}\docs\relay\next-relay-prompt.txt in full, then spawn one session w
   tool      : sessions_spawn
   workspace : {{REPO}}
   prompt    : <full text of next-relay-prompt.txt>
-  task      : relay-1-<short stage name>
+  task      : relay-01of<MM>-<short stage name>
 
 The spawn tool returns the new session id. Keep it.
 

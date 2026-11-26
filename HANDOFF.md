@@ -865,3 +865,647 @@ git -c http.sslBackend=schannel push origin main
 4. `git push` 失败后 `origin/main` 仍是旧 ref；判断到底推没推上去要看 `git fetch` 之后的 `git rev-parse origin/main` 与 `rev-list --left-right --count HEAD...origin/main`，不要凭 push 的提示行。
 
 
+
+---
+
+## 批次 B13 实录（2026-11-26 15:20 → 15:55）—— 整链端到端复验：真链两环跑通 + 修真链新暴露的两个缺陷
+
+### 背景与目标
+B10 把「怎么把 claude CLI 正确喊起来」坐实了，但**明确没验证整链**（当时留白：干净真链仓里跑通「第 1 环 → 写产物 → 台账 `stage_done` → 推进 → 自举第 2 环」）。
+本轮补这段留白，并按家规把结论回填进本仓库，收尾顺序 `selftest → publish → refresh-manifest`。
+
+### 第一轮真链（修复前）暴露的两个真实缺陷
+干净夹具仓 `…\relay-b13-e2e-20261126-152056\repo`（claude-code 运行时）跑两环：
+| 缺陷 | 现象 | 根因 |
+| --- | --- | --- |
+| D1 | 子环里两条命令 `exit 64` | Claude Code 的 Bash 工具是**真 bash**，prompt 里的 Windows 反斜杠路径被吃掉（`docs\relay\relay-ledger.ps1` → `docsrelayrelay-ledger.ps1`） |
+| D2 | 阶段名退回默认，第 1 环产物名不对 | 安装器把 `-StageTitles` 写进了描述符，但启动器**没读**描述符里的阶段清单 |
+
+### 修复（本轮改动 4 个文件，未 commit）
+| 文件 | 改了什么 | sha16 |
+| --- | --- | --- |
+| `tool\scripts\install-relay.ps1` | 描述符新增 `stage_titles` 字段，**仅当用户显式传 `-StageTitles` 时才带** | `A7D9F76B59F86B3E` |
+| `tool\templates\start-relay.ps1` | ① 阶段清单解析：参数 > 台账 > 描述符 > 默认，并打印 `OK stage_titles source=…`；② 台账 bootstrap 写 `stage_titles`；③ prompt 的 `STAGE PLAN` 用真清单；④ **CLI 分支 prompt 内所有路径统一正斜杠**（新增 `$pathSep`/`$promptRepoRoot`/`$workspaceNote`，覆盖 WORKSPACE 行、必读清单 8 条、RULES 三处、台账配方、交接规则、spawn 命令共 19 处）；⑤ 命令风格规则改为「Bash 用正斜杠、原生 PowerShell 可用反斜杠」 | `BD04C11F9E432581` |
+| `device\start-relay.ps1` | 与模板**逐字一致**（硬不变式） | `BD04C11F9E432581` |
+| `scripts\selftest.ps1` | 新增 case 19（18 条断言），断言改在 `DRYRUN prompt_preview_begin/end` 之间的 prompt 块上做 | `8CF635C5606D2386` |
+
+**关键设计取舍**：阶段清单只传显式值 ⇒ 未配置阶段的既有安装，**mcode prompt 逐字不变**（B10 硬要求）。用片段化实现（`$pathSep` 抽象）让 CLI 分支全走正斜杠，mcode 分支保留 Windows 路径，人看的激活包仍保留 Windows 路径。
+
+### 硬不变式证明（不能靠肉眼）
+同一夹具下用 `git show HEAD:tool/templates/start-relay.ps1`（旧版）与工作区新版 launcher 分别渲染：
+- `MCODE_PROMPT_BYTE_IDENTICAL=True`（**逐字节相同**）
+- CLI prompt 反斜杠计数 = **0**；正斜杠 relay 引用 19 处
+
+### 修复后整链（决定性证据）
+新干净夹具 `…\relay-b13-e2e2-20261126-153941\repo`（克隆自旧夹具、清空 `docs\relay\`/`docs\relay.json`/锁文件，git HEAD 仍 `08e6009`）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 安装首跑 | `INSTALL_VERDICT=PASS` / `ADAPTATION_STATUS=pending` / `WARN_COUNT=1` |
+| 安装二跑（带 `-AnswersFile`） | `confirmed` / `source=answers` / `applied=8/8` / `WARN_COUNT=0`，描述符带真阶段清单 |
+| 起链 | `OK runtime=claude-code source=descriptor`、`OK stage_titles source=descriptor`、`chain_session_id=b47a9c35-c96a-4b13-b501-27b7463c431f`、台账 2086 B、prompt 5989 B、`DONE exit=0` |
+| spawn | `SPAWN_EXIT=0`、`RELAY_SPAWN_OK`、`LOCK_ADOPTED holder=b47a9c35-… prev_holder=start-relay:296240`、`SPAWN_LOCK_PRE_ADOPTED`、输出文件 2497 B |
+| 第 1 环 | 产物 `docs\relay\stage-1-inventory.md` 745 B；台账 `stage_done` + `bump_current_stage` + `next_session_id=4dcfed63-ffb5-41d4-a2fe-d560129ae073`；`tool_calls=23`；finished 15:43:42 |
+| 第 2 环（自举） | 产物 `docs\relay\stage-2-inventory.md` 608 B；`tool_calls=12`；finished 15:47:21；锁终态 `LOCK_ABSENT` |
+| 终态台账 | `status=blocked` / `current_stage=3` / `max_stages=2` / 两 stage 均 `done` / `notes=1` / `blocked_on=1` / `sessions=[]` |
+
+**零报错硬判据**：transcript（`%USERPROFILE%\.claude\projects\…-relay-b13-e2e2-…-repo\`）里 **`is_error=true` 计数 = 0**（修复前有 2 条 exit 64）。工具计数 PowerShell=16 / Read=16 / Write=5 / Bash=1 / Edit=1 / Glob=1。transcript 文件名即链 session id ⇒ `--session-id` 被遵守。
+
+### 门禁
+`pwsh -NoProfile -File scripts\selftest.ps1 -EvidencePath <log>` ⇒ `SUITE_END pass=233 fail=0`，进程 `EXIT=0`。
+基线 `selftest-2026-11-25r` = 215 条 ⇒ **净增 18 条**（case 19）。raw 日志已收成 `tool\references\selftest-2026-11-26.txt`（20213 B / cr=0 / 238 行）。
+
+### 已验证 / 推断 / 未验证
+- **已验证**：整链两环（产物 → 台账 `stage_done` → 自举第 2 环 → 锁正确释放）、mcode prompt 逐字不变、CLI prompt 路径全部正斜杠、安装器两段式问答、case 19 断言、selftest 233/0。
+- **推断（未在本轮证伪）**：CLI 分支的正斜杠改造对 `codex` / `openclaw` 运行时同样成立（这两个运行时本机没装，只有静态审计）。
+- **未验证 / 已知遗留（本轮有意不改）**：
+  - **F5**：链跑完终态落 `status=blocked` 而非 `done`。notes 原文：`current_stage 3 > max_stages 2 -> status=blocked, no next link spawned`。改它要么动 mcode prompt（违反 B10 约束），要么让 mcode/CLI 语义分叉 ⇒ 留作下一批候选。
+  - **F6**：终态台账 `sessions=[]` 为空，session 信息只在 `stages[].session_id` 里。影响「按会话查历史」这类查询。
+
+### 证据路径（本轮新增 10 个文件，全 LF / cr=0）
+- `tool\references\live-chain-b13.md`（真链实录）
+- `tool\references\live-chain-b13-stdout.txt` / `-ledger-final.txt` / `-artifacts.txt` / `-prompts.txt` / `-prompt-stage1.txt` / `-transcript-1.txt` / `-transcript-2.txt`
+- `tool\references\selftest-2026-11-26.txt`（raw 日志）/ `selftest-2026-11-26.md`（本轮小结）
+- 既有：`tool\references\live-chain-b10.md`（§5 已回填本轮结果）、`tool\references\claude-code-permissions-2026-11-25.md`
+
+### 本轮工具坑（新增）
+1. **Claude Code 的 Bash 工具是真 bash**，Windows 反斜杠路径会被吃掉（`docs\relay\x.ps1` → `docsrelayx.ps1`，`exit 64`）。CLI 分支 prompt 里凡是要交给 Bash 的路径一律正斜杠。
+2. **「逐字不变」不能靠肉眼**：`git show HEAD:tool/templates/start-relay.ps1` 渲染同一夹具再逐字节比，才是硬证明（B13 用的就是这个）。
+3. **改 `scripts\selftest.ps1` 先确认能解析**：括号不配对会变成整个门禁 ParserError（不是断言失败），看起来像「全挂」。
+4. **断言 Windows 路径的正则**：反斜杠写两个、点写一个；优先用 `[regex]::Escape()`。
+5. **安装器对非 git 目录 exit 2**：夹具必须先 `git init` + commit。
+6. **`--session-id` 被遵守的判据是 transcript 文件名**：文件名前缀就是 session id，比翻 JSONL 内容快。
+7. **断言要打在 `DRYRUN prompt_preview_begin/end` 之间的 prompt 块上**：断言整个 stdout 会被安装器自身的日志干扰。
+
+---
+
+## 批次 B13 收尾复跑（2026-11-26 16:10 → 16:15）—— 门禁重跑 + 全局同步 + 清单刷新
+
+### 背景与目标
+上一会话把 B13 的装置改动（4 个文件）与 10 份真链留证写进工作树但**未 commit**，
+门禁当时报 233/0，但**发布（同步回全局 skill）与清单刷新是否真的落到位没有留证**。
+本轮按家规顺序 `selftest → publish → refresh-manifest` 重跑一遍，
+每一步的数字都从盘上回读，不抄摘要。
+
+### 三步硬判据（全部实测）
+
+| 步 | 判据 | 实测结果 |
+| --- | --- | --- |
+| 1. selftest（16:10 首跑） | `SUITE_END pass=233 fail=0` **且**进程 `EXIT=0` | **pass=233 / fail=0 / EXIT=0**（跑窗 16:10:56 → 16:13:09） |
+| 1'. selftest（16:15 最终树复跑） | 同上，且跑在**含两份留证文档的最终树**上 | **pass=233 / fail=0 / EXIT=0**（`SUITE_END 16:17:06`，`CASE_FAIL` 行数 = 0） |
+| 2. publish | `STATUS=OK fail=0`；硬不变式逐件复核 | `STATUS=OK fail=0 warn=2`；`skill_root=E:\Users\Duanyi\.minimax\.minimax\skills\relay-port via=probe`；`tracked_files=66`、SYNC 明细 65 条、**无 FAIL / 无 SYNC_FAIL**；硬不变式 `templates_vs_copies` 5 件全 `copy_matches_template`（`start-relay.ps1 BD04C11F9E432581:26942` / `relay-lock.ps1 23E51FB2619230DC:6429` / `relay-ledger.ps1 6068012759F0D0A6:15672` / `relay-spawn.ps1 438D5C375C7D92F4:16484` / `AGENT-RELAY.md 195EAB9E6AA15322:21489`） |
+| 3. verify | 退出码 0（7 = 有漂移） | `STATUS=OK fail=0 warn=2` ⇒ **全局 skill 与仓库零漂移** |
+| 4. refresh-manifest | `verdict=PASS` 且 `MD_TXT_CR_TOTAL=0` | `FILE_COUNT=110` / `ENTRY_COUNT=110` / `INVARIANT_OK=True` / `BOM_FILES=0` / `PS1_NON_ASCII_FILES=0` / **`MD_TXT_CR_TOTAL=0`** / `MANIFEST_BYTES=7375` / `CHANGE_COUNT=2`（16:15 那次改了 2 份留证文档：本文件 + 留证 `.md`；**最终一次为 1**：仅本文件） |
+
+**两条 WARN 是 `SNAPSHOT_DRIFT`**：`examples\practilog\docs\relay\` 里 `start-relay.ps1` /
+`relay-lock.ps1` 两份历史快照与模板不同。它们是**软不变式**（`kind=soft`），
+按家规 8 **不为它们同步、不参与判定**，只报不断言。
+
+**raw 日志已覆盖归档**：`tool\references\selftest-2026-11-26.txt`
+（`len=20213 cr=0 sha16=1106C2E24E5898D4`，238 行）。旧 sha `36C8F2BCA7DE4A75` 作废
+—— manifest 的 `CHANGE_COUNT` 里两条：raw 日志换 sha ＋ 本轮改的留证 `.md`。字节数与行数与上一跑完全一致，**只有 sha 变了**
+（raw 日志含时间戳与临时路径）。
+
+### 门禁跑在什么树上（不留推理空档）
+- **两次门禁跑**：16:10:56 → 16:13:09（首跑）与 16:15:57 → 16:17:06（**最终树复跑**）。
+- 复跑发生在两份留证文档（`tool\references\selftest-2026-11-26.md` 与本文件）都改完之后，
+  仍 **pass=233 / fail=0 / EXIT=0** ⇒ 「233/0」对最终树成立，不是推断。
+- 复跑之后本节又改了一次：**只动根目录 `HANDOFF.md`**（不在门禁扫描范围、不随 skill 发布）
+  ⇒ 按家规只刷 `MANIFEST.txt`，不重跑门禁。
+- 门禁的 kit 扫描显式排除 `tool\references\`（`scripts\selftest.ps1:190`）⇒ 留证 `.md` 本身不参与断言。
+
+### 已验证 / 推断 / 未验证
+- **已验证**：233/0 门禁绿（两跑：16:13 首跑 + 16:17 最终树复跑）；65 件 SYNC 进全局 skill（`tracked_files=66`，无 FAIL，verify 零漂移）；manifest 110 条与在盘文件一一对应；
+  编码不变式（BOM=0、`.ps1` 非 ASCII=0、`.md`/`.txt` CR=0）；`device\`↔`tool\templates\` 硬不变式 5/5 一致。
+- **推断**：B13 的 D1/D2 修复对 codex / openclaw 运行时同样成立（静态审计，本机无这两个 CLI）。
+- **未验证**：codex / openclaw 真链；git 写操作（产物与台账留证留在工作树，等人 commit）。
+
+### 遗留与下一批计划（沿用 B13 结论，本轮有意不改）
+1. **F5 终态语义**：链跑完却落 `status=blocked`（不是 `done`），notes 原文
+   `current_stage 3 > max_stages 2 -> status=blocked`。改它要么动 mcode prompt（破 B10 的
+   「mcode prompt 逐字不变」硬约束），要么让 mcode / CLI 语义分叉 ⇒ **需要人拍板**。
+2. **F6 台账会话流水**：终态 `sessions=[]`，会话信息只在 `stages[].session_id`。
+   候选改法：让 `stage_done` 顺带登记会话（只动台账闸门，不动 prompt ⇒ 不破 B10 约束）。
+3. **codex / openclaw 真链**仍未实测（本机未装 codex，openclaw 无对应 CLI）。
+4. **git 写操作**仍是人工验收点：本轮两环产物与台账回写留在工作树，子环按家规停链等人 commit。
+
+### 本轮工具坑（新增）
+8. **收尾管道必须带闸门**：脚本先等 raw 日志出现 `SUITE_END`，解析到 `fail=0` 才允许往下走
+   publish → verify → manifest。理由：门禁红着还发布，等于把坏工具同步进全局 skill，比不发布更糟。
+9. **raw 日志复跑必换 sha**：日志里有时间戳与临时路径 ⇒ 任何引用 raw 日志 sha16 的小结文档
+   都要跟着刷新，否则留证自相矛盾（本轮旧 sha `36C8F2BC…` → 新 `1106C2E2…`）。
+10. **发布的 skill 根不在 `%USERPROFILE%` 那块盘**：本机 `%USERPROFILE%` 在 C:，
+    活动 profile 在 E: ⇒ 发布目标由探针定位（`via=probe`）而不是猜路径。
+11. **PowerShell 数组字面量里跨行拼字符串会丢片段**：`@('a','b' + LF + 'c')` 的第三段可能被解析成
+    独立元素而被忽略 ⇒ 脚本照样打印 `REPLACED hits=1`，**台账表格却少了一行**。
+    教训：**替换后必须回读比对实际行**，不能只看「替换成功」的断言；跨行字符串先用变量显式拼好再传入。
+
+---
+
+## 批次 B14 实录（2026-11-26 16:23 → 16:5x）—— F6 台账会话流水兜底
+
+### 用户指令（原文）
+
+> 读 `HANDOFF.md` 的「批次 B13 收尾复跑」与「批次 B13 实录」两节，以及 `tool\SKILL.md` 和
+> `tool\references\live-chain-b13.md`，自行掌握背景、进度与下一步计划，按家规收尾顺序
+> `selftest → publish → refresh-manifest` 推进；F5 终态口径按台账「遗留与下一批计划」处理，F6 可直接修。
+
+### 背景与目标
+
+B13 跑通了整条真链（两环、产物、台账 `stage_done`、自举下一环、锁正常释放），留下两个缺陷：
+
+- **F5**：链跑完了却落 `status=blocked`（不是 `done`），因装置的 `stop_conditions` 写着
+  「`current_stage >= max_stages -> status=blocked`」；
+- **F6**：终态台账 `sessions=[]`，会话信息只在 `stages[].session_id` 里。
+
+本轮按指令：**F6 直接修**（且只许在**不动 prompt** 的前提下修，见下），**F5 按台账口径处理**
+（台账「遗留与下一批计划」写的是「需要人拍板」⇒ 本轮**有意不改**，只把口径与候选查清楚写进台账）。
+
+### F6 根因（散文要求 ≠ 机制）
+
+协议 `AGENT-RELAY.md` §3.2 要求 patch 带 `sessions_append`（4 个意图）；但启动器生成的 prompt 的收尾规则
+只要求 **3 个意图**（`stage_done` / `bump_current_stage` / `next_session_id`）⇒ 子环照 prompt 办事，
+台账里就没有独立会话流水。**光在 prompt 里加一句要求不行**：改了 prompt 就破 B10 的「mcode prompt 逐字不变」
+硬约束，且别的运行时的子环照样可能忘。正解是让**闸门自己登记**。
+
+### 本轮改动（5 个文件；prompt 一行没动）
+
+| 文件 | 改了什么 | sha16 / 字节 |
+| --- | --- | --- |
+| `tool\templates\relay-ledger.ps1` | 新增第 5 条机制「会话流水兜底」：`stage_done` 提交时自动登记会话 ID | `7E9601DE9A1CBFF3` / 17,904 |
+| `device\relay-ledger.ps1` | 与模板**逐字一致**（硬不变式） | `7E9601DE9A1CBFF3` / 17,904 |
+| `tool\templates\AGENT-RELAY.md` | §3.2 补「会话流水由闸门兜底」，闸门保证由四件变五件 | `8DE6F09EF275008E` / 22,149 |
+| `protocol\AGENT-RELAY.md` | 同上（两份内容一致） | `8DE6F09EF275008E` / 22,149 |
+| `tool\SKILL.md` | 「台账写闸门」一节补 F6 条目 | `59708B7C5F8445ED` / 18,929 |
+| `scripts\selftest.ps1` | 新增 case 20（9 条断言） | `9EAA19C3C39D4DF5` / 80,249 |
+
+**登记规则**（只追加、不改写、不删除）：
+① 会话 ID 取值优先 `stages[N].session_id` → 台账 `next_session_id`（提交前的值 = 当前在跑的那一环）→ 都没有就**不登记**；
+② 去重按「包含」判定（协议里同时发 `sessions_append`、同环重跑都不会重复）；
+③ 回显 `LEDGER_SESSION_REGISTERED session=… stage=… source=…` / `LEDGER_SESSION_ALREADY_REGISTERED session=…` /
+`LEDGER_SESSION_SKIPPED stage=… reason=no_session_id`（**没有来源就跳过，不编造 ID**）。
+
+### 硬不变式证明（不靠肉眼）
+
+- **`start-relay.ps1` 一个字节都没动**：`BD04C11F9E432581` / 26,942 —— 与 B13 收尾复跑记录的值逐字相同
+  ⇒ prompt 渲染输入未变 ⇒ B10 的「mcode prompt 逐字不变」自动成立。
+- `device\relay-ledger.ps1` ≡ `tool\templates\relay-ledger.ps1` ≡ 全局 skill `templates\relay-ledger.ps1`
+  = `7E9601DE9A1CBFF3`（独立回读全局 skill 得到，非采信发布脚本自述）。
+- `tool\SKILL.md` = 全局 skill `SKILL.md` = `59708B7C5F8445ED`；`AGENT-RELAY.md` 两份一致 = `8DE6F09EF275008E`。
+
+### 门禁（case 20，9 条断言）
+
+`pwsh -NoProfile -File scripts\selftest.ps1 -EvidencePath <log>` ⇒ **`SUITE_END pass=242 fail=0`，进程 `EXIT=0`**。
+基线（B13 收尾复跑）233 条 ⇒ **净增 9 条**。断言数与运行次数无关（稳定值）；raw 日志含时间戳与临时路径 ⇒
+**每次复跑 sha16 必变**（本批工具坑 9），它的 sha/字节数以 `MANIFEST.txt` 为准。
+
+case 20 覆盖：登记成功 / 重提交不重复 / 协议同时发 `sessions_append` 不重复 / 流水只增长 /
+`session_id` 缺失时回退 `next_session_id`（`source=ledger_next_session_id`）/ 两个来源都没有时跳过且**不编造**。
+判据有鉴别力：旧闸门在前 4 条上必红。
+
+### 收尾三步（数字从盘上回读）
+
+| 步 | 判据 | 实测 |
+| --- | --- | --- |
+| 1. selftest | `pass=242 fail=0` 且 `EXIT=0` | **pass=242 / fail=0 / EXIT=0**（含本批留证文档的最终树复跑） |
+| 2. publish | `STATUS=OK fail=0` + 硬不变式逐件复核 | **`STATUS=OK fail=0 warn=2`**；两条 WARN 是 `examples\practilog\docs\relay\` 的 `SNAPSHOT_DRIFT`（软不变式，家规 8 不为它们同步、不参与判定） |
+| 3. verify | 退出码 0（7 = 有漂移） | **`STATUS=OK fail=0 warn=2` ⇒ 零漂移** |
+| 4. refresh-manifest | `verdict=PASS` 且 `MD_TXT_CR_TOTAL=0` | **`verdict=PASS`** / `FILE_COUNT=112` / `ENTRY_COUNT=112` / `INVARIANT_OK=True` / `BOM_FILES=0` / `PS1_NON_ASCII_FILES=0` / **`MD_TXT_CR_TOTAL=0`** |
+
+### F5 口径（本批有意不改，但查清了两件新事实）
+
+台账「遗留与下一批计划」写的是「**需要人拍板**」⇒ 本轮不自行决定。查清的两件新事实（下批可直接用）：
+
+1. **停链条文不在 prompt 里**，而在两处：
+   - `tool\templates\AGENTS-RELAY-BLOCK.md:21`（装进目标项目 `AGENTS.md` / `CLAUDE.md` 的家规块第 11 条）：
+     `` `current_stage > max_stages` ⇒ 写 `status="blocked"` 停链。不得自行加长 `max_stages`。 ``
+   - `tool\templates\start-relay.ps1:292` 的**台账种子** `stop_conditions`：
+     `'current_stage >= max_stages -> status=blocked'`（prompt 块从 `start-relay.ps1:417` 才开始，种子不在里面）。
+2. ⇒ **改终态口径存在一条不动 prompt 的候选路径**（改家规块第 11 条 + 台账种子文案，子环照新文案置 `status=done`），
+   B10 的「mcode prompt 逐字不变」**不必放弃**。代价：改的是新装项目的家规语义；**既有链的台账里仍是老文案**
+   （种子只在 bootstrap 时写一次），且两处口径本身就不一致（`>` vs `>=`）⇒ 仍需人拍板，本批不实施。
+
+### 已验证 / 推断 / 未验证
+
+- **已验证**：F6 修复的登记 / 去重 / 回退 / 不编造四类行为（case 20 实测）；`start-relay.ps1` 零字节改动 ⇒
+  prompt 未变；`device\`↔`tool\templates\`↔全局 skill 三方 `relay-ledger.ps1` 逐字一致（独立回读）；
+  242/0 门禁绿；publish/verify 零漂移；清单 112 条与在盘文件一一对应、编码三不变式全绿。
+- **推断**：F6 的登记规则对 codex / openclaw 运行时同样成立（闸门是运行时无关的装置件，未逐家实测）。
+- **未验证**：F5 候选改法的真链效果（未改、未跑链）；codex / openclaw 真链；mcode 链路第 1 环的会话 ID
+  仍需子环自己写 `stages[N].session_id` 才登记得上（`session_create` 发生在目标项目会话里，装置拿不到）。
+- **git 写操作**：仍是人工验收点 —— B13 的两环产物与台账回写、以及本批改动都留在工作树，未 commit。
+
+### 证据路径（本批新增 2 个文件，全 LF / cr=0）
+
+- `tool\references\selftest-2026-11-26-b14.md` —— 本批小结（改了什么、case 20 断言表、F5 新事实、工具坑）
+- `tool\references\selftest-2026-11-26-b14.txt` —— 最终树复跑的 raw 日志（sha/字节数以 `MANIFEST.txt` 为准）
+
+### 本轮工具坑（新增）
+
+12. **闸门类需求的默认修法是「加机制兜底」而不是「加一句要求」**：F6 的本质是散文要求没有机制；
+    只在 prompt 里加要求 ⇒ 同一个洞留在别的运行时上，且破 B10 约束。
+13. **闸门里的「当前这一环」取的是提交前的值**：`next_session_id` 在提交前正好指向正在跑的那一环
+    （上一环写的；CLI 首环由启动器写）⇒ 可作会话 ID 第二来源。
+14. **去重要按「包含」不按「相等」**：协议里的 `sessions_append` 可能带别的上下文，按相等去重会漏。
+15. **`AGENT-RELAY.md` 的缩进是 5 个空格**（4 / 6 都匹配不上）⇒ `old_string` 锚不准就换 ASCII 锚点或改用脚本替换。
+
+---
+
+## 批次 B15 实录 —— F5 终态口径改为 done（2026-11-26）
+
+### 背景与拍板
+
+B13 真链跑完两个阶段后，台账终态落 `status=blocked` / `current_stage=3` / `max_stages=2`，
+notes 原文 `current_stage 3 > max_stages 2 -> status=blocked, no next link spawned`。
+链**成功跑完**却被记成故障，且与启动器闸门自己的判据（`status=done && current_stage>=max_stages` ⇒
+`chain_exhausted` exit 3）互相矛盾 —— 这就是 F5。
+
+本轮由人拍板两件事：
+
+1. **终态 = `done`**：全部阶段完成 ⇒ `status=done`，`current_stage > max_stages` 是完成信号；`blocked` 只留真卡住
+   （人工验收 / 缺权限 / 无进展 / `blocked_on` 有未结项）。
+2. **不动启动器生成的 mcode prompt**：改动只落在家规块 + 台账种子 + 协议 ⇒ B10「mcode prompt 逐字不变」仍成立。
+
+### 改了什么
+
+| 文件 | 改了什么 |
+|---|---|
+| `tool\templates\AGENTS-RELAY-BLOCK.md` | 第 11 条改成终态口径（done 为完成信号；未完成才 blocked；不得自行加长 max_stages） |
+| `tool\templates\start-relay.ps1` | 台账种子 `stop_conditions` 旧一条拆两条（done / blocked），比较符 `>=` → `>` |
+| `device\start-relay.ps1` | 与模板逐字一致（硬不变式，`Copy-Item tool\templates\<f> device\<f> -Force`） |
+| `tool\templates\AGENT-RELAY.md` + `protocol\AGENT-RELAY.md` | 三处口径：骨架 `stop_conditions`、§2 第 4 步、§10 第 4 条；两份 sha256 相同 |
+| `scripts\selftest.ps1` | 新增 case 21（7 条断言） |
+
+**没动**：prompt 块的 `$stopRule` 与校验句；启动器 `chain_exhausted` 闸门（本来就认 done）；
+`protocol\practilog-agents-pointer.md:11` 旧文案（不在发布清单，`scripts\` 零引用；记遗留）。
+
+### 门禁结果（盘上回读）
+
+- 一键自测：`SUITE_END pass=249 fail=0`，`EXIT=0`；基线 B14 242 ⇒ 净增 7 条。
+- prompt 未变回归：本轮日志 `b13_mcode_prompt_*` 六条断言原样通过。
+- 装置三件 `device\` ↔ `tool\templates\` sha16 逐件相等（`start-relay` `F6F89FC491A96428`、
+  `relay-lock` `23E51FB2619230DC`、`relay-ledger` `7E9601DE9A1CBFF3`）。
+- 协议两份 `sha16=0E7B9F580881EFB5` / 22,568 B 逐字一致。
+
+### 已验证 / 推断 / 未验证
+
+- **已验证**：case 21 七条断言全绿（含真夹具 `status=done` ⇒ `exit=3 chain_exhausted` 的行为断言）；
+  改后 `device` 与模板逐字一致；249/0 门禁绿；新增 2 个 `references\` 文件全 LF / 无 BOM。
+- **推断**：`done` 口径对其他运行时（Claude Code / Codex / OpenClaw）同样生效（协议与家规块运行时无关）。
+- **未验证**：真起一条链跑到终态（本轮只有装置级证据，没有真链；这是人工验收点）；
+  闸门不会在子环彻底漏写收尾时自动把 `status` 置 `done`（见遗留 1）。
+
+### 证据路径（本批新增 2 个文件）
+
+- `tool\references\selftest-2026-11-26-b15.md` —— 本批小结（口径、改动表、case 21 断言表、遗留）
+- `tool\references\selftest-2026-11-26-b15.txt` —— 最终树复跑的 raw 日志（21,382 B / cr=0；sha16 以 `MANIFEST.txt` 为准）
+
+### 本轮工具坑（新增）
+
+16. **改「口径」先枚举消费者，别只改字面**：同一句旧规则同时活在 家规块 / 台账种子 / 协议骨架 / §2 / §10 五处，
+    只改一处会产出互相矛盾的文档；全仓 `grep max_stages` 才看得全。
+17. **改种子不改 prompt 的前提是先读 prompt 渲染块**：`start-relay.ps1` 的 prompt 从 `:417` 起、不引用种子的
+    `stop_conditions` ⇒ 改种子才保得住 B10；反过来若不先确认，改「文档」也可能动到 prompt 字节。
+18. **「跑完 = done」与「停下 = blocked」是两件事**：`$stopRule` 讲的是「必须停下时怎么写」，不是终态；
+    两条语义可以各自成立，别为了「统一措辞」去动 prompt。
+
+### 遗留与下一批候选
+
+1. **闸门加兜底**：阶段全 `done` 而 `status=running` 时，闸门可拒绝继续（或自动置 done）。按 B14 教训正解是机制化，
+   但超出本轮拍板半径 ⇒ 交人决定。
+2. `protocol\practilog-agents-pointer.md:11` 旧口径（非发布物）。
+3. `tool\SKILL.md:139` 描述「台账 blocked 或耗尽 ⇒ 拒绝起链」，代码判据是 done + 耗尽；措辞可对齐。
+4. 真链复测（人工验收点）。
+
+---
+
+## 批次 B16 实录 —— 闸门兜底：跑到阶段上限仍 running 就拒绝起链（2026-11-26）
+
+### 背景与判据
+
+B15 定了终态口径（跑完写 `done`），但留了一个洞：**子环若彻底漏掉收尾回写**，台账会停在
+`status=running`，而 `current_stage` 已等于 `max_stages`。此时旧闸门两条判据都不拦：
+没有 `in_progress` 阶段，`next_session_id` 也拦不住（B13 真链终态该字段仍有值，回写器没有清空路径）。
+结果启动器会再起一环，去干计划外的 stage N+1。
+
+本轮补上兜底，判据只用状态比较：**`status=running` 且 `current_stage >= max_stages`**。
+
+刻意**不做**「自动置 done」：拒绝同样构成机制，且不写状态、无不可逆风险；状态变更仍只走
+`relay-ledger.ps1`（拒绝行给出可照抄的关闭方法：`-Action status` 取 sha256 → 提交
+`{"set_status":"done"}` patch）。
+
+### 改了什么
+
+| 文件 | 改了什么 |
+|---|---|
+| `tool\templates\start-relay.ps1` | 闸门新增 `chain_at_stage_cap` 分支，夹在 `chain_already_running` 与 `chain_exhausted` 之间 |
+| `device\start-relay.ps1` | 与模板逐字一致（硬不变式，sha256 相等） |
+| `tool\templates\AGENT-RELAY.md` + `protocol\AGENT-RELAY.md` | 闸门表补一行 `chain_at_stage_cap`；两份逐字一致 |
+| `tool\SKILL.md` | 四道闸门第 2 条按新口径重写（补新 reason，把「耗尽」写明为 done + 耗尽） |
+| `scripts\selftest.ps1` | `$lauLiterals` 加 `chain_at_stage_cap`；新增 case 22（正向拒绝 + 反向对照，共 2 条断言） |
+
+**没动**：prompt 块的 `$stopRule` 与渲染正文（B10 约束）；`chain_exhausted` 老分支；
+`protocol\practilog-agents-pointer.md:11` 旧口径（非发布物）。
+
+位置为什么重要：case 8 对闸门拒绝理由有白名单（只认 `stage_in_progress` / `chain_already_running` /
+`lock_unavailable`）。新分支若排到 `chain_already_running` 之前，`status=running` + 非空
+`next_session_id` 的夹具会改走新分支 ⇒ 打破 case 8；排在后面则老情形仍走老分支。
+
+### 门禁结果（盘上回读）
+
+- 一键自测：`SUITE_END pass=251 fail=0`，`EXIT=0`；基线 B15 249 ⇒ 净增 2 条（case 22 两条）。
+- 正反两向实测行：
+  - `CASE_PASS gate_refuses_running_chain_at_stage_cap exit=3 line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2`
+  - `CASE_PASS gate_still_starts_below_stage_cap exit=0 cap_hit=False`（同夹具 `current_stage=1` 仍能起链）
+- 字面量交叉校验：`CASE_PASS protocol_documents_launcher_literals LAUNCHER doc_missing=[] code_missing=[]`
+  —— 新 reason 在协议与代码两侧都存在。
+- prompt 未变回归：`b13_mcode_prompt_*` 系列断言原样通过。
+- 装置件 `device\` ↔ `tool\templates\` 逐字一致；协议两份逐字一致（`MIRROR identical=True`）。
+- publish：`STATUS=OK fail=0 warn=2`，`EXIT=0`；两条 WARN 是 `examples\practilog\docs\relay\` 的
+  `SNAPSHOT_DRIFT`（软不变式，只报不判、不为它同步）。
+- refresh-manifest：`verdict=PASS`、`INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、
+  `MD_TXT_CR_TOTAL=0`、`EXIT=0`。件数/字节数以 `MANIFEST.txt` 为准。
+
+### 已验证 / 推断 / 未验证
+
+- **已验证**：case 22 两条断言正反都绿（拒绝带 reason、正常接力不被误伤）；两个同步副本 sha256 相等；
+  251/0 门禁绿；新增 `references\` 两件全 LF / 无 BOM。
+- **推断**：该兜底与运行时无关（判据只看台账字段）⇒ 对 Claude Code / Codex / OpenClaw 同样生效。
+- **未验证**：真链跑到终态后第二次起链被拒（本批仍只有装置级证据；人工验收点）。也**没有**验证
+  「阶段未全 done 但 current_stage 已触顶」的脏数据形态 —— 判据不看阶段明细，仍会拒绝，这是有意的保守取向。
+
+### 证据路径（本批新增 2 个文件）
+
+- `tool\references\selftest-2026-11-26-b16.md` —— 本批小结（判据取舍、改动表、case 22 断言表、遗留）
+- `tool\references\selftest-2026-11-26-b16.txt` —— 最终树复跑的 raw 日志（21,587 B / cr=0；sha16 以 `MANIFEST.txt` 为准）
+
+### 本轮工具坑（新增）
+
+19. **兜底判据要去真终态证据里验反例**：原设想用「`next_session_id` 为空」，但 B13 真链终态该字段仍有值、
+    回写器也没有清空路径 ⇒ 判据差点建在永假条件上。写判据前先拿一份真实终态台账对照。
+20. **新增闸门分支要查既有断言的 reason 白名单**：case 8 只认三个 reason，插入位置错了会让老 case 变红；
+    位置（在 `chain_already_running` 之后）和逻辑本身一样是需求。
+21. **两个分支都 exit 3 时，机器只能靠 reason 区分**：`chain_at_stage_cap`（该收尾没收尾）与
+    `chain_exhausted`（已收尾且耗尽）必须各有独立 reason，否则运维分不清该补回写还是该换新链。
+
+### 遗留与下一批候选
+
+B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关闭；遗留 2 继续记账；遗留 4 见上「未验证」。
+
+1. **真链复测（人工验收点）**：跑到终态、再验第二次起链被拒。
+2. **`protocol\practilog-agents-pointer.md:11`** 仍是旧口径（非发布物，不进安装/发布清单）。
+3. **可选：把 `chain_at_stage_cap` 升级为自动收尾**：拒绝只是兜底；将来若要让装置自己把 `status` 翻 `done`，
+   入口就在这个分支，但必须走 `relay-ledger.ps1`（不得裸写）。
+
+
+---
+
+## 批次 B17 实录 —— 真链复测到终态 + 接力会话零填充序号（2026-11-26）
+
+### 背景与判据
+
+两件事并行：**① 关 B16 遗留 1（人工验收点）** —— 真起一条链跑到自然终态，再验第二次起链被拒；
+**② 新要求** —— 自动接力的会话要带序号，让 Agents 使用者一眼看清会话顺序。
+
+命名判据不是「好看」，而是两条可证伪的性质：**字典序 = 链序**（`relay-10` 不得排在 `relay-2` 前面）
+和**链长可见**（`of02` 说明共几环）。旧式 `relay-1-<short>` 两条都不满足。
+
+真链判据沿用 B13：完全无人值守、子环自起下一环、终态 `status=done` 且 `current_stage > max_stages`，
+再起一环必须被闸门拒绝并给出 reason。
+
+### 改了什么
+
+| 文件 | 改了什么 |
+|---|---|
+| `tool\templates\start-relay.ps1` | `$linkTag` / `$nextLinkTag` / `$nameRule` / `RELAY_LINK` 头 / 两条 `$completionRule` / mcode `title=` 与 tool `task=` 提示，统一改 `relay-<NN>of<MM>-<阶段短名>` |
+| `tool\templates\AGENT-RELAY.md` + `protocol\AGENT-RELAY.md` | 命名规则与交接说明（两份逐字一致） |
+| `tool\templates\ACTIVATION-SPAWN-mcode.md` / `ACTIVATION-SPAWN-openclaw.md` | `title` / `task` 示例改零填充 |
+| `protocol\relay-prompt.md` | L24 / L51 示例改新式，补零填充说明与 `relay-02of05` 例 |
+| `tool\references\deployment-openclaw.md` | L74 `task : relay-01of<MM>-<短阶段名>` |
+| `device\start-relay.ps1` | `Copy-Item` 同步；逐字一致由 `publish-relay.ps1` 硬判（漂移 exit 2） |
+
+**没动**：prompt 渲染正文与四道闸门的判据逻辑（B10 / B16 结论原样保留）；`examples\practilog\docs\relay\`
+（历史快照，家规 8）；不做已存在会话的追溯改名（装置无权改 MCode 会话名，序号从下一条链起生效）。
+
+### 真链复测结果（claude-code 运行时，2 阶段，全程无人值守）
+
+夹具是全新临时 git 仓库（不复用 `examples\`）：`docs\plan-b17.md`、`README.md`、`src\inventory.ps1`，
+两遍安装（首跑 `pending`、带 8 项答案二跑 `confirmed`），`INSTALL1_EXIT=0`、`INSTALL2_EXIT=0`、`WARN_COUNT=0`。
+
+- 启动器：`LOCK_ACQUIRED holder=start-relay:68204 stage=1` → `ledger_bootstrapped bytes=2196` →
+  `prompt_written bytes=5974`，`LAUNCH_EXIT=0`。
+- 第 1 环 `0c0a05de-5232-449a-a22a-72b135660346`：`tool_calls=16`、`finished_at=17:30:58`，
+  产物 `docs\relay\stage-1-inventory.md`（1137 B），随后 `current_stage=2`、`next_session_id=f44a31c2-…`。
+- 第 2 环 `f44a31c2-1862-4ed0-a029-467631b35099`：`tool_calls=6`、`finished_at=17:37:52`，
+  产物含「文件数 3 / 最大文件 `docs\plan-b17.md` 686 B / 总字节 903」。
+- 终态台账（17:40:28）：`status=done`、`current_stage=3`、`max_stages=2`、两阶段全 `done`、
+  `sessions` 两环齐全、`blocked_on` 空，**锁由子环自行释放**。
+- 第二次起链：`SECOND_LAUNCH_EXIT=3`、`reason=chain_exhausted current_stage=3 max_stages=2`、
+  `REFUSAL_VERDICT=REFUSED_WITH_REASON`、`VERIFY_EXIT=0` ⇒ **B16 遗留 1 关闭**。
+
+命中分支要说清：终态 `status=done` 走的是 `chain_exhausted`；B16 新增的 `chain_at_stage_cap`
+判据是 `status=running` 且触顶，**本批没有命中、也没有故意伪造脏台账去凑**，它仍只有 case 22 的装置级证据。
+
+### 门禁结果（盘上回读）
+
+- 改动时序：模板 17:32:17–17:32:41，协议/参考件 17:34:17–17:34:18，自测 `SUITE_START` **17:34:30**
+  ⇒ 已发布 raw 日志来自最终树，没有「改完没重测」的缺口。
+- 一键自测：`SUITE_END pass=251 fail=0`、`SELFTEST_EXIT=0`；与 B16 同为 251 条 —— 本批**故意不加断言**：
+  命名是纯文本模板改动，加断言等于把同一串字符串抄两遍；改由生成物自证（见下）。
+- 命名证据（全取自 17:34:30 那次运行）：`next-relay-prompt.txt` 含 `RELAY_LINK=relay-01of02`、
+  完成规则含 `change RELAY_LINK=relay-01of02 to RELAY_LINK=relay-02of02`、
+  命名说明含 `relay-10 must not sort beside relay-1`，旧式 `relay-\d+-` 命中 **0**；
+  各 `ACTIVATION-PROMPT.txt` 含 `title : "relay-01of<MM>-<short stage name>"`，旧式命中 **0**。
+- publish：`STATUS=OK fail=0 warn=2`、`EXIT=0`；两条 WARN 是 `examples\practilog\docs\relay\` 的
+  `SNAPSHOT_DRIFT`（软不变式，只报不判、不为它同步）。
+- refresh-manifest：见本批收尾（家规：清单最后刷，件数/字节数以 `MANIFEST.txt` 为准）。
+  过程故障已定位并修复：该脚本 `ReadAllBytes` 扫 `reports\`，真链后台进程正写 `reports\b17-chain-run.log`
+  时必然 exit 1 —— 与内容无关，停掉后台任务后重跑即可。
+
+### 已验证 / 推断 / 未验证
+
+- **已验证**：两环无人值守跑完并自落终态；锁自行释放；第二次起链 `exit=3` + `reason=chain_exhausted`；
+  命名改动的生成物证据（新式命中 1 处以上、旧式 0）；251/0 自测；publish 0 fail。
+- **推断**：命名落地与运行时无关（mcode 走 `session_create.title`，cli/tool 走 `RELAY_LINK` 头 +
+  交接指令，同一份模板渲染）；`chain_at_stage_cap` 对 Claude Code / Codex / OpenClaw 同样生效（判据只看台账字段）。
+- **未验证**：`chain_at_stage_cap` 在真链上的表现（需伪造脏台账，与「不伪造验收证据」冲突）；
+  mcode / codex / openclaw 三条运行时的真链端到端（仍只有装置级校验）。
+
+### 证据路径（本批新增）
+
+- `tool\references\selftest-2026-11-26-b17.md` —— 本批小结（真链时序、命名证据、工具坑、遗留）
+- `tool\references\selftest-2026-11-26-b17.txt` —— 最终树复跑的 raw 日志（21,587 B / cr=0 / sha16=`3E508909BBB585CD`）
+- `tool\references\selftest-activation-prompt.txt` —— 已换成新命名版激活包（3,697 B）
+- `reports\b17-e2e-setup.ps1`、`reports\b17-e2e-verify.ps1` —— 夹具搭建与回读校验（含二次起链被拒）
+- `reports\b17-chain-run.log`、`reports\b17-second-launch.log` —— 真链 raw 日志
+- 夹具与自测树在 `%TEMP%` 下（`relay-b17-e2e-20261126-172536\repo`、`relay-port-selftest\20261126-173430`），属临时产物
+
+### 本轮工具坑（新增）
+
+22. **门禁脚本会读整个 `reports\`，后台进程还在写的日志句柄能让它 exit 1**：先停后台任务（确认句柄释放）
+    再跑 `refresh-manifest`，否则会误判成文档不合规。
+23. **真链台账是多次提交，中途读盘看到的不是缺陷**：`stages[n].status=pending`、`session_id` 缺失、锁仍 LIVE，
+    都可能是写回中间态；判终态必须等 `status != running` 且 `updated_at` 稳定后再复读。
+24. **「跑到终态再起链被拒」与「跑到上限仍 running 被拒」是两条分支**：前者 `chain_exhausted`（`status=done`），
+    后者 `chain_at_stage_cap`（`status=running`）。用真链验前者，别把它记成后者的验证。
+25. **纯文本改动更该用生成物自证而不是补断言**：断言把同一串字符抄成两份，改一处忘另一处就假绿；
+    扫生成物（新式命中数 / 旧式命中数）能真正区分新旧。
+
+### 遗留与下一批候选
+
+上面 B16 遗留清单第 1 条（真链复测）已在本批关闭；第 2、3 条继续记账：
+
+1. **`protocol\practilog-agents-pointer.md:11`** 仍是旧口径（非发布物，不进安装/发布清单）。
+2. **可选：把 `chain_at_stage_cap` 升级为自动收尾** —— 入口在该分支，但必须走 `relay-ledger.ps1`（不得裸写）。
+3. **可选：给命名加一条真断言** —— 对 `next-relay-prompt.txt` 断言 `RELAY_LINK=relay-01of\d\d` 且旧式命中 0
+   （鉴别力：改回旧式必红）。本批没加，理由见「门禁结果」。
+4. **真链运行时矩阵** —— mcode / codex / openclaw 三条仍只有装置级校验，未跑真链端到端。
+
+---
+
+## 批次 B18 实录（2026-11-26）
+
+### 本批范围
+
+三件事，方向一致：**把「改了但没人证明」和「文档说得好听但装置不说实话」变成可证伪的证据**。
+
+1. **B18-a 命名真断言** —— B17 改了链接命名（`relay-01of02`）却**没加断言**，改回旧式不会有任何用例变红。
+   本批新 case 23 读**真实启动器产出的 prompt** 断言新旧两种形式，套件外再用变异实验（改回旧式必红）证明有鉴别力。
+2. **B18-b mcode 真链端到端** —— B16/B17 最大的缺口：mcode 运行时只有装置级校验。
+   本批自造临时仓跑通**两阶段无人值守**，终态 `status=done`、锁自释放、二次起链被拒。
+3. **B18-c `chain_at_stage_cap`** —— B17 遗留的「未验证」项。本批在**真实装置 + 真实台账**上验了
+   （受管写闸门注入，不是手改台账），**并修掉了它说假话的问题**：触顶时一律说「所有阶段都做完了、去收尾」，
+   而实际上阶段可能根本没跑。
+
+### 改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `tool\templates\start-relay.ps1`（+ `device\start-relay.ps1`，逐字一致） | 触顶闸门 FAIL 行补 `stages=<id:status,...\|none>` 与 `all_done=<true\|false\|unknown>`；HINT 按形态三选一：`all_stages_done_but_status_running` / `stage_cap_reached_with_open_stage` / `stage_cap_reached_with_no_stage_records`（reason 白名单不变） |
+| `tool\templates\AGENT-RELAY.md` + `protocol\AGENT-RELAY.md` | 闸门表第 229 行按三形态重写；**两份逐字一致**（sha 复核过） |
+| `tool\SKILL.md` | 四道闸门第 2 条补「只有全 done 才可 `{"set_status":"done"}` 收尾」 |
+| `scripts\selftest.ps1` | 新 case 23（命名真断言，+9）、新 case 24（触顶三形态，+18） |
+
+### 真链时序（mcode 运行时，夹具仓 `%TEMP%\relay-b18-e2e-20261126-204529\repo`）
+
+- 安装两遍：首遍 `ADAPTATION_STATUS=pending`；带 8 项答案二遍 `ADAPTATION_STATUS=confirmed` /
+  `ADAPTATION_SOURCE=answers` / `WARN_COUNT=0` / `INSTALL2_EXIT=0`。
+- 启动器：`LAUNCH_EXIT=0`；台账 bootstrap `status=running current_stage=1 max_stages=2`；
+  锁 `LOCK_ACQUIRED holder=start-relay:<pid>`。
+- 第 1 环 `mvs_8f6ab9a7ba3b4fd6a68df9e09f73c861` → `docs\relay\stage-1-inventory.md`（602 B），
+  经台账闸门提交 stage 1（回读 `current_stage=2`、`stages[0].status=done`），锁 renew 后
+  `relay-lock.ps1 -Action adopt -SessionId <sid>` 把锁转交子会话。
+- 第 2 环 `mvs_68d6d5b12eb949d19fc6ee57335bb232` → `docs\relay\stage-2-inventory.md`（2,883 B）。
+- 终态（盘上回读）：`status=done`、`current_stage=3`、`max_stages=2`、`stages=2` 全 `done`、
+  `sessions=2`、`blocked_on` 空；锁 `LOCK_FREE`（子环自行释放）。
+- 二次起链（把最终版启动器放进夹具仓后跑）：`SECOND_LAUNCH_EXIT=3`、
+  `FAIL reason=chain_exhausted current_stage=3 max_stages=2` ⇒ **B17 遗留的「mcode 真链端到端」关闭**。
+
+### 触顶闸门：验 + 修
+
+- 验：`reports\b18-cap-probe.ps1` —— 真实启动器起链 → 真实台账 → 释放锁 → 取在盘 sha256 →
+  提交 patch `{"bump_current_stage": true}`（CAS 走闸门，`LEDGER_CAS_OK`，`current_stage 1->2`）→
+  再次起链 `exit=3 reason=chain_at_stage_cap`。**受管写闸门注入，不是伪造脏台账。**
+- 顺手抓到的新问题：单阶段链（`MaxStages=1`）bootstrap 后 `current_stage=1 max_stages=1` 即触顶，
+  HINT 却写「every declared stage is done」⇒ `PART2_HINT_CLAIMS_ALL_DONE=True`，**在说假话且建议错误地 `set_status=done`**。
+- 修完的判据（case 24，三形态各起一次真实启动器）：
+  `FAIL reason=chain_at_stage_cap ... stages=1:done,2:done all_done=true`（可收尾）/
+  `stages=1:done,2:pending all_done=false`（**禁止**收尾）/ `stages=none all_done=unknown`（先补记录）。
+- 判别力：套件内外各一份 —— 套件内含否定断言「open_stage 形态里不得出现 `{"set_status":"done"}`」；
+  套件外 `reports\b18-cap-hint-mutation.ps1` 把闸门分支变异回旧文案，断言新用例必红、其余用例不受影响。
+  实测：`MUTANT_EXIT=1`、`SUITE_END pass=268 fail=10`，**10 条失败全是 `cap_hint_*` 新断言**、`OTHER_FAILS=0`，
+  `MUTATION_VERDICT=ASSERTION_HAS_TEETH`。
+
+### 门禁结果（盘上回读）
+
+- 一键自测：`SUITE_END pass=278 fail=0`、`SELFTEST_EXIT=0`（B17 是 251，本批 **+27**：命名 +9、触顶 +18）。
+  raw 日志：`tool\references\selftest-2026-11-26-b18.txt`。
+- 编码/行尾复核（改完当场）：`tool\templates\start-relay.ps1` 与 `device\start-relay.ps1`
+  30,770 B、`cr=0`、`nonascii=0`、`bom=False`、**两份 sha 相同**；
+  两份 `AGENT-RELAY.md` 23,183 B、`cr=0`、**sha 相同**；`tool\SKILL.md` 19,229 B、`cr=0`；
+  `scripts\selftest.ps1` 93,306 B、`cr=0`、`nonascii=0`、`bom=False`。
+- publish：`STATUS=OK fail=0 warn=2`、`EXIT=0`；两条 WARN 是 `examples\practilog\docs\relay\` 的
+  `SNAPSHOT_DRIFT`（软不变式，只报不判、不为它同步）。
+- refresh-manifest：`verdict=PASS`、`EXIT=0`；清单 **137** 件，
+  `tool\templates\start-relay.ps1` 条目 sha16=`3FC019C1024BEA1B` / 30,770 B。
+- 全局 skill 复核（发布后回读）：`E:\Users\Duanyi\.minimax\.minimax\skills\relay-port` 里
+  `templates\start-relay.ps1` 与 `templates\AGENT-RELAY.md` 与仓库**逐字一致**
+  （`GLOBAL_PUBLISHED_MATCH=True`、`GLOBAL_PROTO_MATCH=True`）⇒ 新会话拿到的是 B18 版。
+- 收尾顺序：自测（21:05:18 起，21:07:30 `SUITE_END pass=278 fail=0`）→ publish → refresh-manifest，
+  raw 日志 `tool\references\selftest-2026-11-26-b18.txt`（24,382 B）即最终树那一次。
+
+### 已验证 / 推断 / 未验证
+
+- **已验证**
+  - 命名：真实启动器产物上新式命中 > 0、旧式命中 0；套件内 9 条 + 套件外变异实验（基线绿 / 变异体红）。
+  - mcode 真链：两阶段无人值守跑完并自落终态 `done`；锁自释放；二次起链 `exit=3` + `chain_exhausted`。
+  - `chain_at_stage_cap`：真实装置 + 真实台账上拒绝成立；三形态 HINT 分流后不再误导；
+    新增 18 条断言有鉴别力（套件内否定断言 + 套件外变异实验）。
+- **推断**
+  - 闸门判据只看台账字段，故三形态分流对 Claude Code / Codex / OpenClaw 同样生效；
+  - 命名与运行时无关（cli/tool 走 `RELAY_LINK` 头，mcode 走 `session_create.title`，同一模板渲染）。
+- **未验证**
+  - **codex / openclaw 两条运行时的真链端到端**：本机没有 `codex` / `openclaw` CLI，
+    装第三方 CLI 属需人工批准的动作，本批未擅自安装 ⇒ 这两行仍只有装置级校验。
+  - 触顶闸门在 codex / openclaw 真链上的命中（判据与运行时无关，真链证据待补）。
+
+### 证据路径（本批新增）
+
+- `tool\references\selftest-2026-11-26-b18.md` / `.txt` —— 本批小结与最终树复跑的 raw 日志
+- `reports\b18-naming-mutation.ps1` / `.log` —— 命名断言变异实验
+- `reports\b18-cap-hint-mutation.ps1` / `.log` —— 触顶 HINT 断言变异实验
+- `reports\b18-cap-probe.ps1` / `.log` + `b18-cap-part{1,2}-{first,second}.log` —— 触顶闸门真实装置验证
+- `reports\b18-e2e-setup.ps1` / `.log` —— mcode 真链夹具搭建
+- 夹具仓与自测树在 `%TEMP%` 下，属临时产物
+
+### 本轮工具坑（新增）
+
+26. **`current_stage` 是「下一个要跑的阶段号」，不是「已跑完的阶段数」**：bootstrap 后就是 `1`，
+    每完成一个阶段才 `+1`。所以 `current_stage >= max_stages` 命中的是「最多只剩一个阶段」，
+    **不等于**「所有阶段都跑完了」—— 这正是本批修掉的说假话的根因。
+    终态判据是 `status=done` 且 `current_stage > max_stages`（本批真链：`3 > 2`）。
+27. **判「阶段还没跑」不能只看 `current_stage`**：要看 `stages[]` 里每个阶段的 `status`；
+    `stages=@()` 表示**一条阶段记录都还没有**（bootstrap 就是这样），
+    这与「有阶段但还没跑」是两种形态，HINT 不能混着说。
+28. **变异实验的锚点唯一性判据要看清「同类锚点有几处」**：`exit 3` 在启动器里每个闸门分支都有，
+    对它做「全文唯一」判据会误报；正确做法是断言**替换区间**的内容特征
+    （区间必须含三个新 HINT token 与 `all_done=`），而不是断言区间终点全文唯一。
+29. **真链会话的锁要显式转交**：`start-relay.ps1` 起的锁 holder 是 `start-relay:<pid>`，
+    子会话接手要 `relay-lock.ps1 -Action adopt -SessionId <sid>`；否则子环跑完后锁一直占着。
+30. **PowerShell 的 here-string 不含结尾换行**：`@'...'@` 的值**没有**结尾换行。
+    拿它拼变异脚本的替换块时，后面紧跟的代码会被粘到同一行 —— 本轮就踩了：
+    替换块的 `Say 'HINT=...'` 与分支自己的 `exit 3` 被拼成一行，`exit 3` 进了字符串里，
+    变异体于是「打印完 FAIL 继续往下跑」、退出码变成 0，测的其实是个坏脚本（探针自己报 `ASSERTION_IS_WEAK`，靠这条才发现）。
+    修法：拼接前显式 `$block + "`n"`，并在写盘前断言 `(?m)^    exit 3$` 仍在（探针已内置这条断言）。
+31. **门禁只统计 `.md` / `.txt`，`reports\*.log` 的 CRLF 会溜过去**：`.gitattributes` 强制
+    `* text=auto eol=lf`，所以工作副本里带 CRLF 的日志一旦入库，克隆出来就是 LF，
+    **清单里的 sha16 与克隆内容对不上**。本轮提交前扫出 10 个 `reports\*.log` 带 CR
+    （`b18-selftest-precheck.log` 一个就有 266 个 CR）。
+    修法：入库前把这类文件逐字节转成 LF（只去 CR，不动内容、不动 BOM），再刷清单。
+    门禁阈值与白名单属**人工验收点**，本轮**未自行改** ——
+    「是否把 `.log` 纳入 `MD_TXT_CR_TOTAL` 统计」留给人工裁决（见遗留候选）。
+
+### 遗留与下一批候选
+
+上面 B17 遗留清单第 3 条（命名真断言）与第 4 条的 mcode 一半已在本批关闭；继续记账：
+
+1. **codex / openclaw 真链矩阵（本批唯一硬缺口）** —— 本机缺这两个 CLI；
+   **人工裁决 2026-11-26：暂不安装**（不在本机擅自装第三方 CLI），两条继续记为遗留；
+   将来获批安装后，照 `reports\b18-e2e-setup.ps1` 的形状各跑一条两阶段真链即可补齐。
+2. **`protocol\practilog-agents-pointer.md:11`** 仍是旧口径（非发布物，不进安装/发布清单）。
+3. **可选：把 `chain_at_stage_cap` 升级为自动收尾** —— 入口在该分支，但必须走 `relay-ledger.ps1`（不得裸写台账）。
+4. **可选：把触顶形态判断（`stages=` / `all_done=`）也做成 `relay-ledger.ps1 -Action status` 的输出列**，
+   让人不必读 JSON 就看得出链走到哪一步。
+5. **门禁白名单是否纳入 `.log`** —— `MD_TXT_CR_TOTAL` 现在只数 `.md` / `.txt`，
+   `reports\*.log` 的 CRLF 靠入库前人工转换挡住（本轮 10 个文件已转 LF）。
+   阈值与白名单属**人工验收点**，本轮**未自行改**；要不要把 `.log` 纳入统计，请人工裁决。
+
+### 本批收尾的人工裁决（2026-11-26）
+
+| 事项 | 裁决 | 落地方式 |
+|---|---|---|
+| 是否在本机安装 `codex` / `openclaw` CLI | **暂不安装** | 两条运行时真链继续记为遗留；本批不擅自装第三方 CLI |
+| B13–B18 共 56 个文件改动是否提交并推送 | **提交并推送到 `origin/main`** | 本批收尾一次性提交（HEAD `b46e676` = B12 → 新提交含 B13–B18 全部成果） |
+
+人工检查点保留：git commit / push / tag、发布与分发、删除或覆盖用户数据、改用户级 hook 或供应商配置、
+付费与额度决策、验收标准自相矛盾 —— 这些仍不由装置自动执行。

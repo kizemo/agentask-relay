@@ -8,7 +8,7 @@ Read {{REPO}}\docs\relay\next-relay-prompt.txt in full, then:
 
 mcp_invoke(tool_name="session_create", arguments={
   agent_name   : "me",
-  title        : "relay-1-<short stage name>",
+  title        : "relay-01of<MM>-<short stage name>",
   workspace_dir: "{{REPO}}",
   model        : "<model policy in section 5 of docs\RELAY-ADAPTATION.md>",
   content      : "<full text of next-relay-prompt.txt>"
