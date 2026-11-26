@@ -1490,6 +1490,14 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
     修法：用**单次命令覆盖** `git -c http.proxy= -c https.proxy= push origin main`
     （`ls-remote` 校验也要同样覆盖），**不要改用户全局 git config**。
     硬判据仍是 `ls-remote` 与 `rev-parse HEAD` 逐字相等。
+33. **`refresh-manifest.ps1` 每次运行都会重写 `MANIFEST.txt` 的 `# generated:` 时间戳行**，脚本没有保持不变的开关
+    ⇒ 清单在字节意义上**不是幂等的**：只要再跑一次清单，工作树就一定多出一个改动。
+    本轮收尾出现的 `DIRTY_AFTER=1` 就是它（`git diff -- MANIFEST.txt` 只剩第 1 行时间戳，
+    条目 sha16 / 字节数**全部一致**）。
+    判「清单有没有真漂移」必须分两步看：**条目内容**（diff 是否只剩时间戳行）与**工作树是否干净**；
+    后者靠把那 1 行一起 commit 掉解决。
+    收口顺序必须是：最后一次 refresh-manifest → commit（清单与文档一起提交）→ push，
+    **提交之后不要再跑清单**，否则又脏。（`scripts\refresh-manifest.ps1:36`）
 
 ### 遗留与下一批候选
 
@@ -1524,3 +1532,19 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
 - 网络：git 全局配了本地代理 `http(s).proxy=http://127.0.0.1:7897`，走代理推报
   `Recv failure: Connection was aborted`，而 `curl https://github.com` 直连返回 200 ⇒ 是代理链断、不是 GitHub 不可达。
   解法见工具坑 32（**单次命令覆盖走直连，未改用户的全局 git 配置**）。
+
+### 最终推送状态（2026-11-26 收口）
+
+- 本批共 3 次提交，均已推到 `origin/main`：
+  - `5a86cf9` —— B13–B18 全部成果一次性提交（父提交 `b46e676` = B12）；
+  - `f7ff1d0` —— 记账：推送结果 + 工具坑 31 / 32；
+  - `96d197a` —— 收尾记账：`MANIFEST.txt` 的 1 行时间戳刷新（工具坑 33）。
+- 硬判据（每次推送后都跑）：`git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/main`
+  与本地 `git rev-parse HEAD` **逐字相等**（`PUSH_VERIFIED=True`）。
+  上面第 3 次提交推送后读盘：`LOCAL=96d197a2d56a72edcae58fe7394c6bb24a197d9d`，
+  `REMOTE=96d197a2d56a72edcae58fe7394c6bb24a197d9d`，两者相等。
+- **本文件落盘的那一次提交是本批最后一次记账提交**（改动：本节 + 工具坑 33 + 清单时间戳行）。
+  它自己的 sha 不能写进本文件（写进去就又变了）；要核对当前 HEAD 请现跑
+  `git rev-parse HEAD` 与 `git -c http.proxy= -c https.proxy= ls-remote origin refs/heads/main` 比对。
+- 推送后工作树 `DIRTY_AFTER=0`（`git status --porcelain --untracked-files=all` 输出为空）。
+- 远端：`https://github.com/kizemo/agentask-relay.git`，分支 `main`。
