@@ -1715,4 +1715,16 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
 ### 本批工作树状态
 
 B19 已提交为 `8afd581`（"B19: stage-cap gate gets real teeth - two guard mutants, no-session-call assertion"，
-父 `81c952a`），当时未推送。B20 全部改动随本节一并提交。
+父 `81c952a`），提交时未推送。B20 全部改动随本节一并提交（含 `MANIFEST.txt` 与两份新 `.log` 证据；
+git 对这两个 `.log` 报 `CRLF will be replaced by LF`，属仓库既有换行规范化，`.log` 不在 `MD_TXT_CR_TOTAL` 门禁内）。
+
+### 推送
+
+- `git push origin main` 走本机默认代理（`http://127.0.0.1:7897`）**成功**，输出 `81c952a..6a2dd07 main -> main`
+  —— B19 与 B20 两个提交一次推上去。
+- 硬判据当场回读：`git ls-remote origin refs/heads/main` ⇒ `6a2dd07f95d22fc948ed30af91fdbbb337ee437a`，
+  与 `git rev-parse HEAD` **逐字相等**（`PUSH_VERIFIED=True`）。
+- 注意读法：上一条 sha 是**推送当时**的 HEAD，本节这条记账提交会再改本文件，其自身 sha 不能写进本文件。
+  要核对当前 HEAD 请现跑 `git rev-parse HEAD` 与 `git ls-remote origin refs/heads/main` 比对。
+- 工作树 `DIRTY_AFTER=0`（`git status --porcelain --untracked-files=all` 输出为空）—— 提交后到这里为止
+  没有再改任何受清单管辖的文件，`refresh-manifest.ps1` 在这条记账提交之后重跑过一次。
