@@ -1,0 +1,66 @@
+VERIFY_ROOT=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-231823
+VERIFY_LOG=F:\soft\00selfmade\agentask-relay\reports\b20-verify-finalize-run1.log
+SHA_BEFORE=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC
+PRE status=running current_stage=2 max_stages=1 stages=1:1=done next_session_id=[]
+PASS pre_crash_shape running/2/1/[1:done]/null
+PASS pre_sha_matches_child 5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC
+=== FINALIZE_DRYRUN exit=3 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-231823/repo
+OK head=2df2be7 dirty_files=21
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC status=running current_stage=2 stages=1 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=2 max_stages=1 stages=1:done all_done=true
+HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. -AutoFinalize closes it through relay-ledger.ps1 on this run, and the outcome line below says whether it wrote or was skipped by a dry run; a refused write only warns. Do not raise -MaxStages to keep going.
+DRYRUN skip=auto_finalize reason=every_declared_stage_is_done_but_a_dry_run_never_writes
+DRY_EXIT=3 (not asserted: the documented dry-run contract is skip + no write, not a code)
+PASS dry_skip_line skip=auto_finalize
+PASS dry_no_write sha_after_dry=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC
+PASS dry_status_running status=running
+=== FINALIZE exit=3 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-231823/repo
+OK head=2df2be7 dirty_files=21
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC status=running current_stage=2 stages=1 sessions=0
+FAIL reason=chain_at_stage_cap current_stage=2 max_stages=1 stages=1:done all_done=true
+HINT=all_stages_done_but_status_running: every declared stage is done but status is still running. -AutoFinalize closes it through relay-ledger.ps1 on this run, and the outcome line below says whether it wrote or was skipped by a dry run; a refused write only warns. Do not raise -MaxStages to keep going.
+AUTO_FINALIZED status=done before=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC after=EA7893FEAE8E89B87C460C38DBC7A31AB804025AE57B23EDE87D365F68479FA1 path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-231823\repo\docs\relay.json
+HINT=chain_closed_by_auto_finalize: every declared stage is done and status is now done, so a re-run of the launcher reports chain_exhausted. To keep going, start a fresh chain with -MaxStages greater than the previous one, or archive the old ledger.
+SHA_AFTER=EA7893FEAE8E89B87C460C38DBC7A31AB804025AE57B23EDE87D365F68479FA1
+PASS fin_exit3 exit=3
+PASS fin_cap_reached cap gate fired first
+PASS fin_autofinalized_line AUTO_FINALIZED status=done before=<hex64> after=<hex64> path=<file>
+FIN_BEFORE=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC FIN_AFTER=EA7893FEAE8E89B87C460C38DBC7A31AB804025AE57B23EDE87D365F68479FA1 FIN_PATH=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-231823\repo\docs\relay.json
+PASS fin_before_is_pre_sha before==pre sha256
+PASS fin_after_is_post_sha after==post sha256
+PASS fin_shas_differ the write really happened
+PASS fin_path_is_ledger C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-231823\repo\docs\relay.json
+PASS fin_hint closing hint
+POST status=done current_stage=2 max_stages=1 stages=1=done next_session_id=[] updated_at=11/26/2026 23:18:45
+PASS post_status_done status=done
+PASS post_current_stage_kept current_stage=2
+PASS post_max_stages_kept max_stages=1
+PASS post_stage_still_done stages=[1:done]
+PASS post_no_next_session next_session_id=[]
+PASS post_goal_kept goal untouched
+=== LEDGER_STATUS exit=0 ===
+LEDGER_STATE path=C:\Users\Duanyi\AppData\Local\Temp\relay-b20-e2e-20261126-231823\repo\docs\relay.json sha256=EA7893FEAE8E89B87C460C38DBC7A31AB804025AE57B23EDE87D365F68479FA1 status=done current_stage=2 max_stages=1 stages=1 sessions=0 notes=0 updated_at=11/26/2026 23:18:45
+LEDGER_CHAIN current_stage=2 max_stages=1 cap_reached=true stages=1:done all_done=true open_stages=0
+PASS gate_status_exit0 exit=0
+PASS gate_status_done gate agrees the chain is closed
+=== FINALIZE_AGAIN exit=3 ===
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/relay-b20-e2e-20261126-231823/repo
+OK head=2df2be7 dirty_files=21
+OK runtime=mcode source=descriptor
+OK link_mode=session_tool chain_session_id=none
+OK ledger_sha256=EA7893FEAE8E89B87C460C38DBC7A31AB804025AE57B23EDE87D365F68479FA1 status=done current_stage=2 stages=1 sessions=0
+FAIL reason=chain_exhausted current_stage=2 max_stages=1
+HINT=start a fresh chain by passing -MaxStages greater than the previous chain, or archive the old ledger.
+PASS again_exit3 exit=3
+PASS again_exhausted current_stage 2 > max_stages 1
+PASS again_no_finalize must not write again
+PASS again_sha_stable ledger byte stable on the refused run
+PASS stage_artifact bytes=300
+PASS stage_artifact_lists_tracked tracked=3 missing=0
+SUMMARY fail=0 files_checked=2

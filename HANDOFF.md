@@ -1728,3 +1728,80 @@ git 对这两个 `.log` 报 `CRLF will be replaced by LF`，属仓库既有换�
   要核对当前 HEAD 请现跑 `git rev-parse HEAD` 与 `git ls-remote origin refs/heads/main` 比对。
 - 工作树 `DIRTY_AFTER=0`（`git status --porcelain --untracked-files=all` 输出为空）—— 提交后到这里为止
   没有再改任何受清单管辖的文件，`refresh-manifest.ps1` 在这条记账提交之后重跑过一次。
+
+## 批次 B21 实录（2026-11-26）
+
+### 起点与目标
+
+接 B20 §「未验证 / 遗留」里两个**可自主**项：① 一次性验收器每次复跑都用固定文件名 + 先删后写，
+把首跑证据物理截断（B20 坑 39）；② B20 那次「首跑 PASS」只活在当轮会话输出里，盘上无证物。
+起点工作树干净：`6f123e4`，`MANIFEST.txt` 已同步。
+目标：验收器输出**带序号、不覆盖**，并补一份**首跑 PASS 的盘上证据**。按家规 selftest → publish → refresh-manifest 收尾。
+
+### 改了什么
+
+1. `reports\b20-verify-finalize.ps1`（8562 → **9487 B**，167 行，CR=0）
+   - **参数化**：`-Root`（默认仍指 B20 原夹具）、`-ExpectPreSha`（默认仍指 B20 原 pre-sha）。
+     注意踩坑：只加参数、不改那行硬编码 `$preSha` ⇒ 传参空转、新夹具必被判 `STALE_STATE`；
+     现为 `$preSha = $ExpectPreSha.ToUpperInvariant()`。
+   - **日志序号化**：写 `$PSScriptRoot`（即仓库 `reports\`），名 `b20-verify-finalize-run<N>.log`，
+     `N` = 现存最大序号 + 1，占位用 `[IO.File]::Open(..., FileMode::CreateNew, Write)`。
+     选 `CreateNew` 而不是「算好名字再写」：并发重名时后到者直接失败，**任何历史日志物理上不可被覆盖**。
+   - `HINT=one_shot_verifier` 补上重建路径，读日志的人不用回翻会话。
+   - `Chk` 仍是 27 条，验收内容一字未改 —— 本批只动输出形态。
+2. 新建 `reports\b21-rebuild-crash-shape.ps1`（**7986 B**，165 行，纯 ASCII / 无 BOM / CR=0）
+   - 把 fresh 夹具推成 B20 那句 goal 的 crash shape：前置断言 `running / 1 / 1 / stages=[] / next_session_id=null`
+     且 `goal` 逐字相等，不符即 `exit 2`（先验前态，避免在错形态上空转）；
+   - 写 `docs\relay\stage-1-inventory.md`（逐行 `git ls-files` 路径 + 字节 + TOTAL，写完回读自查全覆盖）；
+   - **两次独立台账提交**，不合并：`append_stage` 然后 `stage_done` + `bump_current_stage`；
+     每步走 `status` → `commit -DryRun` → 核对未写盘 → `commit -ExpectSha256`（CAS 生效）；
+   - 收尾断言 `running / 2 / 1 / [1=done] / null` 与闸门 `status=running`；
+   - **不碰 `set_status`**：终态必须留给启动器 `-AutoFinalize` 翻，否则测的就不是启动器了。
+   - 阶段物**不入 git**：一旦 `git add`，`git ls-files` 会包含它自己，而 `stage_artifact_lists_tracked`
+     要求文里出现每个 tracked 路径 ⇒ 清单自指。
+
+### 一跑实录（数字均为盘上回读）
+
+- 新夹具 `%TEMP%\relay-b20-e2e-20261126-231823`；`SETUP_EXIT=0` / `REBUILD_EXIT=0` / `VERIFY_EXIT=0`。
+- `PRE_SHAPE status=running current_stage=1 max_stages=1 stages=[] next_session_id=[]`
+- `ARTIFACT ...\repo\docs\relay\stage-1-inventory.md bytes=300 tracked_listed=3`、`ARTIFACT_LISTS_TRACKED ok=true`
+- `POST_SHAPE status=running current_stage=2 max_stages=1 stages=[1=done] next_session_id=[]`
+- `PRE_SHA=5A833755FF6FB17EB884C87EDC87AECAA82DB6CB309A835E9BF46E8274C195CC`
+- `VERIFY_LOG=...\reports\b20-verify-finalize-run1.log`；该文件 **5239 B / 66 行 / CR=0 / PASS=27**，
+  末行 `SUMMARY fail=0 files_checked=2`，`VERIFY_OK`。
+- 备注：日志里的 `FAIL reason=...` 是启动器原样输出，不是检查失败；判绿只看 `SUMMARY fail=0` 与 `VERIFY_OK`。
+- 旧的 `reports\b20-verify-finalize.log`（635 B，`STALE_STATE` 那次）**原样保留**，继续作守卫轮证物。
+
+### 家规收尾（本轮实数）
+
+| 步骤 | 结果 |
+|---|---|
+| `scripts\selftest.ps1 -EvidencePath` | `SELFTEST_EXIT=0`，`SUITE_END pass=323 fail=0 root=...\relay-port-selftest\20261126-231902`，`MANUAL_STEP real_session_activation` 保留 |
+| 证据落盘 | `tool\references\selftest-2026-11-26-b21.txt` **29078 B / 328 行 / CR=0 / 无 BOM** |
+| `publish-relay.ps1 -Direction publish` | `PUBLISH_EXIT=0`，`DIRECTION=publish STATUS=OK fail=0 warn=2`（两条 warn 均为 `examples\practilog` 的 `SNAPSHOT_DRIFT`，家规 8 预期，不为其同步） |
+| `refresh-manifest.ps1` | `MANIFEST_EXIT=0`，`FILE_COUNT=151 (MANIFEST excluded)`、`INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、`MANIFEST_BYTES=9895`、`verdict=PASS` |
+| 说明文档 | `tool\references\selftest-2026-11-26-b21.md`（7832 B / 100 行 / CR=0） |
+
+### 诚实边界（别把它读大）
+
+本轮补到的证据是「**同一个验收器，在按 B20 形态新造的 crash-shape 夹具上首跑 PASS**」。
+它证明的是验收器行为与旧证据等价、且首跑产物现在落在盘上**不会再被下一次跑覆盖**。
+它**不是**在真实 `session_create` 链上复跑（那需要重起真链跑到阶段触顶），所以
+**B20 遗留 #2「真链证机制 + 见证证措辞」原样未关**，不能说成本批已解决。
+
+### 未验证 / 遗留（结转下一批）
+
+- codex / openclaw 真链矩阵（B18 遗留 1）：本机缺这两个 CLI，需**人工批准安装**。
+- `.log` 是否纳入 `MD_TXT_CR_TOTAL` 门禁（B18 遗留 5）：属**家规 7 人工验收点**，未自行改；本轮新的 `.log` 为 LF（CR=0）但不受该门禁约束。
+- 台账 `set_status=done` 的「阶段全 done」守卫：B19 已裁定**不加**（会切断人工裁决后手动收尾那条路），沿用。
+- `protocol\practilog-agents-pointer.md:11` 仍是旧口径（非发布物，不进清单）。
+- 本批工具坑 5 条见 `tool\references\selftest-2026-11-26-b21.md` §6，本文件不重复。
+
+### 本批工作树状态
+
+B21 全部改动随本节一并提交：改 `reports\b20-verify-finalize.ps1`；新增
+`reports\b21-rebuild-crash-shape.ps1`、`reports\b20-verify-finalize-run1.log`、
+`tool\references\selftest-2026-11-26-b21.txt`、`tool\references\selftest-2026-11-26-b21.md`；
+`MANIFEST.txt` 由 `refresh-manifest.ps1` 在最后一步重算（`MANIFEST_BYTES=9895`）。
+按用户本轮授权**只提交、不推送**。本文件改动后又重跑了一次 `refresh-manifest.ps1`，
+所以本文件自身的内容摘要与最终 `MANIFEST.txt` 一致；核对当前 HEAD 请现跑 `git rev-parse HEAD`。
