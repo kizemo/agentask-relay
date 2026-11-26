@@ -820,5 +820,48 @@ B9 交付运行时适配层后，`claude-code` 真链仍跑不动：子环起来
 ### 未做 / 遗留
 - B10 的整链端到端复验仍未做（见 B10「验证到哪一步」）。
 - `codex` / `openclaw` 真链不可实测。
-- 本批默认**仅本地提交**，未 push（B9 的 push 授权不覆盖 B10 / B11）；是否推 `https://github.com/kizemo/agentask-relay` 的 `main` 需用户明确表态。
+- ~~本批默认仅本地提交，未 push~~ → **已于 2026-11-26 08:34 后推送**：`2acc0a7` → `origin/main`（推送过程与根因见「批次 B12 实录」）。
+
+## 批次 B12 实录（2026-11-26 08:34 → 09:5x）—— 推送 GitHub：git 的 openssl TLS 后端被本机代理掐断
+
+### 用户指令（原文）
+- 「推到 origin/main」
+- 「设为全局 schannel」
+
+### 现象
+`git push origin main` 直接失败（EXIT=128）：
+```
+fatal: unable to access 'https://github.com/kizemo/agentask-relay.git/':
+TLS connect error: error:0A000126:SSL routines::unexpected eof while reading
+```
+
+### 排除法（四个候选逐个实测）
+1. **代理是否挂** ⇒ 否。本机 git 配 `http://127.0.0.1:7897`，端口在监听；用 `curl -x http://127.0.0.1:7897` 访问 `api.github.com` / `github.com` / `www.google.com` **全部 200**。
+2. **直连是否通** ⇒ TCP 层通（`Test-NetConnection github.com:443` = True），但 git 直连报 `Failed to connect to github.com port 443 after 21064 ms` ⇒ 端口被中间设备重置，不是本机防火墙。
+3. **HTTP 版本** ⇒ 无效（`-c http.version=HTTP/1.1` 同错；全局本已是 HTTP/1.1）。
+4. **SSH 通道** ⇒ 不可用（`ssh -p 443 -T git@ssh.github.com` → `Permission denied (publickey)`，本机没有 GitHub SSH 私钥）。
+
+### 真因与解法
+git 默认 TLS 后端是 **openssl**（`git config --global --get http.sslBackend` = `openssl`），在这条代理链路上握手被提前关闭 ⇒ 报 `unexpected eof while reading`。换 Windows 自带的 **schannel** 后端即通：
+```
+git -c http.sslBackend=schannel push origin main
+→ cdd3c33..2acc0a7  main -> main   (EXIT=0)
+```
+
+### 已落地（用户明确批准后）
+- 本仓库 `.git\config`：`http.sslBackend=schannel`。
+- 全局 `C:\Users\Duanyi\.gitconfig`：`http.sslBackend=schannel`（用户 2026-11-26 批准）。
+- 验证走的是**没有仓库级配置**的探测目录，证明走的是全局值：`git -C $TEMP\git-schannel-probe ls-remote https://github.com/kizemo/agentask-relay.git HEAD` → EXIT=0，返回 `2acc0a754e1cc92cb64527f6146e12658a3de58d  HEAD`。
+- 本仓库再验：`git fetch origin` EXIT=0；`LOCAL = REMOTE_REF = 2acc0a754e1cc92cb64527f6146e12658a3de58d`；`rev-list --left-right --count HEAD...origin/main` = `0  0`；工作树干净。
+
+### 未验证 / 遗留
+- 全局改 schannel 只在「无仓库级覆盖」的场景验过。**仓库级 `.git\config` 优先级更高**：若别的仓库自己写了 `http.sslBackend=openssl`，它仍会复现同一个 TLS 错，届时改该仓库的 `.git\config` 即可。
+- 本批**没有改 `tool\` / `device\`** ⇒ 按家规无需重跑 selftest / publish；但 `HANDOFF.md` 属清单管辖文件 ⇒ 已重跑 refresh-manifest 并做内容级复核后再提交。
+
+### 本轮工具坑（新增）
+1. `git config --get` 读的是**合并后**的值（仓库级 > 全局）。要确认「全局到底是什么」必须显式 `git config --global --get`。
+2. **curl 通 ≠ git 能推**：curl 走同一代理返回 200 不构成 git 可用的证据，必须用 `git -c http.sslBackend=schannel` 实测才算数。
+3. `Test-NetConnection` 只证 TCP 可达，证不了 TLS 握手 ⇒ 代理类故障要看 TLS 层报错文本，别只看端口通不通。
+4. `git push` 失败后 `origin/main` 仍是旧 ref；判断到底推没推上去要看 `git fetch` 之后的 `git rev-parse origin/main` 与 `rev-list --left-right --count HEAD...origin/main`，不要凭 push 的提示行。
+
 
