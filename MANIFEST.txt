@@ -1,5 +1,5 @@
 # MANIFEST.txt - agentask-relay relay corpus (content inventory, self-excluded)
-# generated: 2026-11-26 21:22:37
+# generated: 2026-11-26 21:24:33
 # format: sha16(sha256 first 16 hex) | bytes | relpath   [LF, no BOM]
 # refresh: pwsh -File scripts\refresh-manifest.ps1  (run last in any round)
 F411F9554EC9F026 | 378 | .gitattributes
@@ -28,7 +28,7 @@ E0C4FCB8A430C339 | 33859 | examples\practilog\docs\relay\stage-4-implementation.
 29158782C8843588 | 9352 | examples\practilog\docs\relay\start-relay.ps1
 0317EC1D3467ABD1 | 6269 | examples\practilog\docs\relay\supervision-2026-11-24.md
 6B4093BF2AA506DA | 5747 | examples\practilog\docs\relay\supervision-2026-11-25.md
-F96B7B212D909FC8 | 139737 | HANDOFF.md
+866E7651DE242D35 | 141065 | HANDOFF.md
 2451FCEAFDDA38AD | 23183 | protocol\AGENT-RELAY.md
 7A9F0F01D624E1D0 | 1823 | protocol\practilog-agents-pointer.md
 1821AF57663BA1FD | 1336 | protocol\probe-ws\AGENTS.md
@@ -116,7 +116,7 @@ B2EEC4EBB0849783 | 21382 | tool\references\selftest-2026-11-26-b15.txt
 D019C11C2AF2689A | 21587 | tool\references\selftest-2026-11-26-b16.txt
 8B2BF3BD053CDCF4 | 7747 | tool\references\selftest-2026-11-26-b17.md
 3E508909BBB585CD | 21587 | tool\references\selftest-2026-11-26-b17.txt
-8506DA512810B68C | 12670 | tool\references\selftest-2026-11-26-b18.md
+EAC9DB9EC3B8DCEF | 13290 | tool\references\selftest-2026-11-26-b18.md
 0C14D7A22C9885ED | 24382 | tool\references\selftest-2026-11-26-b18.txt
 168AAD07BACDF56B | 5100 | tool\references\selftest-2026-11-26.md
 1106C2E24E5898D4 | 20213 | tool\references\selftest-2026-11-26.txt

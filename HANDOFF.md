@@ -1484,6 +1484,12 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
     修法：入库前把这类文件逐字节转成 LF（只去 CR，不动内容、不动 BOM），再刷清单。
     门禁阈值与白名单属**人工验收点**，本轮**未自行改** ——
     「是否把 `.log` 纳入 `MD_TXT_CR_TOTAL` 统计」留给人工裁决（见遗留候选）。
+32. **git 推送要分清「代理断」还是「直连断」**：本机 git 全局配了 `http(s).proxy=http://127.0.0.1:7897`。
+    走代理推 GitHub 报 `Recv failure: Connection was aborted`，而 `curl https://github.com` 直连返回 200
+    ⇒ 是代理这条链断了，不是 GitHub 不可达（端口探测显示代理进程还在，是转发失败）。
+    修法：用**单次命令覆盖** `git -c http.proxy= -c https.proxy= push origin main`
+    （`ls-remote` 校验也要同样覆盖），**不要改用户全局 git config**。
+    硬判据仍是 `ls-remote` 与 `rev-parse HEAD` 逐字相等。
 
 ### 遗留与下一批候选
 
@@ -1509,3 +1515,12 @@ B15 遗留 1（闸门兜底）与遗留 3（`SKILL.md` 措辞）已在本批关�
 
 人工检查点保留：git commit / push / tag、发布与分发、删除或覆盖用户数据、改用户级 hook 或供应商配置、
 付费与额度决策、验收标准自相矛盾 —— 这些仍不由装置自动执行。
+
+### 推送结果（2026-11-26）
+
+- 提交：`5a86cf92eb72717a4a7336df106ee76248eeef83`（B13–B18 全部成果一次性提交，父提交 `b46e676` = B12）。
+- 推送：`b46e676..5a86cf9  main -> main`；硬判据 `git ls-remote origin refs/heads/main` 与本地
+  `git rev-parse HEAD` **逐字相等**（`PUSH_VERIFIED=True`），推送后工作树 `dirty_files=0`。
+- 网络：git 全局配了本地代理 `http(s).proxy=http://127.0.0.1:7897`，走代理推报
+  `Recv failure: Connection was aborted`，而 `curl https://github.com` 直连返回 200 ⇒ 是代理链断、不是 GitHub 不可达。
+  解法见工具坑 32（**单次命令覆盖走直连，未改用户的全局 git 配置**）。
