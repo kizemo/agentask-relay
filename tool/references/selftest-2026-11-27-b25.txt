@@ -1,0 +1,389 @@
+19:25:54 SUITE_START root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554 kit=F:\soft\00selfmade\agentask-relay
+19:25:57 CASE_PASS install_exit_zero exit=0
+19:25:57 CASE_PASS install_verdict_pass tail=ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-fresh\docs\relay\ACTIVATION-PROMPT.txt | INSTALL_RUNTIME=mcode | WARN_COUNT=1
+19:25:57 CASE_PASS install_launcher_present dir=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-fresh
+19:25:57 CASE_PASS install_lock_present 
+19:25:57 CASE_PASS install_ledger_gate_present 
+19:25:57 CASE_PASS install_agents_single_block 
+19:25:57 CASE_PASS install_dryrun_ok_line line=DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-fresh\docs\relay\install-dryrun.txt
+19:25:57 CASE_PASS install_dryrun_passed_plandoc_through artifact=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-fresh\docs\relay\install-dryrun.txt line=OK plan_doc=docs\plan-b1.md source=argument bytes=11
+19:25:59 CASE_PASS reinstall_exit_zero exit=0
+19:25:59 CASE_PASS reinstall_agents_bytes_stable before=CA3037BE9BB27649 after=CA3037BE9BB27649
+19:25:59 CASE_PASS reinstall_single_block_still 
+19:25:59 CASE_PASS reinstall_keeps_existing agents_line=AGENTS action=present_kept reason=n/a before=[bytes=4022 sha16=CA3037BE9BB27649] after=[bytes=4022 sha16=CA3037BE9BB27649] bom=False
+19:26:02 CASE_PASS adopt_by_content_exit_zero exit=0
+19:26:02 CASE_PASS adopt_by_content_marked has_marker=True kept_original=True
+19:26:02 CASE_PASS adopt_by_content_reason_logged agents_line=AGENTS action=adopted reason=content_signature count=8 signals=relay.json+relay-lock+start-relay+session_create+in_progress+max_stages+next_session+awaiting_user before=[bytes=423 sha16=B862B74A304C46EE] after=[bytes=476 sha16=B4F431517C335CED] bom=False
+19:26:05 CASE_PASS ambiguous_warns warn=WARN agents_relay_section_ambiguous matches=2 appended_managed_block review=keep_a_single_relay_section
+19:26:05 CASE_PASS ambiguous_appends_managed_block 
+19:26:05 CASE_PASS ambiguous_keeps_both_sections 
+19:26:09 CASE_PASS probe_dryrun_exit_zero exit=0
+19:26:09 CASE_PASS probe_found_plan line=OK plan_doc=docs\superpowers\plans\2026-11-07-b1.md source=probe bytes=13
+19:26:09 CASE_PASS probe_no_lock_left_behind 
+19:26:09 CASE_PASS probe_no_ledger_written 
+19:26:09 CASE_PASS kit_scan_scope_nonempty scanned=15
+19:26:09 CASE_PASS kit_has_no_foreign_default_plan hits=
+19:26:11 CASE_PASS noplan_exit_two exit=2
+19:26:11 CASE_PASS noplan_reason_reported line=FAIL reason=plan_doc_missing hint=pass_-PlanDoc_or_set_plan_doc_in_docs\relay.json_or_add_docs\plan-<batch>.md
+19:26:11 CASE_PASS noplan_no_lock 
+19:26:12 CASE_PASS activate_exit_zero exit=0 tail=NEXT then hand the lock over: relay-lock.ps1 -Action verify -SessionId <new session id> -Nonce <nonce from SPAWN_PERMIT> | DONE exit=0 target=probe batch
+19:26:12 CASE_PASS activate_ledger_created 
+19:26:12 CASE_PASS activate_ledger_plan_doc_relative plan_doc=docs\superpowers\plans\2026-11-07-b1.md
+19:26:12 CASE_PASS activate_lock_held 
+19:26:12 CASE_PASS activate_prompt_absolute_plan 
+19:26:13 CASE_PASS second_activation_refused exit=4
+19:26:13 CASE_PASS second_activation_reason_logged line=FAIL reason=lock_unavailable exit=2
+19:26:14 CASE_PASS lock_alpha_acquired exit=0 out=LOCK_ACQUIRED holder=session-alpha stage=1 ttl_s=600 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-lock\docs\relay\.relay.lock
+19:26:15 CASE_PASS lock_beta_refused exit=2 out=LOCK_HELD holder=session-alpha stage=1 age_s=1 ttl_s=600 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-lock\docs\relay\.relay.lock
+19:26:16 CASE_PASS lock_owner_still_alpha out=LOCK_STATE state=LIVE holder=session-alpha prev_holder= stage=1 age_s=2 ttl_s=600 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-lock\docs\relay\.relay.lock
+19:26:16 CASE_PASS lock_release_by_wrong_owner_refused exit=5 out=LOCK_NOT_MINE holder=session-alpha requester=session-beta
+19:26:17 CASE_PASS lock_released_by_owner exit=0 still_there=False
+19:26:17 CASE_PASS ps1_ascii_bom_parse bad=
+19:26:17 CASE_PASS ledger_gate_installed path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-planprobe\docs\relay\relay-ledger.ps1
+19:26:18 CASE_PASS ledger_status_reports_sha256 exit=0 sha16=7B8E3DFC713F83DC
+19:26:19 CASE_PASS ledger_commit_ok exit=0 tail=LEDGER_COMMITED before=7B8E3DFC713F83DCB35BE736B2C2DBE71507F2362FFA72D424C10B25CA658415 after=89C33BF3684BE04BCBBC4658E43A70E0B487C354A936C62D81345FBAEC7D9ECD stages=0->0 sessions=0->0 current_stage=1->1 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-planprobe\docs\relay.json
+19:26:19 CASE_PASS ledger_sha_advanced_after_commit before=7B8E3DFC713F83DC after=89C33BF3684BE04B
+19:26:19 CASE_PASS ledger_note_appended_once count=1
+19:26:19 CASE_PASS ledger_stale_sha_refused_as_cas_conflict exit=3
+19:26:21 CASE_PASS ledger_unknown_patch_key_refused exit=2
+19:26:22 CASE_PASS ledger_status_running_is_human_only exit=3
+19:26:24 CASE_PASS ledger_append_stage_ok exit=0
+19:26:25 CASE_PASS ledger_owner_stage_fields_accepted exit=0
+19:26:27 CASE_PASS ledger_foreign_stage_field_refused exit=2
+19:26:28 CASE_PASS ledger_dryrun_is_non_destructive exit=0 sha_same=True locks=0
+19:26:31 CASE_PASS ledger_single_writer_under_concurrency wins=1 refused=1
+19:26:32 CASE_PASS ledger_locks_cleared_after_race exit=0 locks=0
+19:26:32 CASE_PASS device_matches_templates drift=
+19:26:34 CASE_PASS plan_arg_missing_exit_two exit=2
+19:26:34 CASE_PASS plan_arg_missing_reason line=FAIL reason=plan_doc_not_found path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-plan-arg-missing\docs\nope.md source=argument
+19:26:34 CASE_PASS plan_arg_missing_no_lock 
+19:26:36 CASE_PASS plan_from_ledger_exit_zero exit=0 tail=DRYRUN prompt_preview_end | DONE exit=0 target=ledger batch
+19:26:36 CASE_PASS plan_from_ledger_source line=OK plan_doc=docs\plan-real.md source=ledger bytes=20
+19:26:36 CASE_PASS plan_from_ledger_no_ambiguity_warn warn=
+19:26:38 CASE_PASS plan_ambiguous_warns line=WARN plan_doc_ambiguous candidates=2 picked=docs\plan-new.md by=newest_mtime pass_-PlanDoc_to_disambiguate
+19:26:38 CASE_PASS plan_ambiguous_picks_newest line=WARN plan_doc_ambiguous candidates=2 picked=docs\plan-new.md by=newest_mtime pass_-PlanDoc_to_disambiguate
+19:26:38 CASE_PASS plan_ambiguous_does_not_refuse exit=0
+19:26:40 CASE_PASS blocked_ledger_exit_three exit=3
+19:26:40 CASE_PASS blocked_ledger_lines line=WARN reason=ledger_blocked blocked_on=needs a human decision on scope
+19:26:40 CASE_PASS blocked_ledger_precedes_plan_resolution tail=WARN reason=ledger_blocked blocked_on=needs a human decision on scope | HINT=blocked chains need a human decision first; do not silently resume.
+19:26:42 CASE_PASS garbage_ledger_exit_three exit=3
+19:26:42 CASE_PASS garbage_ledger_left_untouched before=8B84DE764198480D after=8B84DE764198480D
+19:26:42 CASE_PASS garbage_ledger_no_lock 
+19:26:46 CASE_PASS lock_case_first_run_ok exit=0 tail=NEXT then hand the lock over: relay-lock.ps1 -Action verify -SessionId <new session id> -Nonce <nonce from SPAWN_PERMIT> | DONE exit=0 target=lock batch
+19:26:47 CASE_PASS lock_case_second_run_refused_by_lock exit=4 line=FAIL reason=lock_unavailable exit=2
+19:26:47 CASE_PASS lock_case_second_run_wrote_no_prompt present=False
+19:26:47 CASE_PASS lock_case_second_run_kept_ledger before=8CC5BD3E9F1901BB after=8CC5BD3E9F1901BB
+19:26:49 CASE_PASS stage_titles_preview_framed 
+19:26:49 CASE_PASS stage_titles_verbatim tail=DRYRUN prompt_preview_end | DONE exit=0 target=titles batch
+19:26:50 CASE_PASS stage_titles_default_line matched_default=True
+19:26:55 CASE_PASS force_action_replaced line=AGENTS action=replaced reason=n/a before=[bytes=4052 sha16=CAA12757127852E4] after=[bytes=4024 sha16=4CFE9504D291CEBA] bom=False
+19:26:55 CASE_PASS force_single_marker_pair begin=1 end=1
+19:26:55 CASE_PASS force_machine_markers_echoed line=AGENTS_MARKERS begin=1 end=1
+19:26:55 CASE_PASS force_dropped_injected_line 
+19:26:55 CASE_PASS force_kept_project_prose has_prose=True
+19:26:57 CASE_PASS adopt_title_action_and_reason line=AGENTS action=adopted reason=title before=[bytes=132 sha16=E538457E2DAB94C9] after=[bytes=185 sha16=013D8FC24FDBE9B0] bom=False
+19:26:57 CASE_PASS adopt_title_single_pair begin=1 end=1
+19:26:57 CASE_PASS adopt_title_keeps_both_sections 
+19:27:00 CASE_PASS unparsed_action_no_guess line=AGENTS action=present_unparsed reason=n/a before=[bytes=105 sha16=B8932BD9CCCE35A9] after=[bytes=105 sha16=B8932BD9CCCE35A9] bom=False
+19:27:00 CASE_PASS unparsed_left_file_bytes before=B8932BD9CCCE35A9 after=B8932BD9CCCE35A9
+19:27:00 CASE_PASS unparsed_added_no_second_block begin=1
+19:27:03 CASE_PASS stray_marker_warned line=WARN agents_markers_corrupt stray_marker_removed
+19:27:03 CASE_PASS stray_marker_then_dual_criteria line=AGENTS action=adopted reason=title before=[bytes=78 sha16=0802DF0FA10D6AAF] after=[bytes=106 sha16=6FB9937E813FD900] bom=False
+19:27:03 CASE_PASS stray_marker_pair_after_fix begin=1 end=1
+19:27:03 CASE_PASS stray_marker_kept_section_text 
+19:27:03 CASE_PASS protocol_mirror_matches_template tpl=DE4A68E2E40CD943 mirror=DE4A68E2E40CD943
+19:27:03 CASE_PASS protocol_documents_launcher_literals LAUNCHER doc_missing=[] code_missing=[]
+19:27:03 CASE_PASS protocol_documents_installer_literals INSTALLER doc_missing=[] code_missing=[]
+19:27:03 CASE_PASS kit_scanned_file_count scanned=9
+19:27:03 CASE_PASS kit_no_absolute_paths_in_code files= scanned=9
+19:27:03 CASE_PASS kit_no_home_literals_in_code files= scanned=9
+19:27:03 CASE_PASS kit_no_foreign_project_name files= scanned=9
+19:27:03 CASE_PASS kit_device_specific_ids_flagged has_provider_id=True has_refill_note=True
+19:27:03 CASE_PASS publish_probe_tokens_present missing= wanted=9
+19:27:03 CASE_PASS publish_probe_has_no_hardcoded_drive drive_literals_in_code=0
+19:27:03 CASE_PASS publish_skill_root_doc_describes_probe missing=
+19:27:04 CASE_PASS publish_skill_root_env_pin code=2 pinned=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\skill-root-env-pinned
+19:27:05 CASE_PASS publish_skill_root_parameter_wins code=2 pinned=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\skill-root-arg-pinned env_was=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\skill-root-env-pinned
+19:27:07 CASE_PASS publish_skill_root_probe_branch line=[INFO] skill_root=E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay via=probe code=0 root_exists=True loud_fail=False
+19:27:10 CASE_PASS runtime_cc_install_exit_zero exit=0
+19:27:10 CASE_PASS runtime_cc_install_verdict_pass tail=ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-cc\docs\relay\ACTIVATION-PROMPT.txt | INSTALL_RUNTIME=claude-code | WARN_COUNT=1
+19:27:10 CASE_PASS runtime_cc_agents_block begin=1
+19:27:10 CASE_PASS runtime_cc_claude_block begin=1
+19:27:10 CASE_PASS runtime_cc_markers_echoed 
+19:27:10 CASE_PASS runtime_cc_reported 
+19:27:10 CASE_PASS runtime_cc_block_carries_spawn_rule 
+19:27:10 CASE_PASS runtime_cc_activation_packet 
+19:27:13 CASE_PASS runtime_cx_install_exit_zero exit=0
+19:27:13 CASE_PASS runtime_cx_agents_block 
+19:27:13 CASE_PASS runtime_cx_no_claude_file 
+19:27:13 CASE_PASS runtime_cx_block_carries_spawn_rule 
+19:27:16 CASE_PASS runtime_oc_install_exit_zero exit=0
+19:27:16 CASE_PASS runtime_oc_agents_block 
+19:27:16 CASE_PASS runtime_oc_block_carries_spawn_rule 
+19:27:18 CASE_PASS runtime_unknown_exit_2 exit=2
+19:27:18 CASE_PASS runtime_unknown_loud line=FAIL reason=runtime_unsupported runtime=gemini-cli known=mcode,claude-code,codex,openclaw
+19:27:18 CASE_PASS runtime_default_is_mcode 
+19:27:18 CASE_PASS runtime_mcode_activation_uses_session_create 
+19:27:18 CASE_PASS runtime_shards_present count=4
+19:27:18 CASE_PASS spawn_installed_into_relay_dir 
+19:27:18 CASE_PASS spawn_device_copy_matches_template tpl=738097D18638B471 dev=738097D18638B471
+19:27:19 CASE_PASS spawn_dryrun_exit_zero exit=0
+19:27:19 CASE_PASS spawn_dryrun_prints_command 
+19:27:19 CASE_PASS spawn_dryrun_does_not_run 
+19:27:19 CASE_PASS spawn_dryrun_prompt_not_inline 
+19:27:19 CASE_PASS spawn_codex_dryrun exit=0
+19:27:20 CASE_PASS spawn_rejects_non_cli_runtime exit=2
+19:27:21 CASE_PASS spawn_missing_prompt_file exit=2
+19:27:24 CASE_PASS contract_cc_install_exit_zero exit=0
+19:27:24 CASE_PASS contract_descriptor_present path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract\docs\relay\relay-runtime.json
+19:27:24 CASE_PASS contract_descriptor_runtime 
+19:27:24 CASE_PASS contract_descriptor_mode 
+19:27:24 CASE_PASS contract_descriptor_command_portable cmd=pwsh -NoProfile -ExecutionPolicy Bypass -File {REPO}\docs\relay\relay-spawn.ps1 -Runtime claude-code -PromptFile {REPO}\docs\relay\next-relay-prompt.txt -WorkspaceDir {REPO} -Execute -AdoptLock
+19:27:24 CASE_PASS contract_descriptor_rule_files files=AGENTS.md,CLAUDE.md
+19:27:26 CASE_PASS contract_launcher_reads_descriptor line=OK runtime=claude-code source=descriptor
+19:27:26 CASE_PASS contract_prompt_has_stage_header 
+19:27:26 CASE_PASS contract_prompt_names_spawn_driver 
+19:27:26 CASE_PASS contract_prompt_has_spawn_command 
+19:27:26 CASE_PASS contract_prompt_no_session_create_call 
+19:27:26 CASE_PASS contract_prompt_forbids_session_create 
+19:27:28 CASE_PASS contract_launcher_rejects_unknown_runtime exit=2
+19:27:31 CASE_PASS contract_mcode_install_exit_zero exit=0
+19:27:31 CASE_PASS contract_mcode_mode 
+19:27:31 CASE_PASS contract_mcode_no_spawn_command cmd=
+19:27:33 CASE_PASS contract_mcode_launcher_runtime 
+19:27:33 CASE_PASS contract_mcode_prompt_uses_session_create 
+19:27:33 CASE_PASS contract_mcode_prompt_has_no_stage_header 
+19:27:36 CASE_PASS contract_oc_install_exit_zero exit=0
+19:27:36 CASE_PASS contract_oc_mode 
+19:27:38 CASE_PASS contract_oc_prompt_uses_sessions_spawn 
+19:27:38 CASE_PASS contract_oc_prompt_no_cli_driver 
+19:27:39 CASE_PASS contract_spawn_rejects_bad_session_id exit=2
+19:27:40 CASE_PASS contract_spawn_reads_ledger_session_id line=SPAWN_SESSION_ID id=11111111-2222-3333-4444-555555555555 source=ledger
+19:27:40 CASE_PASS contract_spawn_dryrun_no_pre_adopt 
+19:27:40 CASE_PASS contract_device_start_matches_template 
+19:27:40 CASE_PASS contract_device_spawn_matches_template 
+19:27:40 CASE_PASS contract_device_files_ascii_no_bom bad=
+19:27:40 CASE_PASS contract_launcher_allocates_chain_session_id line=OK link_mode=cli_driver chain_session_id=3981ef6e-f29f-4934-95a0-72e922cca0c4
+19:27:40 CASE_PASS contract_prompt_carries_session_id 
+19:27:40 CASE_PASS contract_prompt_stop_rule_names_session_id 
+19:27:40 CASE_PASS contract_spawn_permission_mode_never_asks 
+19:27:40 CASE_PASS contract_spawn_disables_question_box 
+19:27:40 CASE_PASS contract_mcode_prompt_has_no_session_id 
+19:27:41 CASE_PASS contract_spawn_rejects_missing_workspace exit=2
+19:27:41 CASE_PASS contract_spawn_settings_json_disables_question_box 
+19:27:41 CASE_PASS contract_spawn_settings_json_bypass_mode 
+19:27:41 CASE_PASS contract_spawn_settings_json_allows_pwsh 
+19:27:41 CASE_PASS contract_spawn_uses_settings_file 
+19:27:41 CASE_PASS contract_spawn_no_inline_settings_json 
+19:27:41 CASE_PASS contract_cli_prompt_command_style 
+19:27:41 CASE_PASS contract_mcode_prompt_has_no_command_style 
+19:27:45 CASE_PASS contract_live_install_exit_zero exit=0
+19:27:47 CASE_PASS contract_live_launcher_exit_zero exit=0
+19:27:47 CASE_PASS contract_live_ledger_carries_session_id id=10272858-e164-444e-b048-bd42bf58779f
+19:27:47 CASE_PASS contract_live_prompt_session_id_matches_ledger 
+19:27:47 CASE_PASS contract_spawn_prompt_is_last_argument line=SPAWN_COMMAND claude --output-format json --session-id 11111111-2222-3333-4444-555555555555 --add-dir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract\docs\relay\relay-settings.json -p <prompt from file>
+19:27:47 CASE_PASS contract_spawn_settings_flag_before_prompt line=SPAWN_COMMAND claude --output-format json --session-id 11111111-2222-3333-4444-555555555555 --add-dir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract\docs\relay\relay-settings.json -p <prompt from file>
+19:27:47 CASE_PASS contract_spawn_permission_mode_flag_before_prompt line=SPAWN_COMMAND claude --output-format json --session-id 11111111-2222-3333-4444-555555555555 --add-dir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\repo-runtime-contract\docs\relay\relay-settings.json -p <prompt from file>
+19:27:47 CASE_PASS contract_spawn_settings_json_nested_default_mode 
+19:27:51 CASE_PASS adapt_first_run_exit_zero exit=0
+19:27:51 CASE_PASS adapt_first_run_verdict_pass 
+19:27:51 CASE_PASS adapt_status_pending 
+19:27:51 CASE_PASS adapt_source_defaults 
+19:27:51 CASE_PASS adapt_questions_line 
+19:27:51 CASE_PASS adapt_warns_unconfirmed 
+19:27:51 CASE_PASS adapt_check_zero_placeholders 
+19:27:51 CASE_PASS adapt_doc_no_todo_left 
+19:27:51 CASE_PASS adapt_doc_no_brace_tokens 
+19:27:51 CASE_PASS adapt_doc_source_defaults_marks 
+19:27:51 CASE_PASS adapt_packet_md_present 
+19:27:51 CASE_PASS adapt_packet_json_present 
+19:27:51 CASE_PASS adapt_answers_template_present 
+19:27:51 CASE_PASS adapt_packet_json_questions_8 
+19:27:51 CASE_PASS adapt_packet_json_repo_filled 
+19:27:51 CASE_PASS adapt_packet_json_all_answer_keys 
+19:27:51 CASE_PASS adapt_packet_md_names_every_key 
+19:27:51 CASE_PASS adapt_packet_md_says_batch_of_2_3 
+19:27:55 CASE_PASS adapt_answers_run_exit_zero exit=0
+19:27:55 CASE_PASS adapt_answers_applied 
+19:27:55 CASE_PASS adapt_answers_patches_three_sections 
+19:27:55 CASE_PASS adapt_status_confirmed 
+19:27:55 CASE_PASS adapt_answers_source_answers 
+19:27:55 CASE_PASS adapt_questions_line_cleared 
+19:27:55 CASE_PASS adapt_answers_no_unconfirmed_warn 
+19:27:55 CASE_PASS adapt_answers_wrote_values 
+19:27:55 CASE_PASS adapt_answers_source_marked 
+19:27:55 CASE_PASS adapt_answers_kept_later_sections 
+19:27:56 CASE_PASS adapt_missing_answers_exit_two exit=2
+19:28:01 CASE_PASS b13_install_with_stage_titles_exit_zero exit=0
+19:28:01 CASE_PASS b13_descriptor_carries_stage_titles titles=1. alpha stage
+2. beta stage
+3. gamma stage
+19:28:03 CASE_PASS b13_launcher_reports_stage_titles_source line=OK stage_titles source=descriptor
+19:28:03 CASE_PASS b13_cli_prompt_has_real_stage_list 
+19:28:03 CASE_PASS b13_cli_prompt_has_no_generic_stage_list 
+19:28:03 CASE_PASS b13_cli_prompt_gate_path_uses_forward_slashes 
+19:28:03 CASE_PASS b13_cli_prompt_has_no_backslash_gate_path 
+19:28:03 CASE_PASS b13_cli_prompt_has_no_backslash_relay_path 
+19:28:03 CASE_PASS b13_cli_prompt_spawn_command_uses_forward_slashes 
+19:28:03 CASE_PASS b13_cli_prompt_spawn_command_has_no_backslash 
+19:28:03 CASE_PASS b13_cli_prompt_command_style_rule_survives 
+19:28:06 CASE_PASS b13_mcode_install_exit_zero exit=0
+19:28:06 CASE_PASS b13_mcode_descriptor_has_no_stage_titles titles=
+19:28:08 CASE_PASS b13_mcode_prompt_keeps_windows_gate_path 
+19:28:08 CASE_PASS b13_mcode_prompt_has_no_forward_slash_gate_path 
+19:28:08 CASE_PASS b13_mcode_prompt_keeps_generic_stage_list 
+19:28:08 CASE_PASS b13_mcode_prompt_has_no_spawn_command_prompt_form 
+19:28:08 CASE_PASS b13_mcode_prompt_keeps_windows_relay_paths 
+19:28:11 CASE_PASS f6_append_stage_ok exit=0
+19:28:13 CASE_PASS f6_stage_done_committed exit=0
+19:28:13 CASE_PASS f6_session_registered_by_gate line=LEDGER_SESSION_REGISTERED session=sess-f6-alpha stage=1 source=stage_field
+19:28:13 CASE_PASS f6_sessions_trail_has_the_session count=1
+19:28:15 CASE_PASS f6_repeat_commit_does_not_duplicate_session exit=0 count=1
+19:28:16 CASE_PASS f6_sessions_append_does_not_duplicate_session exit=0 count=1
+19:28:16 CASE_PASS f6_trail_is_append_only sessions=sess-f6-alpha
+19:28:18 CASE_PASS f6_fallback_uses_running_link_id line=LEDGER_SESSION_REGISTERED session=sess-f6-beta stage=1 source=ledger_next_session_id
+19:28:20 CASE_PASS f6_no_session_id_is_skipped_not_faked exit=0 count=0
+19:28:20 CASE_PASS f5_house_rule_names_done lines=1
+19:28:20 CASE_PASS f5_ledger_seed_names_done 
+19:28:20 CASE_PASS f5_ledger_seed_has_no_old_rule 
+19:28:20 CASE_PASS f5_protocol_stop_conditions_name_done 
+19:28:20 CASE_PASS f5_protocol_has_no_old_stop_rule 
+19:28:20 CASE_PASS f5_protocol_copies_are_byte_identical 
+19:28:22 CASE_PASS f5_done_chain_is_exhausted_not_runnable exit=3 line=FAIL reason=chain_exhausted current_stage=2 max_stages=1
+19:28:24 CASE_PASS gate_refuses_running_chain_at_stage_cap exit=3 line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:done all_done=true
+19:28:26 CASE_PASS gate_still_starts_below_stage_cap exit=0 cap_hit=False
+19:28:28 CASE_PASS link_naming_claude-code_launcher_exit_zero exit=0
+19:28:28 CASE_PASS link_naming_claude-code_uses_zero_padded_form new_form_hits=6
+19:28:28 CASE_PASS link_naming_claude-code_has_no_legacy_form legacy_hits=0
+19:28:30 CASE_PASS link_naming_mcode_launcher_exit_zero exit=0
+19:28:30 CASE_PASS link_naming_mcode_uses_zero_padded_form new_form_hits=3
+19:28:30 CASE_PASS link_naming_mcode_has_no_legacy_form legacy_hits=0
+19:28:30 CASE_PASS link_naming_cli_header_names_the_link 
+19:28:30 CASE_PASS link_naming_cli_handoff_names_next_link 
+19:28:30 CASE_PASS link_naming_rule_rejects_legacy_sample legacy_sample_matched=False
+19:28:32 CASE_PASS cap_hint_all_done_is_refused exit=3 line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:done all_done=true
+19:28:32 CASE_PASS cap_hint_all_done_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:done all_done=true
+19:28:32 CASE_PASS cap_hint_all_done_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:done all_done=true
+19:28:32 CASE_PASS cap_hint_all_done_picks_its_own_hint expect=all_stages_done_but_status_running
+19:28:32 CASE_PASS cap_hint_all_done_hints_are_exclusive leaked=
+19:28:34 CASE_PASS cap_hint_open_stage_is_refused exit=3 line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:pending all_done=false
+19:28:34 CASE_PASS cap_hint_open_stage_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:pending all_done=false
+19:28:34 CASE_PASS cap_hint_open_stage_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=1:done,2:pending all_done=false
+19:28:34 CASE_PASS cap_hint_open_stage_picks_its_own_hint expect=stage_cap_reached_with_open_stage
+19:28:34 CASE_PASS cap_hint_open_stage_hints_are_exclusive leaked=
+19:28:35 CASE_PASS cap_hint_no_records_is_refused exit=3 line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=none all_done=unknown
+19:28:35 CASE_PASS cap_hint_no_records_reports_stage_summary line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=none all_done=unknown
+19:28:35 CASE_PASS cap_hint_no_records_reports_all_done_state line=FAIL reason=chain_at_stage_cap current_stage=2 max_stages=2 stages=none all_done=unknown
+19:28:35 CASE_PASS cap_hint_no_records_picks_its_own_hint expect=stage_cap_reached_with_no_stage_records
+19:28:35 CASE_PASS cap_hint_no_records_hints_are_exclusive leaked=
+19:28:35 CASE_PASS cap_hint_open_stage_refuses_to_close_chain text_has_set_status=False
+19:28:35 CASE_PASS cap_hint_all_done_says_how_to_close 
+19:28:35 CASE_PASS cap_hint_reason_is_unchanged 
+19:28:37 CASE_PASS chain_status_all_done_reads exit=0 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=1:done,2:done all_done=true open_stages=0
+19:28:37 CASE_PASS chain_status_all_done_reports_its_shape expect=cap_reached=true stages=1:done,2:done all_done=true open_stages=0 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=1:done,2:done all_done=true open_stages=0
+19:28:37 CASE_PASS chain_status_all_done_keeps_the_state_line 
+19:28:38 CASE_PASS chain_status_all_done_agrees_with_launcher_stages ledger=1:done,2:done launcher=1:done,2:done
+19:28:38 CASE_PASS chain_status_all_done_agrees_with_launcher_all_done ledger=true launcher=true
+19:28:39 CASE_PASS chain_status_open_stage_reads exit=0 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=1:done,2:pending all_done=false open_stages=1
+19:28:39 CASE_PASS chain_status_open_stage_reports_its_shape expect=cap_reached=true stages=1:done,2:pending all_done=false open_stages=1 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=1:done,2:pending all_done=false open_stages=1
+19:28:39 CASE_PASS chain_status_open_stage_keeps_the_state_line 
+19:28:40 CASE_PASS chain_status_open_stage_agrees_with_launcher_stages ledger=1:done,2:pending launcher=1:done,2:pending
+19:28:40 CASE_PASS chain_status_open_stage_agrees_with_launcher_all_done ledger=false launcher=false
+19:28:41 CASE_PASS chain_status_no_records_reads exit=0 line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=none all_done=unknown open_stages=none
+19:28:41 CASE_PASS chain_status_no_records_reports_its_shape expect=cap_reached=true stages=none all_done=unknown open_stages=none line=LEDGER_CHAIN current_stage=2 max_stages=2 cap_reached=true stages=none all_done=unknown open_stages=none
+19:28:41 CASE_PASS chain_status_no_records_keeps_the_state_line 
+19:28:43 CASE_PASS chain_status_no_records_agrees_with_launcher_stages ledger=none launcher=none
+19:28:43 CASE_PASS chain_status_no_records_agrees_with_launcher_all_done ledger=unknown launcher=unknown
+19:28:44 CASE_PASS chain_status_below_cap_reads exit=0 line=LEDGER_CHAIN current_stage=1 max_stages=2 cap_reached=false stages=1:running,2:pending all_done=false open_stages=2
+19:28:44 CASE_PASS chain_status_below_cap_reports_its_shape expect=cap_reached=false stages=1:running,2:pending all_done=false open_stages=2 line=LEDGER_CHAIN current_stage=1 max_stages=2 cap_reached=false stages=1:running,2:pending all_done=false open_stages=2
+19:28:44 CASE_PASS chain_status_below_cap_keeps_the_state_line 
+19:28:45 CASE_PASS chain_status_no_numbers_reads exit=0 line=LEDGER_CHAIN current_stage= max_stages= cap_reached=unknown stages=1:done all_done=true open_stages=0
+19:28:45 CASE_PASS chain_status_no_numbers_reports_its_shape expect=cap_reached=unknown stages=1:done all_done=true open_stages=0 line=LEDGER_CHAIN current_stage= max_stages= cap_reached=unknown stages=1:done all_done=true open_stages=0
+19:28:45 CASE_PASS chain_status_no_numbers_keeps_the_state_line 
+19:28:45 CASE_PASS chain_status_keeps_the_stage_count_distinct the count and the list share a key name; the line prefix must tell them apart
+19:28:48 CASE_PASS auto_finalize_open_stage_is_not_closed 
+19:28:48 CASE_PASS auto_finalize_open_stage_raises_no_warn 
+19:28:48 CASE_PASS auto_finalize_open_stage_leaves_ledger_running status=running
+19:28:48 CASE_PASS auto_finalize_open_stage_still_exits_three exit=3
+19:28:49 CASE_PASS auto_finalize_dry_run_announces_the_skip 
+19:28:49 CASE_PASS auto_finalize_dry_run_writes_nothing status=running
+19:28:49 CASE_PASS auto_finalize_dry_run_still_exits_three exit=3
+19:28:51 CASE_PASS auto_finalize_is_off_by_default status=running
+19:28:51 CASE_PASS auto_finalize_off_keeps_the_cap_fail 
+19:28:59 CASE_PASS auto_finalize_held_lock_is_refused warn=True
+19:28:59 CASE_PASS auto_finalize_held_lock_reason_names_the_gate 
+19:28:59 CASE_PASS auto_finalize_held_lock_leaves_ledger_running status=running
+19:28:59 CASE_PASS auto_finalize_held_lock_still_exits_three exit=3
+19:28:59 CASE_PASS auto_finalize_held_lock_is_not_stolen 
+19:29:03 CASE_PASS auto_finalize_closes_the_chain 
+19:29:03 CASE_PASS auto_finalize_ledger_reaches_done status=done
+19:29:03 CASE_PASS auto_finalize_reports_both_hashes 
+19:29:03 CASE_PASS auto_finalize_swaps_in_its_own_hint 
+19:29:03 CASE_PASS auto_finalize_invents_no_second_reason 
+19:29:03 CASE_PASS auto_finalize_close_still_exits_three exit=3
+19:29:05 CASE_PASS auto_finalize_rerun_reports_exhausted fail=FAIL reason=chain_exhausted current_stage=2 max_stages=2
+19:29:05 CASE_PASS auto_finalize_rerun_never_finalizes_twice 
+19:29:05 CASE_PASS auto_finalize_rerun_exits_three exit=3
+19:29:06 CASE_PASS ephemeral_fake_claude_ran exit=0
+19:29:06 CASE_PASS ephemeral_entry_appears_without_the_switch key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-selftest-20261127-192554-repo-ephemeral
+19:29:07 CASE_PASS ephemeral_spawn_with_switch_exits_zero exit=0
+19:29:07 CASE_PASS ephemeral_spawn_reports_the_cleanup 
+19:29:07 CASE_PASS ephemeral_entry_is_gone_after_the_switch key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-selftest-20261127-192554-repo-ephemeral
+19:29:07 CASE_PASS ephemeral_transcript_is_kept_as_evidence 
+19:29:07 CASE_PASS ephemeral_cleanup_touches_no_other_registry 
+19:29:11 CASE_PASS ephemeral_launcher_install_exit_zero exit=0
+19:29:12 CASE_PASS ephemeral_launcher_carries_the_flag 
+19:29:14 CASE_PASS ephemeral_launcher_is_off_by_default 
+19:29:17 CASE_PASS host_project_install_exit_zero exit=0
+19:29:18 CASE_PASS host_project_mismatch_reported line=WARN host_project_mismatch expected=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28 actual_key=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28\repo-nested reason=host_projects_are_keyed_by_exact_workspace_path hint=the_chain_runs_in_the_repository_root_and_cannot_be_filed_under_another_project; register_the_repository_root_as_a_project_or_re-run_with_-AllowHostMismatch_for_parent_hosting
+19:29:18 CASE_PASS host_project_mismatch_names_the_key repo=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28\repo-nested
+19:29:18 CASE_PASS host_project_mismatch_explains_the_rule line=WARN host_project_mismatch expected=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28 actual_key=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28\repo-nested reason=host_projects_are_keyed_by_exact_workspace_path hint=the_chain_runs_in_the_repository_root_and_cannot_be_filed_under_another_project; register_the_repository_root_as_a_project_or_re-run_with_-AllowHostMismatch_for_parent_hosting
+19:29:20 CASE_PASS host_project_match_is_quiet line=INFO host_project_key exact_workspace_dir=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28\repo-nested
+19:29:20 CASE_PASS host_project_key_always_reported repo=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\container28\repo-nested
+19:29:21 CASE_PASS host_project_mismatch_hard_fails exit=2
+19:29:21 CASE_PASS host_project_mismatch_explains_the_hard_stop exit=2
+19:29:22 CASE_PASS host_project_parent_hosting_is_explicit 
+19:29:22 CASE_PASS parent_hosting_is_not_silent 
+19:29:22 CASE_PASS initiator_session_is_recorded 
+19:29:22 CASE_PASS chain_identity_is_reported 
+19:29:24 CASE_PASS host_project_exact_launch_exit_zero exit=0
+19:29:24 CASE_PASS seed_records_chain_identity 
+19:29:24 CASE_PASS seed_records_host_project 
+19:29:24 CASE_PASS prompt_carries_chain_banner 
+19:29:24 CASE_PASS prompt_names_the_host_project_key 
+19:29:24 CASE_PASS prompt_asks_for_the_project_argument 
+19:29:24 CASE_PASS prompt_never_hands_out_workspace_dir 
+19:29:25 CASE_PASS b25_lock_acquired exit=0 text=LOCK_ACQUIRED holder=sess-a stage=0 ttl_s=600 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\b25\.relay.lock
+
+19:29:26 CASE_PASS b25_prespawn_permit exit=0 text=SPAWN_PERMIT ok nonce=74d946ebfea5447c owner=sess-a stage=1 expires_in_s=300 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\b25\.spawn-permit.json
+NEXT put the nonce into the next prompt, then spawn; the next link must run relay-lock.ps1 -Action verify -SessionId <its own session id> -Nonce 74d946ebfea5447c as its first action
+
+19:29:26 CASE_PASS b25_prespawn_nonce_shape nonce=74d946ebfea5447c
+19:29:27 CASE_PASS b25_second_prespawn_refused exit=3 text=SPAWN_REFUSED reason=permit_outstanding nonce=74d946ebfea5447c expires_at=11/27/2026 19:34:26
+
+19:29:28 CASE_PASS b25_verify_wrong_nonce exit=3 text=PERMIT_INVALID reason=nonce_mismatch permit_nonce=74d946ebfea5447c
+
+19:29:29 CASE_PASS b25_verify_consumes_permit exit=0 text=SPAWN_VERIFIED ok nonce=74d946ebfea5447c from=sess-a to=sess-b driver_adopted=false stage=0
+
+19:29:29 CASE_PASS b25_permit_single_use exit=3 text=PERMIT_INVALID reason=permit_consumed consumed_by=sess-b
+
+19:29:31 CASE_PASS b25_job_registered exit=0 text=JOB_REGISTERED pid=286500 owner=sess-b total=1
+
+19:29:31 CASE_PASS b25_live_job_blocks_spawn exit=5 text=SPAWN_REFUSED reason=background_jobs_live owner=sess-b pids=286500 hint=clear them with -Action job-clear once they finished
+
+19:29:34 CASE_PASS b25_prespawn_after_job_clear exit=0 text=SPAWN_PERMIT ok nonce=b3a7cf98533b4d4a owner=sess-b stage=2 expires_in_s=300 path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\b25\.spawn-permit.json
+NEXT put the nonce into the next prompt, then spawn; the next link must run relay-lock.ps1 -Action verify -SessionId <its own session id> -Nonce b3a7cf98533b4d4a as its first action
+
+19:29:36 CASE_PASS b25_stop_blocks_spawn exit=3 text=SPAWN_REFUSED reason=chain_stopped note=selftest path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\b25\.stop
+
+19:29:37 CASE_PASS b25_stop_blocks_verify exit=3 text=PERMIT_INVALID reason=chain_stopped note=selftest
+
+19:29:40 CASE_PASS b25_permit_still_outstanding exit=3 text=SPAWN_REFUSED reason=permit_outstanding nonce=b3a7cf98533b4d4a expires_at=11/27/2026 19:34:33
+
+19:29:41 CASE_PASS b25_gate_status_line exit=0 text=GATE holder=sess-b stop=no permit=outstanding jobs_live=0 pids= lock=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554\b25\.relay.lock
+
+19:29:42 CASE_PASS b25_lock_not_mine exit=5 text=SPAWN_REFUSED reason=lock_not_mine holder=sess-b requester=sess-zzz
+
+19:29:42 CASE_PASS lock_param_not_shadowing_PID hits=0
+19:29:42 SUITE_END pass=368 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554
+19:29:42 MANUAL_STEP real_session_activation: this suite never calls session_create. One live chain per changed kit is still an agent-side step; see tool\references\selftest-*.md for how it was last verified.

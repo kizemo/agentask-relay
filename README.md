@@ -1,4 +1,4 @@
-# agentask-relay — the unattended relay kit (`relay-port`)
+# agentask-relay — the unattended relay kit (`agentask-relay`)
 
 [![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
 
@@ -59,8 +59,8 @@ Concretely, installing the kit gives the target repository:
 
 ### 3.2 Install into a target project
 
-The tool is published as a global skill at `<MCode data dir>\skills\relay-port\`
-(on Windows: `%USERPROFILE%\.minimax\.minimax\skills\relay-port\`). This
+The tool is published as a global skill at `<MCode data dir>\skills\agentask-relay\`
+(on Windows: `%USERPROFILE%\.minimax\.minimax\skills\agentask-relay\`). This
 repository is its source of truth and working copy.
 
 ```powershell
@@ -229,7 +229,7 @@ synced for its sake.
 | | Role | When to change |
 |---|---|---|
 | `tool\` (this repository) | working surface / source of truth / evolution spot | when changing the tool |
-| `<MCode data dir>\skills\relay-port\` | the copy sessions actually load | after a change here passes the selftest, **sync it over** |
+| `<MCode data dir>\skills\agentask-relay\` | the copy sessions actually load | after a change here passes the selftest, **sync it over** |
 
 Sync with `scripts\publish-relay.ps1 -Direction publish`, which covers
 `SKILL.md`, `scripts\`, `templates\`, `references\` and re-verifies every file.

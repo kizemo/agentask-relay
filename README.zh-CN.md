@@ -1,4 +1,4 @@
-# agentask-relay —— 无人值守接力装置（`relay-port`）
+# agentask-relay —— 无人值守接力装置（`agentask-relay`）
 
 [![selftest](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml/badge.svg)](https://github.com/kizemo/agentask-relay/actions/workflows/selftest.yml)
 
@@ -56,8 +56,8 @@
 
 ### 3.2 装进目标项目
 
-工具以全局 skill 形式发布在 `<MCode 数据目录>\skills\relay-port\`
-（Windows 上是 `%USERPROFILE%\.minimax\.minimax\skills\relay-port\`）。
+工具以全局 skill 形式发布在 `<MCode 数据目录>\skills\agentask-relay\`
+（Windows 上是 `%USERPROFILE%\.minimax\.minimax\skills\agentask-relay\`）。
 本仓库是它的真源与工作副本。
 
 ```powershell
@@ -199,7 +199,7 @@ pwsh -NoProfile -File scripts\publish-relay.ps1 -Direction publish   # 本仓库
 | | 角色 | 什么时候动 |
 |---|---|---|
 | `tool\`（本仓库） | 工作面 / 真源 / 演进位 | 改工具时 |
-| `<MCode 数据目录>\skills\relay-port\` | 会话真正加载的那份 | 本仓库改动过了自测之后，**同步过去** |
+| `<MCode 数据目录>\skills\agentask-relay\` | 会话真正加载的那份 | 本仓库改动过了自测之后，**同步过去** |
 
 用 `scripts\publish-relay.ps1 -Direction publish` 同步，覆盖 `SKILL.md`、`scripts\`、
 `templates\`、`references\`，并逐件复核。改完装置模板后 `device\` 必须与真源逐字一致

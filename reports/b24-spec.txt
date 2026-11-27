@@ -1,0 +1,325 @@
+###EDIT scripts\selftest.ps1
+###OLD###
+Check 'host_project_key_always_reported' ($b28.Text -match 'INFO host_project_key exact_workspace_dir=' + [regex]::Escape($repo28)) ('repo=' + $repo28)
+
+# --- verdict -------------------------------------------------------------------
+###NEW###
+Check 'host_project_key_always_reported' ($b28.Text -match 'INFO host_project_key exact_workspace_dir=' + [regex]::Escape($repo28)) ('repo=' + $repo28)
+
+# B24: the launcher must stop handing out workspace_dir -- that argument is what makes
+# the host insert a project row of its own -- and it must hard-stop when the recorded
+# host project is not the directory the chain runs in. Three scenes, because "warn and
+# continue" and "stop" are indistinguishable from a single dry run: mismatch without the
+# switch (must exit 2), mismatch with the switch (parent hosting), and an exact launch
+# whose ledger seed and prompt carry the chain identity.
+Set-Content -LiteralPath $expectFile28 -Value $container28 -Encoding utf8
+$f28 = Run (Join-Path $repo28 'docs\relay\start-relay.ps1') @('-Target', 'e28', '-MaxStages', '2')
+Check 'host_project_mismatch_hard_fails' ($f28.Code -eq 2) ('exit=' + $f28.Code)
+Check 'host_project_mismatch_explains_the_hard_stop' ($f28.Text -match 'FAIL reason=host_project_mismatch' -and $f28.Text -match 'rule=sessions_are_filed_under_the_exact_session_directory') ('exit=' + $f28.Code)
+$p28 = Run (Join-Path $repo28 'docs\relay\start-relay.ps1') @('-Target', 'e28', '-MaxStages', '2', '-DryRun', '-AllowHostMismatch', '-InitiatorSession', 'mvs_case28')
+Check 'host_project_parent_hosting_is_explicit' ($p28.Text -match 'mode=parent') ''
+Check 'parent_hosting_is_not_silent' ($p28.Text -match 'reason=explicit_allow_host_mismatch') ''
+Check 'initiator_session_is_recorded' ($p28.Text -match 'initiator_session=mvs_case28') ''
+Check 'chain_identity_is_reported' ($p28.Text -match 'chain_id=relay-chain-\d{8}-\d{6}' -and $p28.Text -match 'chain_tag=\d{4}-\d{4}') ''
+# exact launch: the project key equals the directory the session runs in, so the chain
+# lands in the project that already exists instead of inserting a new row.
+$ledger28 = Join-Path $repo28 'docs\relay.json'
+if (Test-Path -LiteralPath $ledger28) { Remove-Item -LiteralPath $ledger28 -Force }
+Set-Content -LiteralPath $expectFile28 -Value $repo28 -Encoding utf8
+$r28 = Run (Join-Path $repo28 'docs\relay\start-relay.ps1') @('-Target', 'e28', '-MaxStages', '2', '-InitiatorSession', 'mvs_case28', '-ExpectedHostProject', $repo28)
+Check 'host_project_exact_launch_exit_zero' ($r28.Code -eq 0) ('exit=' + $r28.Code)
+$seed28 = $null
+if (Test-Path -LiteralPath $ledger28) { $seed28 = Get-Content -LiteralPath $ledger28 -Raw -Encoding UTF8 | ConvertFrom-Json }
+Check 'seed_records_chain_identity' ($null -ne $seed28 -and [string]$seed28.chain_id -like 'relay-*' -and [string]$seed28.chain_tag -match '^\d{4}-\d{4}$' -and [string]$seed28.initiator_session -eq 'mvs_case28') ''
+Check 'seed_records_host_project' ($null -ne $seed28 -and [string]$seed28.host_project -eq $repo28 -and [string]$seed28.host_project_mode -eq 'exact') ''
+$prompt28 = ''
+$prompt28Path = Join-Path $repo28 'docs\relay\next-relay-prompt.txt'
+if (Test-Path -LiteralPath $prompt28Path) { $prompt28 = [IO.File]::ReadAllText($prompt28Path) }
+Check 'prompt_carries_chain_banner' ($prompt28 -match 'CHAIN relay-chain-\d{8}-\d{6} \| link relay-01of02 \| started ' -and $prompt28 -match '\| initiator mvs_case28 \| host project ') ''
+Check 'prompt_names_the_host_project_key' ($prompt28 -match ('host project ' + [regex]::Escape($repo28) + ' \(exact\)')) ''
+Check 'prompt_asks_for_the_project_argument' ($prompt28 -match 'project=') ''
+Check 'prompt_never_hands_out_workspace_dir' ((-not ($prompt28 -match 'workspace_dir\s*=')) -and (-not ($prompt28 -match '"workspace_dir"'))) ''
+
+# --- verdict -------------------------------------------------------------------
+###END###
+
+###EDIT tool\templates\AGENT-RELAY.md
+###OLD###
+mcp_invoke(
+  tool_name = "session_create",
+  arguments = {
+    "agent_name": "me",
+    "title": "relay-<NN>of<MM>-<阶段短名>",
+    "workspace_dir": "<relay.json.workspace_dir，必须显式传>",
+    "content": "<§4 的接力 prompt 正文，把 <N> 换成 <N+1>>"
+  }
+)
+###NEW###
+mcp_invoke(
+  tool_name = "session_create",
+  arguments = {
+    "agent_name": "me",
+    "title": "relay-<NN>of<MM>-<阶段短名> [<relay.json.chain_tag>]",
+    "project": "<relay.json.host_project，必须与 project_list 的某一项逐字相等>",
+    "content": "<§4 的接力 prompt 正文，把 <N> 换成 <N+1>>"
+  }
+)
+###END###
+
+###EDIT tool\templates\AGENT-RELAY.md
+###OLD###
+- 返回 `ok:true` 且 `turn.mode:"activated"` ⇒ 新会话**已自动开跑**，不需要人在场点发送。
+- 若新会话的 `location.workspace_dir` 落到了 `...sessions\<sid>\workspace` 之类的私有临时目录，
+  说明 `workspace_dir` 没生效 ⇒ **这一环等于没接上**，必须重投或写 `blocked`。
+- 注意 `mavis` 的 `session create` 子命令不存在（报 `SESSION_CREATE_MOVED`），必须走 tool_search + mcp_invoke。
+###NEW###
+- 返回 `ok:true` 且 `turn.mode:"activated"` ⇒ 新会话**已自动开跑**，不需要人在场点发送。
+- **只传 `project`，禁传 `workspace_dir`**：两者互斥，同时传会被 `SESSION_CREATE_INVALID_ARGUMENT` 拒绝；
+  而 `workspace_dir` 会让宿主按该目录**精确匹配**项目，匹配不到就**自动插一行新项目**——这就是侧栏里
+  「凭空多出一个项目」的唯一成因。
+- `project` 的值**必须先在 `project_list` 里逐字找到**（等于某个项目的 `workspace_dir`）。找不到 ⇒
+  **写 `blocked`，绝不回退传 `workspace_dir`**：回退等于给这个仓库新建一个项目行。
+- 若新会话的 `location.workspace_dir` 落到了 `...sessions\<sid>\workspace` 之类的私有临时目录，
+  说明 `project` 没被解析到 ⇒ 这一环等于没接上，写 `blocked` 重投，**不要补传 `workspace_dir`**。
+- 注意 `mavis` 的 `session create` 子命令不存在（报 `SESSION_CREATE_MOVED`），必须走 tool_search + mcp_invoke。
+###END###
+
+###EDIT tool\templates\AGENT-RELAY.md
+###OLD###
+0. 工作区就是本仓库根。先读 docs/relay.json 与 docs/agent-relay.md（本协议），再读 relay.json.plan_doc。
+###NEW###
+0. 仓库根见 relay.json.workspace_dir；会话 cwd 不一定是它（host_project_mode=parent 时跑在父目录），
+   所以一切路径写绝对路径、git 一律 `git -C <repo>`。先读 docs/relay.json 与 docs/agent-relay.md（本协议），再读 relay.json.plan_doc。
+###END###
+
+###EDIT tool\templates\AGENT-RELAY.md
+###OLD###
+   3.3 调 session_create 开下一环：workspace_dir 沿用 relay.json.workspace_dir，
+       title="relay-<NN>of<MM>-<阶段短名>"，content 用本段正文、<N> 换成 <N+1>，
+       并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
+###NEW###
+   3.3 调 session_create 开下一环：project 沿用 relay.json.host_project（先在 project_list 里逐字确认），
+       **禁传 workspace_dir**；title="relay-<NN>of<MM>-<阶段短名> [<chain_tag>]"，content 用本段正文、
+       <N> 换成 <N+1>，并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
+       匹配不到 project ⇒ 写 blocked，不得回退传 workspace_dir。
+###END###
+
+###EDIT tool\templates\AGENT-RELAY.md
+###OLD###
+  `current_stage`，并在收尾时按 §3 自行 `session_create` 接力下一环（**必须显式传 workspace_dir**）。
+###NEW###
+  `current_stage`，并在收尾时按 §3 自行 `session_create` 接力下一环（**必须显式传 project=<relay.json.host_project>，禁传 workspace_dir**）。
+###END###
+
+###EDIT tool\templates\ACTIVATION-SPAWN-mcode.md
+###OLD###
+Start the next link with the built-in `session_create` tool: pass only `agent_name` / `title` / `workspace_dir` (backslash absolute path) / `model` / `content`; never pass `effort` / `defer_first_turn` / `parent_session_id`.
+###NEW###
+Start the next link with the built-in `session_create` tool: pass only `agent_name` / `title` / `project` (the exact backslash absolute path from `relay.json.host_project`, and it must appear verbatim in `project_list`) / `model` / `content`; never pass `workspace_dir` (the host keys projects by that exact directory and inserts a new row when it does not match) / `effort` / `defer_first_turn` / `parent_session_id`.
+###END###
+
+###EDIT tool\templates\ACTIVATION-SPAWN-mcode.md
+###OLD###
+  title        : "relay-01of<MM>-<short stage name>",
+  workspace_dir: "{{REPO}}",
+###NEW###
+  title        : "relay-01of<MM>-<short stage name> [<chain_tag>]",
+  project      : "<the value the launcher printed as OK host_project_value value=...>",
+###END###
+
+###EDIT tool\templates\ACTIVATION-SPAWN-mcode.md
+###OLD###
+Never pass `effort` / `defer_first_turn` / `parent_session_id` (the schema has no such fields).
+`workspace_dir` must be the backslash absolute path above; a forward slash silently lands
+in a private workspace, which means the link never sees the repo.
+###NEW###
+Never pass `effort` / `defer_first_turn` / `parent_session_id` (the schema has no such fields).
+Never pass `workspace_dir` either: `project` and `workspace_dir` are mutually exclusive, and
+`workspace_dir` files the session under a project keyed by that exact directory -- which is
+how a chain ends up adding a project row of its own. In the default exact mode the value above
+is `{{REPO}}`; when the launcher reports `mode=parent` it is the parent directory instead, and
+the prompt already forces absolute paths. If that value is not verbatim in `project_list`,
+write `blocked` instead of starting the link; never fall back to `workspace_dir`.
+`chain_tag` is what the launcher printed as `OK chain_tag=...`: it goes into the title so two
+chains stay distinguishable in the sidebar and the newest link is identifiable.
+###END###
+
+###EDIT tool\templates\ACTIVATION-SPAWN-mcode.md
+###OLD###
+mavis session get {"session_id":"<new id>"} -- check `workspace_dir` / `effective_model` / `status`.
+###NEW###
+mavis session get {"session_id":"<new id>"} -- check `project_id` / `workspace_dir` / `effective_model` / `status`;
+`project_id` must be the project whose key you passed, and `workspace_dir` must not be a private
+`sessions\<sid>\workspace` directory.
+###END###
+
+###EDIT tool\SKILL.md
+###OLD###
+## 链条的项目归属（B23）
+###NEW###
+## 链条的项目归属（B24：只传 project，错配硬停）
+###END###
+
+###EDIT tool\SKILL.md
+###OLD###
+**宿主按「会话的工作目录」分项目：一个目录一个项目，没有包含关系。** 接力链的会话 cwd = 仓库根 ⇒ 它必然落在「仓库根」那一个项目名下。仓库被放在别的目录下时（`...\filemanager\sigma-file-manager`），链看上去就「排进了另一个项目」。
+
+- 这不是装置的 bug，是宿主的分组模型：探针实测 `session_create` 同时给 `project` 和 `workspace_dir` 会被直接拒绝（只能填一个），只给 `project` 也只是「在该目录里跑」，不认父项目。
+- **不要**为了迁就项目归属把 cwd 改成外层目录：相对写入会落错目录，`git` 也不在仓库里。
+- 装置能做的只有让错配**可见**：启动器每次打 `INFO host_project_key exact_workspace_dir=<仓库根>`；若 `docs\relay\host-project.txt`（或 `-ExpectedHostProject`）记的期望项目 ≠ 仓库根，再打 `WARN host_project_mismatch expected=... actual_key=...`。
+- 要让链条显示在别的项目名下，只能在客户端**给项目改名**——会话本身换不了项目。
+- 机制、探针与现场数据见 `references\mcode-project-registry.md`。
+###NEW###
+**宿主按「会话的工作目录」分项目：一个目录一个项目，没有包含关系。** 探针实测：`session_create` 同时给 `project` 和 `workspace_dir` 会被直接拒绝（只能填一个）；只给 `workspace_dir` 时，宿主按该目录**精确匹配**项目，匹配不到就**自动插一行新项目**。
+
+- **这就是「relay 的会话在侧栏里凭空多出一个项目」的唯一成因**：旧版装置一直教下一环传 `workspace_dir=<仓库根>`，于是每次起链都在重复「插入新项目行」这个动作。
+- **B24 硬规则：起环只传 `project=<host_project 精确键>`，禁传 `workspace_dir`。** 键来源 `-ExpectedHostProject` > `docs\relay\host-project.txt` > 缺省仓库根；启动器恒打 `OK host_project_key exact_workspace_dir=` 与 `OK host_project_value value=... source=... mode=...`。
+- **错配默认硬停**：键 ≠ 仓库根 ⇒ `FAIL reason=host_project_mismatch` + `exit 2`（`-DryRun` 只 WARN，便于预览）。要让链跑在已注册的父项目目录下，必须显式 `-AllowHostMismatch`（`mode=parent`，prompt 把全部路径改绝对、git 改 `git -C <repo>`）。
+- **prompt 内置自检**：新建会话前必须先在 `project_list` 里逐字找到该键；找不到 ⇒ 写 `blocked`，**绝不回退传 `workspace_dir`**（回退就等于给这个仓库新建一个项目）。
+- **链的身份可见**：传 `-InitiatorSession <sid>`；台账 seed 记 `host_project` / `host_project_mode` / `chain_id` / `chain_tag` / `initiator_session`；每条会话标题末尾追加 `[<chain_tag>]`（如 `relay-02of06-批次73 [1127-1432]`），侧栏即可区分两条链并认出最新一环；prompt 首行是 `CHAIN <chain_id> | link <linkTag> | started ... | initiator ... | host project ... (...)`。
+- 机制、探针与现场数据见 `references\mcode-project-registry.md`。
+###END###
+
+###EDIT tool\SKILL.md
+###OLD###
+# 退出码 0 可起链 / 2 工作区非法、不是 git 仓库、计划文档解析不出来（plan_doc_missing / plan_doc_not_found）/
+#         3 已有链在跑或台账 blocked、耗尽 / 4 锁拿不到
+###NEW###
+# 退出码 0 可起链 / 2 工作区非法、不是 git 仓库、计划文档解析不出来（plan_doc_missing / plan_doc_not_found）/
+#         host_project_mismatch（期望项目 ≠ 仓库根，且没给 -AllowHostMismatch）/
+#         3 已有链在跑或台账 blocked、耗尽 / 4 锁拿不到
+###END###
+
+###EDIT tool\SKILL.md
+###OLD###
+# 干跑（只校验不起链）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -DryRun
+###NEW###
+# 干跑（只校验不起链）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -DryRun
+# 起链时把发起会话的 id 记进链身份（台账 chain_* / initiator_session、标题后缀、prompt 首行都靠它）
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -InitiatorSession '<你的 sessionId>'
+# 仓库在别的目录下（期望项目 = 已注册的父目录）：显式托管，prompt 会强制绝对路径
+pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\start-relay.ps1' -Target '<批次>' -ExpectedHostProject '<父项目绝对路径>' -AllowHostMismatch
+###END###
+
+###EDIT tool\SKILL.md
+###OLD###
+起环参数（`session_create`）：只传 `agent_name` / `title` / `workspace_dir`（**反斜杠绝对路径**）/ `model` / `content`。
+**禁止**传 `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。建环后立刻 `session get` 回读 `workspace_dir` / `effective_model` / `status` 三要素。
+###NEW###
+起环参数（`session_create`）：只传 `agent_name` / `title` / `project=<relay.json.host_project 精确键>` / `model` / `content`。
+**禁止**传 `workspace_dir`（与 `project` 互斥，且会按目录新建项目行）/ `effort` / `defer_first_turn` / `parent_session_id`（schema 无此字段）。
+建环后立刻 `session get` 回读 `project_id` / `workspace_dir` / `effective_model` / `status`：`project_id` 必须等于期望项目，`workspace_dir` 不许落进 `...sessions\<sid>\workspace`。
+###END###
+
+###EDIT tool\references\mcode-project-registry.md
+###OLD###
+# MCode 侧栏项目归属机制（B23 实测）
+###NEW###
+# MCode 侧栏项目归属机制（B23 实测 → B24 处置）
+###END###
+
+###EDIT tool\references\mcode-project-registry.md
+###OLD###
+| 把链条会话归到外层（父目录）项目 | **不能**（探针 B 已否证） |
+###NEW###
+| 把链条会话归到外层（父目录）项目 | 只能用 `project=<父项目精确键>` + `-AllowHostMismatch`：会话 cwd 落到父目录，prompt 强制绝对路径；`project` + `workspace_dir` 同时传仍被拒（探针 B） |
+###END###
+
+###EDIT tool\references\mcode-project-registry.md
+###OLD###
+| 把已有会话迁到另一个项目 | 不能靠参数；客户端只能给**项目改名**，会话不能换项目 |
+###NEW###
+| 把已有会话迁到另一个项目 | 不能靠参数；客户端只能给**项目改名**，会话不能换项目（B24 未变） |
+###END###
+
+###EDIT tool\references\mcode-project-registry.md
+###OLD###
+## 4. 现场结论（filemanager 案例，数字为盘上回读）
+###NEW###
+## 4. 现场结论（filemanager 案例；下列数字是 B23 当时快照，B24 未复测）
+###END###
+
+###EDIT tool\references\mcode-project-registry.md
+###OLD###
+###NEW###
+---
+
+## 6. B24：装置侧的处置（只传 `project`，错配硬停）
+
+B23 的结论是「宿主按精确目录分组」，但装置当时仍然把 `workspace_dir` 交给 `session_create`——于是每次起链都在重复「插入新项目行」这个动作，只是多打了一条 WARN。B24 把这条路径掐掉：
+
+| 动作 | B24 的行为 |
+|---|---|
+| 起环参数 | `project=<host_project>`，**不再传 `workspace_dir`**；prompt 里写明「先在 `project_list` 逐字确认，找不到就写 `blocked`，绝不回退」 |
+| 键从哪来 | `-ExpectedHostProject` > `docs\relay\host-project.txt` > 缺省 = 仓库根；恒打 `OK host_project_key exact_workspace_dir=` 与 `OK host_project_value value=... source=... mode=...` |
+| 键 ≠ 仓库根 | 默认 `FAIL reason=host_project_mismatch` + `exit 2`（`-DryRun` 只 WARN）；要跑在父项目目录下必须显式 `-AllowHostMismatch` ⇒ `mode=parent`，prompt 全部路径改绝对、git 改 `git -C <repo>` |
+| 链的身份 | 传 `-InitiatorSession <sid>`；台账 seed 记 `host_project` / `host_project_mode` / `chain_id` / `chain_tag` / `initiator_session`；标题追加 `[<chain_tag>]`；prompt 首行 `CHAIN <chain_id> \| link <linkTag> \| started ... \| initiator ... \| host project ... (...)` |
+
+**已验证 / 未验证（不夸大）**：装置侧的判定、退出码、seed 字段、prompt 首行与标题后缀由 `scripts\selftest.ps1` case 28 的断言覆盖（`host_project_mismatch_hard_fails` / `host_project_parent_hosting_is_explicit` / `seed_records_chain_identity` / `prompt_carries_chain_banner` 等），可复跑。**未验证**的是宿主行为本身：`project=<父项目键>` 在「仓库根未注册、父目录已注册」时是否被接受，仍没有真链实测；B24 的设计因此不依赖宿主语义——只允许 `project_list` 里逐字存在的键，命中不到就 blocked，所以最坏结果是「链停下来等人」，不是「又新建一个项目」。
+###END###
+
+###PHASE 2
+
+###EDIT HANDOFF.md
+###OLD###
+###NEW###
+
+---
+
+## B24 · 起环不再传 workspace_dir，错配硬停，链身份可见（2026-11-27）
+
+**用户指令（原话）**：「一个项目中，relay出的会话一定要保持在原项目中，不可以新建项目……哪个是最晚的会话，接力任务从哪个会话的Prompt发起，当前已经完全看不出来了……尤其重要，是修正relay工具，后续绝对不能出现这种严重的问题。」
+
+**根因**：`device\start-relay.ps1` 的 mcode 提示一直教下一环传 `workspace_dir=<仓库根>`。宿主的建会话触发器按 `project_workspace_dir` **精确匹配**项目，匹配不到就**自动插一行新项目**（`trg_local_runtime_project_session_insert_v5`）。所以「侧栏凭空多出一个项目」不是偶发，是装置每次起链的必然结果。
+
+**改动（本轮，模板与 device 逐字一致）**
+
+1. `tool\templates\start-relay.ps1`（717 行，纯 ASCII）
+   - `param` 新增 `-InitiatorSession`、`-AllowHostMismatch`；`-ExpectedHostProject` 语义改为「既是期望值，也是要传给 `project=` 的键」。
+   - 新增 section 1d：恒打 `OK host_project_key exact_workspace_dir=`；键来源 `-ExpectedHostProject` > `docs\relay\host-project.txt` > 仓库根；键 ≠ 仓库根 ⇒ 默认 `FAIL reason=host_project_mismatch` + `exit 2`，`-AllowHostMismatch` 才放行（`mode=parent`），`-DryRun` 只 WARN。
+   - 新增 section 1e：`chain_id`（`relay-chain-yyyyMMdd-HHmmss`）/ `chain_tag`（`MMdd-HHmm`）/ `initiator_session`，空则 `WARN initiator_session_missing`。
+   - 台账 seed 新增 `host_project` / `host_project_mode` / `chain_id` / `chain_tag` / `initiator_session`。
+   - 下一环提示改为 `project=<host_project>`，明写 never pass `workspace_dir`；标题规则追加 `[<chain_tag>]`；新增 `$hostRule`（`project=` 必须逐字命中 `project_list`，命中不到写 blocked）；parent 模式下全部路径改绝对、`docs\relay\` 改绝对、git 改 `git -C`。
+   - prompt 首行改为 `CHAIN <chain_id> | link <linkTag> | started ... | initiator ... | host project ... (...)`。
+2. 同批改口径的四份文档：`tool\templates\AGENT-RELAY.md`（§3 调用配方与禁传条款、§4 第 0 步与 3.3、§7 那 6 行）、`tool\templates\ACTIVATION-SPAWN-mcode.md`（SPAWN_RULE、STEP 2 配方、禁传说明、STEP 4 回读 `project_id`）、`tool\SKILL.md`（B23 章改写为 B24、起环参数、退出码、`-InitiatorSession` 用法）、`tool\references\mcode-project-registry.md`（§3 结论修正 + 新增 §6「B24 处置」）。
+3. `scripts\selftest.ps1` case 28 新增 12 条断言：`host_project_mismatch_hard_fails` / `host_project_mismatch_explains_the_hard_stop` / `host_project_parent_hosting_is_explicit` / `parent_hosting_is_not_silent` / `initiator_session_is_recorded` / `chain_identity_is_reported` / `host_project_exact_launch_exit_zero` / `seed_records_chain_identity` / `seed_records_host_project` / `prompt_carries_chain_banner` / `prompt_names_the_host_project_key` / `prompt_asks_for_the_project_argument` / `prompt_never_hands_out_workspace_dir`。
+
+**门禁实数（本机复跑）**：@@SUITE@@；`SELFTEST_EXIT=@@EXIT@@`；raw 日志 `@@RAWLOG@@`。
+
+**已验证**：上述断言全绿（可复跑 `scripts\selftest.ps1`）；模板与 device SHA256 一致；`.ps1` 纯 ASCII 无 BOM、`.md`/`.txt` CR=0。
+
+**未验证（不许当成已成立）**：① `project=<父项目精确键>` 是否被宿主接受，没有真链实测（B23 探针 A 只证了「子目录键 ⇒ 新建项目」，探针 B 证了「`project`+`workspace_dir` 互斥」）。装置的设计不依赖它：只允许 `project_list` 里逐字存在的键，命中不到就 blocked，最坏结果是链停下等人。② 侧栏 UI 里「进入会话不显示归属项目」这个症状没有截图证据（本会话无 computer-use），数据层只能证 `project_id` / `workspace_dir` 齐备。③ filemanager 的链仍停在阶段 4（第 4 环 `status=error`，台账 `running`），本轮未动对方仓库。
+
+**后续候选（未获授权）**：① 用 `-AllowHostMismatch -ExpectedHostProject F:\soft\00selfmade\filemanager` 起一条真链，实测父项目托管；② 把修好的 `docs\relay\*.ps1` 重装进 filemanager 仓库；③ 处置侧栏 `sigma-file-manager`（4 个链环会话）与 4 个夹具项目（`tool` / `repo` / `repo` / `probe-ws`）；④ 清理容器根散落产物、3 个 `_relay-port-*` 夹具仓库、`%TEMP%\relay-*`（排除 `relay-port-selftest`）。
+
+**留证**：raw `@@RAWLOG@@`；规范化文本 `tool\references\selftest-2026-11-27-b24.txt`（@@BYTES@@ B / @@LINES@@ 行 / CR=0 / SHA256 `@@SHA@@`）+ 同名 `.md`。
+
+> 上一版 B23 节里那张「应用层修复：侧栏命名对齐（已执行）」表记录的是**被用户否决并已退回**的操作（项目 7 已复名 `filemanager`，项目 2565 复名 `sigma-file-manager`），不得当作现行结论。
+###END###
+
+###EDIT tool\references\selftest-2026-11-27-b24.md
+###OLD###
+###NEW###
+# 自测留证 · B24（2026-11-27）
+
+- 触发：`tool\templates\start-relay.ps1` 改为「起环只传 `project`、错配硬停、链身份可见」，同批改 4 份文档与 case 28 断言。
+- 运行：`pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\selftest.ps1 -EvidencePath reports\selftest-b24-20261127.log`
+- 结果：@@SUITE@@（`SELFTEST_EXIT=@@EXIT@@`）
+- raw：`reports\selftest-b24-20261127.log`；规范化文本 `tool\references\selftest-2026-11-27-b24.txt`（@@BYTES@@ B / @@LINES@@ 行 / CR=0 / SHA256 `@@SHA@@`）
+
+## 覆盖点（case 28）
+
+| 断言 | 断言什么 |
+|---|---|
+| `host_project_mismatch_hard_fails` | 期望项目 ≠ 仓库根且没给开关 ⇒ `exit 2`（旧版是 WARN 后继续） |
+| `host_project_mismatch_explains_the_hard_stop` | 判据行带 `rule=sessions_are_filed_under_the_exact_session_directory` |
+| `host_project_parent_hosting_is_explicit` / `parent_hosting_is_not_silent` | 只有显式 `-AllowHostMismatch` 才 `mode=parent`，且打 `reason=explicit_allow_host_mismatch` |
+| `initiator_session_is_recorded` / `chain_identity_is_reported` | `chain_id` / `chain_tag` / `initiator_session` 三件在控制台可见 |
+| `seed_records_chain_identity` / `seed_records_host_project` | 台账 seed 真的落了 5 个新字段 |
+| `prompt_carries_chain_banner` / `prompt_names_the_host_project_key` | prompt 首行带链身份与宿主项目值 |
+| `prompt_asks_for_the_project_argument` / `prompt_never_hands_out_workspace_dir` | prompt 教的是 `project=`，且全文不再出现 `workspace_dir=` 或 `"workspace_dir"` |
+
+> 本套件不调 `session_create`：真链激活仍是 agent 侧动作（见日志里的 `MANUAL_STEP` 行）。
+###END###

@@ -1805,3 +1805,740 @@ B21 全部改动随本节一并提交：改 `reports\b20-verify-finalize.ps1`；
 `MANIFEST.txt` 由 `refresh-manifest.ps1` 在最后一步重算（`MANIFEST_BYTES=9895`）。
 按用户本轮授权**只提交、不推送**。本文件改动后又重跑了一次 `refresh-manifest.ps1`，
 所以本文件自身的内容摘要与最终 `MANIFEST.txt` 一致；核对当前 HEAD 请现跑 `git rev-parse HEAD`。
+
+## 批次 B22 实录（2026-11-27 09:5x → 11:1x）—— cc-haha「新建了很多项目」的根因：Claude Code 用户级项目登记册被验证夹具污染
+
+### 背景与用户诉求
+
+用户在 cc-haha（Claude Code 桌面端）里用 relay-port 接力，**链子没有进原来的项目，侧栏反而多出一堆从没见过的新项目**，
+造成「严重混乱」。用户明确要求：**查原因并分析解决**，且要**判断是否造成了项目 bug**。
+
+### 结论（定性）
+
+**不是 cc-haha 的 bug，也不是链接接错了项目。** 是**装置侧缺陷**：relay-port 自己的**真链验证**用
+`%TEMP%` 下的一次性 git 夹具当工作区，而 Claude Code 按 **cwd** 把每个会话登记到**用户级**
+`<profile>\.claude\projects\<mangled-cwd>\`；cc-haha 自己没有 projects 表，它**直接把那个目录当项目列表渲染**。
+于是每一次夹具验证都在用户登记册里落一个条目，夹具删了条目还在 ⇒「新建了很多项目」。
+
+链接落点一直是对的：ecclaw 真链全部落在 `F--soft-00selfmade-ecclaw`（142 个 jsonl，cwd 均为
+`F:\soft\00selfmade\ecclaw`）。责任在装置（验证方式 + 产物清理），不在桌面端。
+
+### 已验证（有盘上判据）
+
+1. **登记册即项目列表**：`cc-haha\db\index-v1.sqlite` **没有** `projects` 表；`~/.claude/projects` 下 29 个目录
+   与侧栏条目一一对应；mangled 规则 = 路径非字母数字全换 `-`。
+2. **污染源定位**：登记册里的夹具条目与 cc-haha 侧栏那批 `repo` / `e1`~`e4` / `d1`~`d4` 一一对应，
+   名字都是 `C--Users-...-Temp-relay-<批次>-...-repo` 形态。
+3. **隔离路线被实测否决**：`reports\iso-probe.ps1`（claude `999.0.0-local`，真调一次 claude：
+   `CLAUDE_EXIT=0`、`session_id=7f013e2f-18be-44f9-bc5b-1b62b50d0b8f`、`total_cost_usd=0.2543`）——
+   `CLAUDE_CONFIG_DIR` 指向的临时目录跑完**一个文件都没有**（`CFG_TREE_BEGIN`/`END` 之间为空），
+   会话仍写用户登记册。⇒ 只能「跑完把条目挪走」。
+4. **处置方案实测成立**：`reports\case27-probe.ps1` —— 坏样本（不带开关）条目留下（`RUN_A_ENTRY_EXISTS=True`），
+   好样本（带开关）`RUN_B_EXIT=0` / `SPAWN_EPHEMERAL_PROJECT_CLEANED` / `RUN_B_ENTRY_EXISTS=False` /
+   `RUN_B_STASH_EXISTS=True` / `RUN_A_ENTRY_STILL_THERE=True`（别的登记册不受影响）。
+5. **存量已清**：16 个夹具条目 + 1 个探针条目用可恢复删除（`mavis-trash.cmd`）清出登记册；
+   误删的真实项目目录 `F--soft-00selfmade-agentask-relay` 已按原样恢复（`RESTORE_VERIFY files=0`）。
+   清理后 29 个目录全部对应真实项目，无 relay/探针残留。
+6. **门禁绿**：`SUITE_END pass=333 fail=0`（B21 基线 323 + 本批 10 条新断言），`SELFTEST_EXIT=0`。
+7. **发布绿**：`DIRECTION=publish STATUS=OK fail=0 warn=2`，`tracked_files=85`；两条 warn 都是
+   `examples\practilog` 的 `SNAPSHOT_DRIFT`（家规 8：只报不同步、**不要为它同步**）。
+8. **装置副本硬不变式**：`copy_matches_template` —— `relay-spawn.ps1 738097D18638B471:21881`、
+   `start-relay.ps1 EB439F43E874A862:36392`、`relay-lock.ps1 23E51FB2619230DC:6429`、
+   `relay-ledger.ps1 032C49C2BE21D1A7:19826`。
+
+### 装置改动（本批）
+
+- `tool\templates\relay-spawn.ps1`：**新增 `-EphemeralWorkspace`**。起子进程前快照候选登记册，
+  子进程跑完把**本次新建的那一条**挪到登记册同级的 `_relay-ephemeral\<key>-<时间戳>\`
+  （**挪走不删、转写留证**；快照里已有的条目绝不碰）。**默认关闭** —— 真实项目必须继续出现在项目列表里，
+  装置无权替用户隐藏真实项目。
+- `tool\templates\start-relay.ps1`：**新增同名开关**，带开关起链时写进 prompt 的 spawn 命令带
+  `-EphemeralWorkspace`，使**链上每一环**自动清理自己那条条目。
+- `device\relay-spawn.ps1` / `device\start-relay.ps1`：与 `tool\templates\` 同名件**逐字一致**（`PAIR_equal=True`）。
+- `scripts\selftest.ps1`：**新增 case 27**（假 `claude.cmd` 真跑两遍，坏样本/好样本各一次）+ 3 条启动器断言。
+- `tool\SKILL.md`：`relay-spawn.ps1` 行补 `-EphemeralWorkspace` 说明与新参考件链接。
+- 新增参考件：`tool\references\claude-project-registry.md`（机制与处置）、`tool\references\selftest-2026-11-27-b22.md`、
+  `tool\references\selftest-2026-11-27-b22.txt`（raw 日志副本）、`tool\references\next-prompt-2026-11-27-b22.txt`。
+- 新增工具（一次性）：`reports\iso-probe.ps1`、`reports\restore-project-dir.ps1`、`reports\case27-probe.ps1`、
+  `reports\next-prompt-capture.ps1`、`reports\sync-cc-haha-skill.ps1`。
+
+### 推断（未单独取证，但与现场一致）
+
+- cc-haha 侧栏缓存了旧目录列表：**需要刷新或重启 cc-haha** 才不再显示被删条目（本轮未在应用内验证）。
+- 该构建忽略 `CLAUDE_CONFIG_DIR` 的原因未查到（不排除是本地 patch 版本），但「忽略」这一**行为**已实测坐实。
+
+### 家规收尾（本轮实数）
+
+| 步骤 | 结果 |
+|---|---|
+| `scripts\selftest.ps1 -EvidencePath reports\selftest-b22-20261127.log` | `SELFTEST_EXIT=0`，`SUITE_END pass=333 fail=0`，根 `relay-port-selftest\20261127-110037`；`MANUAL_STEP real_session_activation` 保留 |
+| 证据落盘 | `tool\references\selftest-2026-11-27-b22.txt` **29854 B / 339 行 / CR=0 / 无 BOM**（源 `reports\selftest-b22-20261127.log` 同尺寸） |
+| `publish-relay.ps1 -Direction publish` | `PUBLISH_EXIT=0`，`STATUS=OK fail=0 warn=2`（两条均 `SNAPSHOT_DRIFT`，家规 8 预期） |
+| `refresh-manifest.ps1` | 最后一步执行；`FILE_COUNT` / `BOM_FILES` / `PS1_NON_ASCII_FILES` / `MD_TXT_CR_TOTAL` / `verdict` 见该脚本输出与 `MANIFEST.txt` |
+| cc-haha 侧副本 | `reports\sync-cc-haha-skill.ps1` 只做**文件复制**（SKILL.md、templates\relay-spawn.ps1、templates\start-relay.ps1、references\claude-project-registry.md），逐件 SHA256 相等；**未 commit / 未 push**（git 写操作是人工验收点） |
+
+### 未验证 / 遗留（结转下一批）
+
+1. **真实 `session_create` 链未复跑**（B20 遗留 #2，用户已留作下批）：本批只做诊断 + 存量清理 + 装置修复 + 门禁，
+   没有起新的真链，因此「带 `-EphemeralWorkspace` 的真链端到端不污染登记册」**尚未在真链上验证**。
+2. **cc-haha 侧栏刷新未在应用内验证**：需要用户在 cc-haha 内刷新/重启后确认那 16 条消失。
+3. **codex / openclaw 真链矩阵**（B18 遗留 1）：本机缺这两个 CLI，需**人工批准安装**。
+4. **本仓库改动是否 commit / push 待用户定**（本批**留在工作树未 commit**）。
+5. **已装在 ecclaw / practilog / rime_claude 的装置副本是否重装（-Force）待用户定**。
+6. `~/.claude/projects` 里的 `E--Temp` 历史遗留条目属既有状态，本批未动。
+
+### 本批工具坑
+
+1. **`CLAUDE_CONFIG_DIR` 在本机构建上不生效** —— 隔离路线实测否决，别再设计第二遍；先查构建行为再定方案。
+2. **`C:\Users\Duanyi\.claude` 是 junction → `E:\Users\Duanyi\.claude`**：回收站只认**真实路径**，
+   用 junction 路径会被拒。恢复误删目录时 `RESTORE_VERIFY files=0` 也要看，别当成功。
+3. **登记册与工作区常跨卷**：`Directory.Move` / `Move-Item` 跨卷不是移动 ⇒ 挪出位置必须在**登记册同级**。
+4. **门禁「代码里不许出现 home 字面量」是硬项**：`$env:USERPROFILE` 也会命中（`-match` 大小写不敏感），
+   正确写法是**运行时推导**（`HOMEDRIVE`+`HOMEPATH`、`ApplicationData` 上溯）。
+5. **假绿防范**：case 27 必须先跑**不带开关**的坏样本，条目没留下就说明夹具根本没写登记册。
+6. **处置是「挪走」不是「删掉」**：转写留证，真实项目的条目绝不能碰（快照里已有的 ⇒ 跳过）。
+
+### 本批工作树状态
+
+改动随本节一并留在工作树（**未 commit**）：改 `tool\templates\relay-spawn.ps1`、`tool\templates\start-relay.ps1`、
+`device\relay-spawn.ps1`、`device\start-relay.ps1`、`scripts\selftest.ps1`、`tool\SKILL.md`、
+`tool\references\claude-project-registry.md`；新增 `tool\references\selftest-2026-11-27-b22.md`、
+`tool\references\selftest-2026-11-27-b22.txt`、`tool\references\next-prompt-2026-11-27-b22.txt` 及 `reports\` 下 5 个一次性脚本。
+`MANIFEST.txt` 由 `refresh-manifest.ps1` 在最后一步重算；核对当前 HEAD 请现跑 `git rev-parse HEAD`。
+
+## 批次 B23 实录（2026-11-27 11:3x → 12:0x）—— MCode 侧同样的症状：项目就是「精确工作目录」，链条归属无法用参数改
+
+### 触发
+
+用户报：「在 Minimax code 也发现同样错误，在项目 filemanager 自动接力的任务，排进了项目 sigma-file-manager，且进入会话，也没有显示会话的归属项目」，
+并要求检查四件事：是否造成项目错误 / 是否在其它目录生成了错误文件 / 是否需要迁移 / 是否有垃圾文件要删。
+
+### 根因（一句话）
+
+**MCode 的「项目」= 一个精确的工作目录**：会话归到哪个项目，只由会话的 cwd 决定。
+链条的 cwd 必须是仓库根（相对写入与 `git` 都在仓库里），于是链条必然归到「仓库根」那一个项目；
+仓库被放在容器目录下时（`F:\soft\00selfmade\filemanager\sigma-file-manager`），链看上去就「排进了另一个项目」。
+**这不是装置的 bug，也不是产品被改坏**，是宿主的分组模型 + 现场的目录嵌套叠加。
+
+### 取证（数据层 + 鉴别性探针）
+
+- 表结构：`local_runtime_projects.workspace_dir` 上有唯一索引 `idx_local_runtime_projects_workspace_v1`（一个目录最多一个项目）；
+  `local_runtime_sessions` 带 `workspace_dir` / `project_workspace_dir` / `project_id`；
+  触发器 `trg_local_runtime_project_session_insert_v5` 按 `project_workspace_dir` **精确匹配**，匹配不到就**自动建一行项目**。
+- 探针 A（只给 `project`，指向注册项目内部的子目录）⇒ **新建**项目行 2577（`workspace_dir` = 该子目录精确路径）⇒ `project` 不做包含映射，等价于「在该目录里跑」。
+- 探针 B（同时给 `project` 和 `workspace_dir`）⇒ **运行时直接拒绝**：`SESSION_CREATE_INVALID_ARGUMENT` /「project 和 workspace_dir 只能填一个」
+  ⇒ **「归属外层项目但 cwd 在仓库根」这条路不存在**（这是最强假设上的失败，失败原因由运行时给出）。
+- 探针 C（只给 `workspace_dir` = 仓库根，链条现在的做法）⇒ 会话落在项目 2565；旧会话批次落在项目 7（容器目录）。
+- 盘上回读：项目 7 = `F:\soft\00selfmade\filemanager`，实际 **409** 个会话；项目 2565 = 仓库根，**3** 个会话；项目 2577 = 探针目录，**1** 个会话；
+  仓库根的**祖先项目只有容器目录这一个**（前缀查询只命中 id=7）。
+- 客户端自己的说明对得上：「Prefer project to workspace_dir」「The absolute path of a directory inside a registered project also works and **the session runs in that directory**」。
+
+### 装置侧改动（B23）
+
+1. `tool\templates\start-relay.ps1`（+ `device\start-relay.ps1` 逐字副本）：
+   - 新增 section 1d「host project key」：每次起链打 `INFO host_project_key exact_workspace_dir=<仓库根>`；
+   - 新增可选参数 `-ExpectedHostProject`，以及 `docs\relay\host-project.txt`（参数优先、文件兜底）：
+     记的期望项目 ≠ 仓库根时打 `WARN host_project_mismatch expected=... actual_key=... reason=host_projects_are_keyed_by_exact_workspace_path hint=...`；
+   - **prompt 一个字未改**（mcode prompt 保持逐字不变的不变式继续成立）。
+2. `scripts\selftest.ps1`：新增 case 28，两个相反样本（期望=父容器 ⇒ 必须报 mismatch；期望=仓库根 ⇒ 必须不报），
+   并断言 key 行始终出现 ⇒ 判据有鉴别力（好/坏样本各跑一次）。
+3. `tool\references\mcode-project-registry.md`（新增）：机制、探针、现场数据、装置能与不能做的事。
+4. `tool\SKILL.md`：新增「链条的项目归属（B23）」小节 + 参考件链接。
+
+### 四问逐项结论
+
+| 用户问 | 结论 |
+|---|---|
+| 是否造成了项目错误 | **没有**产品被改坏。侧栏多出的「sigma-file-manager」是宿主按仓库根自动建的分组条目，链在其中工作正常（stage 产物落在仓库内）。 |
+| 是否在其它目录生成了错误文件 | **没有**。容器目录 `F:\soft\00selfmade\filemanager` 下**没有** `docs\`；全盘 `stage-*-inventory.md` 只出现在各自合法仓库里（filemanager 仓库、practilog、rime_claude、examples 快照）。 |
+| 是否需要迁移 | **不需要、也不能**。会话换不了项目（`project_workspace_dir` 只能由宿主写），要改只能给**项目改名**。 |
+| 是否有垃圾文件要删除 | **有**，清单见下（未获明确同意前一律不动）。 |
+
+### 垃圾清单（已量，未删）
+
+- `F:\soft\00selfmade\filemanager` 根下 5 个散落产物：`@{version=1; entries=}`（3243 B）、`b20-cdp-result3.json`（234 B）、
+  `t9-01-cloud-hover`（289292 B）、`t9-02-remote-pane`（256670 B）、`x.png`（125 B）——合计 549564 B。
+- 夹具仓库 3 个：`_relay-port-selftest`（14 文件 / 50432 B）、`_relay-port-adopt-test`（11 / 42703 B）、`_relay-port-realagents-test`（11 / 331121 B）。
+- `%TEMP%\relay-*` **44** 个目录、合计 119093828 B（含**正在跑**的 `relay-port-selftest`，删前必须排除它）。
+- MCode 侧栏垃圾项目 3 个：`repo`（`%TEMP%\relay-b18-e2e-20261126-204529\repo`，2 会话）、`repo`（`%TEMP%\relay-b20-e2e-20261126-223043\repo`，1 会话）、
+  `probe-ws`（`E:\Users\Duanyi\.minimax\.minimax\maintenance\relay\probe-ws`，3 会话）——共 6 个会话。
+- **本批探针自留**：项目 2577（`F:\soft\00selfmade\agentask-relay\tool`）+ 探针会话 `mvs_5e04259f569d4fcd88b077ad37c25411`。
+  归档会话 / 移除项目都要用户明确同意，故留待批准。
+
+### 本批未决 / 结转
+
+### 应用层修复：侧栏命名对齐（已执行）
+
+MCode 侧栏「项目」按**精确工作目录**分组，链条所在的项目必须显示成用户心里的那个名字，
+否则每次看侧栏都会误判成「排进了另一个项目」。改名是**显示名**操作：可逆、不动会话、不动文件。
+
+| project_id | workspace_dir | 改名前 | 改名后 | 侧栏会话数（未归档） |
+|---|---|---|---|---|
+| 7 | `F:\soft\00selfmade\filemanager`（外层容器，非 git 仓库） | `filemanager` | **`filemanager（外层目录）`** | 172 |
+| 2565 | `F:\soft\00selfmade\filemanager\sigma-file-manager`（**仓库根，链条所在**） | `sigma-file-manager` | **`filemanager`** | 3 |
+
+> 计数口径：侧栏 `project_list` 给的是**未归档**会话数（项目 7 = 172）；直接查库 `local_runtime_sessions` 得
+> 全部行数（项目 7 = **409**）。两者不矛盾，只是统计范围不同——引用时必须标明口径。
+
+改名后侧栏回读确认：链条的 3 个会话（`relay-01of06-批次73范围盘点` / `relay-02of06-implementation` /
+`relay-03of06-verification`）现在挂在名为 **`filemanager`** 的项目下，外层容器项目叫 **`filemanager（外层目录）`**。
+`is_default` 行（No project selected）未动。
+
+### 本批未决 / 结转
+
+- 上述垃圾的删除、夹具项目归档与移除、探针项目 2577 清理——**等用户明确同意**（skill 硬规则：跳过的问卷不算同意）。
+- 「进入会话不显示归属项目」这一 UI 症状：数据层**无法复现** —— 本批追加回读：
+  `local_runtime_sessions` 中 `project_id is null` **0 条**、`project_workspace_dir` 为空 **0 条**；
+  链条 3 个会话的 `workspace_dir` / `project_workspace_dir` / `project_id` / `is_default_workspace=0`
+  与项目 7 下普通会话的**字段形状完全一致**。
+  ⇒ 归属在数据层是完整的；症状若仍存在，属宿主渲染侧，需要应用窗口证据，本会话无 computer-use 取证。
+- filemanager 已安装副本（`docs\relay\start-relay.ps1`）是否重装为 B23 版本、仓库改动是否 commit——**等用户定**；且运行中的 stage 链与文件替换存在竞态。
+
+### 本批门禁数字（实数）
+
+| 步骤 | 结果 |
+|---|---|
+| `scripts\selftest.ps1 -EvidencePath reports\selftest-b23-rerun-20261127.log` | `SELFTEST_EXIT=0`，`SUITE_END pass=339 fail=0`，根 `relay-port-selftest\20261127-115403`；`MANUAL_STEP real_session_activation` 保留 |
+| 证据落盘 | `tool\references\selftest-2026-11-27-b23.txt` **31430 B / 344 行 / CR=0 / 无 BOM**，SHA256 `974724D9C8E6805A16AF82458B8247FB93322BC5CCB2EB770CB33BBE8B97BFF0`（与 `reports\selftest-b23-rerun-20261127.log` 逐字同源） |
+| `tool\references\selftest-2026-11-27-b23.md` | 新增留证小结（8915 B）：探针 A/B 证据、四问逐项结论、case 28 鉴别力说明、第一轮 fail=2 的归因 |
+| `publish-relay.ps1 -Direction publish` | `PUBLISH_EXIT=0`，`DIRECTION=publish STATUS=OK fail=0 warn=2`；两条 warn 均为 `SNAPSHOT_DRIFT`（家规 8 预期，不同步） |
+| `publish-relay.ps1 -Direction verify` | `VERIFY_EXIT=0`，`STATUS=OK fail=0 warn=2`，`tracked_files=89`（发布后复核无漂移） |
+| 装置副本硬不变式 | `start-relay.ps1 330D9ECF6F9E7062:38696`、`relay-spawn.ps1 738097D18638B471:21881`、`relay-lock.ps1 23E51FB2619230DC:6429`、`relay-ledger.ps1 032C49C2BE21D1A7:19826`（tool↔device 四件全 match） |
+| `scripts\refresh-manifest.ps1` | **最后一步**执行；`FILE_COUNT` / `BOM_FILES` / `PS1_NON_ASCII_FILES` / `MD_TXT_CR_TOTAL` / `verdict` 见该脚本输出与 `MANIFEST.txt` |
+
+自测 333 → **339**（B22 基线 + 本批 6 条新断言）。
+
+第一轮 `pass=337 fail=2` 的归因：两条失败都在 `blocked_ledger_exit_three` / `blocked_ledger_lines`（exit=1、子进程**零输出**）；
+三次独立复现（完整安装夹具 / 只复制启动器的夹具配方 / **直接重跑自测当时那个夹具文件**，sha256 与当前 template 相同）
+均 **exit=3 + 预期三行** ⇒ 装置逻辑正确，判定为并行跑 3.6 GB DB 查询 / 119 MB 目录扫描导致的**子进程启动瞬时失败**；
+处置为**干净重跑**取门禁，不手工改判。
+
+---
+
+## B24 · 起环不再传 workspace_dir，错配硬停，链身份可见（2026-11-27）
+
+**用户指令（原话）**：「一个项目中，relay出的会话一定要保持在原项目中，不可以新建项目……哪个是最晚的会话，接力任务从哪个会话的Prompt发起，当前已经完全看不出来了……尤其重要，是修正relay工具，后续绝对不能出现这种严重的问题。」
+
+**根因**：`device\start-relay.ps1` 的 mcode 提示一直教下一环传 `workspace_dir=<仓库根>`。宿主的建会话触发器按 `project_workspace_dir` **精确匹配**项目，匹配不到就**自动插一行新项目**（`trg_local_runtime_project_session_insert_v5`）。所以「侧栏凭空多出一个项目」不是偶发，是装置每次起链的必然结果。
+
+**改动（本轮，模板与 device 逐字一致）**
+
+1. `tool\templates\start-relay.ps1`（717 行，纯 ASCII）
+   - `param` 新增 `-InitiatorSession`、`-AllowHostMismatch`；`-ExpectedHostProject` 语义改为「既是期望值，也是要传给 `project=` 的键」。
+   - 新增 section 1d：恒打 `OK host_project_key exact_workspace_dir=`；键来源 `-ExpectedHostProject` > `docs\relay\host-project.txt` > 仓库根；键 ≠ 仓库根 ⇒ 默认 `FAIL reason=host_project_mismatch` + `exit 2`，`-AllowHostMismatch` 才放行（`mode=parent`），`-DryRun` 只 WARN。
+   - 新增 section 1e：`chain_id`（`relay-chain-yyyyMMdd-HHmmss`）/ `chain_tag`（`MMdd-HHmm`）/ `initiator_session`，空则 `WARN initiator_session_missing`。
+   - 台账 seed 新增 `host_project` / `host_project_mode` / `chain_id` / `chain_tag` / `initiator_session`。
+   - 下一环提示改为 `project=<host_project>`，明写 never pass `workspace_dir`；标题规则追加 `[<chain_tag>]`；新增 `$hostRule`（`project=` 必须逐字命中 `project_list`，命中不到写 blocked）；parent 模式下全部路径改绝对、`docs\relay\` 改绝对、git 改 `git -C`。
+   - prompt 首行改为 `CHAIN <chain_id> | link <linkTag> | started ... | initiator ... | host project ... (...)`。
+2. 同批改口径的四份文档：`tool\templates\AGENT-RELAY.md`（§3 调用配方与禁传条款、§4 第 0 步与 3.3、§7 那 6 行）、`tool\templates\ACTIVATION-SPAWN-mcode.md`（SPAWN_RULE、STEP 2 配方、禁传说明、STEP 4 回读 `project_id`）、`tool\SKILL.md`（B23 章改写为 B24、起环参数、退出码、`-InitiatorSession` 用法）、`tool\references\mcode-project-registry.md`（§3 结论修正 + 新增 §6「B24 处置」）。
+3. `scripts\selftest.ps1` case 28 新增 12 条断言：`host_project_mismatch_hard_fails` / `host_project_mismatch_explains_the_hard_stop` / `host_project_parent_hosting_is_explicit` / `parent_hosting_is_not_silent` / `initiator_session_is_recorded` / `chain_identity_is_reported` / `host_project_exact_launch_exit_zero` / `seed_records_chain_identity` / `seed_records_host_project` / `prompt_carries_chain_banner` / `prompt_names_the_host_project_key` / `prompt_asks_for_the_project_argument` / `prompt_never_hands_out_workspace_dir`。
+
+**门禁实数（本机复跑）**：SUITE_END pass=352 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\relay-port-selftest\20261127-144005；`SELFTEST_EXIT=0`；raw 日志 `tool/references/selftest-2026-11-27-b24.txt`。
+
+**已验证**：上述断言全绿（可复跑 `scripts\selftest.ps1`）；模板与 device SHA256 一致；`.ps1` 纯 ASCII 无 BOM、`.md`/`.txt` CR=0。
+
+**未验证（不许当成已成立）**：① `project=<父项目精确键>` 是否被宿主接受，没有真链实测（B23 探针 A 只证了「子目录键 ⇒ 新建项目」，探针 B 证了「`project`+`workspace_dir` 互斥」）。装置的设计不依赖它：只允许 `project_list` 里逐字存在的键，命中不到就 blocked，最坏结果是链停下等人。② 侧栏 UI 里「进入会话不显示归属项目」这个症状没有截图证据（本会话无 computer-use），数据层只能证 `project_id` / `workspace_dir` 齐备。③ filemanager 的链仍停在阶段 4（第 4 环 `status=error`，台账 `running`），本轮未动对方仓库。
+
+**后续候选（未获授权）**：① 用 `-AllowHostMismatch -ExpectedHostProject F:\soft\00selfmade\filemanager` 起一条真链，实测父项目托管；② 把修好的 `docs\relay\*.ps1` 重装进 filemanager 仓库；③ 处置侧栏 `sigma-file-manager`（4 个链环会话）与 4 个夹具项目（`tool` / `repo` / `repo` / `probe-ws`）；④ 清理容器根散落产物、3 个 `_relay-port-*` 夹具仓库、`%TEMP%\relay-*`（排除 `relay-port-selftest`）。
+
+**留证**：raw `tool/references/selftest-2026-11-27-b24.txt`；规范化文本 `tool\references\selftest-2026-11-27-b24.txt`（32156 B / 358 行 / CR=0 / SHA256 `56BA7A93D70EBDBDE89ABC000EC34B4DFA57050D775CFB52F7F2A6E7C65757B0`）+ 同名 `.md`。
+
+> 上一版 B23 节里那张「应用层修复：侧栏命名对齐（已执行）」表记录的是**被用户否决并已退回**的操作（项目 7 已复名 `filemanager`，项目 2565 复名 `sigma-file-manager`），不得当作现行结论。
+
+---
+
+
+---
+
+## B25 · 前台已停止却还能起新会话：起环闸门前移到锁 + 工具改名（2026-11-27）
+
+**用户指令（原话）**：「当一个会话前台已经显示停止，但还有后台任务执行，但撰写了Prompt时，是否会启动新会话接力任务。这种情况有可能会造成冲突，必须禁止。」「工具名称修改为 agentask-relay，同步修改cc-haha中，和Minimax中部署的工具」「检查是否存在其它bug」。
+
+**对原问题的直接回答**：会。B24 及以前起环只看台账闸门（`in_progress` / `running+next_session_id` / `blocked` / 阶段耗尽）与链锁 `holder`；「前台点停止」在宿主侧不产生任何可读信号，链锁 holder 仍是那个会话，所以只要台账被改成可再起，已停的会话照样能 `session_create` 出下一环。本轮把「谁能 spawn」换成机械前置条件，见下。
+
+**改动（模板与 device 逐字一致）**
+
+1. `relay-lock.ps1` 新增 7 个动作，既有输出串与退出码语义一律不动：
+   - `prespawn`：拒 `.stop`（`chain_stopped`）、拒锁缺失（`lock_missing`）、拒非 holder（`lock_not_mine` exit 5）、拒本人仍存活的后台作业（`background_jobs_live` exit 5）、拒未消费未过期 permit（`permit_outstanding` exit 3）；通过则签发 `docs\relay\.spawn-permit.json`（nonce/owner/stage/issued_at/expires_at=+300s）并打印 `SPAWN_PERMIT ...`。
+   - `verify`：校验并**一次性消费** permit，同时把锁归属轮转到新会话（`SPAWN_VERIFIED ... driver_adopted=<id>`）；无 permit 时走 bootstrap 分支。
+   - `stop-mark` / `stop-clear`：停止哨兵 `docs\relay\.stop`。
+   - `job-register` / `job-clear`：后台作业登记 `docs\relay\.jobs.json`，按 PID 判活。
+   - `gate-status`：一行 `GATE holder=.. stop=.. permit=.. jobs_live=N pids=.. lock=..`。
+2. 交接权放在**前驱侧**：前驱 `prespawn` 拿 nonce → `session_create` → `verify -SessionId <新 id> -Nonce <n>` 一步完成「消费 permit + 锁归属轮转」。原因是 mcode 会话读不到自己的 session id，只有前驱能从 `session_create` 返回值拿到新 id；后驱首动作改为 `gate-status`。
+3. `prespawn` 的 `-SessionId` 改为可选，省略时取锁记录 holder（解除「会话不知道自己 id」的死结）。
+4. `start-relay.ps1`：`$stageSentence` 增 `You are relay stage <n>`；`$completionRule` 要求先 `prespawn` 后 `verify -Nonce`，明令 *Never adopt the lock without a permit*；`$stopRule` 增 `stop-mark -Note <why>`；新增 `$spawnGateRule`（仅 mcode 分支非空）；两处 `$nextHint2` 改为带 `-Nonce` 的 verify。`ACTIVATION-SPAWN-mcode.md` 同步并新增 PRE-SPAWN GATE 段。
+5. `scripts\selftest.ps1`：新增 case b25（15 条断言）+ 防回归 `lock_param_not_shadowing_PID`。
+6. 改名 `relay-port` → `agentask-relay`，现役 10 个文件：`AGENTS.md`、`README.md`、`README.zh-CN.md`、`device\relay-lock.ps1`、`scripts\publish-relay.ps1`、`scripts\selftest.ps1`、`tool\SKILL.md`、`tool\scripts\install-relay.ps1`、`tool\templates\ADAPTATION-QUESTIONS.json`、`tool\templates\RELAY-ADAPTATION.md`。**冻结契约保持原字面**：`<!-- BEGIN/END RELAY-PORT -->`、`relay-port/adaptation-answers@1`、`$env:RELAY_PORT_SKILL_ROOT`——三处是兼容遗留名，不要再当改名残留清掉（`-match` 大小写不敏感会误报）。
+7. 三处已部署技能目录改名：`C:\Users\Duanyi\.claude\skills\agentask-relay`、`E:\Users\Duanyi\.claude\skills\agentask-relay`（原名目录已不存在、新名目录原已存在）、`E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`。
+
+**本轮新查出的 bug（全部已修，均可复现）**
+
+- **B25-1 `$Pid` 影子参数（严重，装置级不可用）**：`relay-lock.ps1` 的 `param([int]$Pid = 0)` 与只读自动变量 `$PID` 冲突，**任何**调用在参数绑定阶段即崩（`无法覆盖变量 Pid，因为它是只读变量或常量`）。连带后果：`install-relay.ps1:795` 的 `-Action status` 崩 ⇒ `install-dryrun.txt` 从未写出 ⇒ 自测 case 1 抛未捕获异常。修复：参数改名 `-ProcId`（JSON 字段仍为 `pid`、输出串 `pid=` 保持不变），8 处引用同改。
+- **B25-2 断言消息提前求值**：`scripts\selftest.ps1:118` 的 `Check` 第三参数无条件求值，`-and` 的短路保护不到它；产物缺失时抛 `ReadAllText` 异常，把「断言失败」升级为「整轮中断」。修复：先取 `$dry1`（缺失为 `<missing>`）再断言。
+- **B25-3 全新仓库无 HEAD**：`install-relay.ps1:408` 对 `git rev-parse --short HEAD` 的空结果调 `.Trim()` ⇒ 零提交仓库安装即崩。修复：空值回落 `none`（探针实测 `REPO head=none`）。**未修完**：同类空值解引用还在启动器 `-DryRun` 内（探针 `EXIT=1`，`start-relay.ps1` 抛「不能对值为 Null 的表达式调用方法」），本轮不追。—— 该尾巴已在 **B26** 修完，见下节。
+
+### 本批门禁数字（实数，盘上回读）
+
+- `SUITE_END pass=368 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554` (进程退出码 `0`)
+- raw：`tool\references\selftest-2026-11-27-b25.txt`（35142 B / 389 行 / CR=0 / BOM=no / SHA256 `F98CA83C073B4356487304F8F615433B366008B045B6A3375697D623B302876F`）
+- `case b25`：15 条新断言 + 1 条防回归 `lock_param_not_shadowing_PID`，全绿
+- `publish-relay.ps1 -Direction publish|verify` 与 `refresh-manifest.ps1` 的数字见本轮回答，不在本节抄写（避免 stale）
+
+**已验证**
+
+- 全量自测 `SUITE_END pass=368 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-192554`，进程退出码 `0`。
+- `case b25` 15 条 + 防回归 1 条全绿，六条拒绝路径均有实测输出串：`background_jobs_live`(exit 5)、`chain_stopped`(exit 3)、`lock_not_mine`(exit 5)、`permit_outstanding`(exit 3)、`permit_consumed`(exit 3)、`nonce_mismatch`(exit 3)。
+- `prespawn` 签发 → `verify` 消费 → 锁归属轮转，`SPAWN_VERIFIED ok nonce=.. from=sess-a to=sess-b` 与二次消费被拒（`reason=permit_consumed consumed_by=sess-b`）双向实测。
+- `gate-status` 一行实测：`GATE holder=sess-b stop=no permit=outstanding jobs_live=0`。
+- `job-register` 实测 `JOB_REGISTERED pid=167548 owner=sess-b total=1` ⇒ 参数改名 `-ProcId` 后 JSON 字段 `pid` 与输出串 `pid=` 契约未变。
+- 防回归 `lock_param_not_shadowing_PID hits=0` ⇒ `relay-lock.ps1` 形参不再与只读 `$PID` 冲突。
+- 三处已部署技能目录改名实测：`C:\Users\Duanyi\.claude\skills`（RENAMED，新名目录在、旧名目录无）、`E:\Users\Duanyi\.claude\skills`（旧名目录本不存在、新名目录本已存在）、`E:\Users\Duanyi\.minimax\.minimax\skills`（RENAMED，新名在、旧名无）。
+
+**未验证（不许当成已成立）**
+
+- 宿主「前台显示停止」**没有可读信号**，装置不感知 Stop。它防的是「停掉的会话继续写 Prompt 并 spawn」：没有 permit（或 permit 已消费/过期）时 `prespawn` 拒、`verify` 拒。**若会话绕过装置直接调 `session_create`，装置拦不住**——这是宿主侧权限边界，必须如实告人。
+- `job-register` 是**自报**登记：不登记的后台任务不会触发 `background_jobs_live`。
+- permit 未消费且未过期（300 s）时 `prespawn` 返回 `permit_outstanding`；`session_create` 失败后不能立即重试，需等 TTL 或人工删 `docs\relay\.spawn-permit.json`（有意取舍）。
+- 真链未实测：本轮未起任何 relay 真链（家规：起环权在目标项目内）。
+- filemanager 链仍 `status=blocked`（第 4 环 `status=error`、`next_session_id` 陈旧），本轮未动对方仓库。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b25.txt`（35142 B / 389 行 / CR=0 / SHA256 `F98CA83C073B4356487304F8F615433B366008B045B6A3375697D623B302876F`）+ 同名 `.md` 留证小结。
+
+---
+
+## B26 · 零提交仓库的启动器干跑：B25-3 尾巴修完（2026-11-27）
+
+**用户指令（原话）**：「先修 HANDOFF B25 节登记的未修项 `start-relay.ps1:105` 空提交仓库 `-DryRun` 空值解引用（device 与 templates 两处逐字同步）」。
+
+**根因**：`start-relay.ps1:105` 直接对 `git rev-parse --short HEAD` 的空结果调 `.Trim()`；零提交仓库里 `git` 不输出、返回 `$null` ⇒ `-DryRun` 抛「不能对值为 Null 的表达式调用方法」，`EXIT=1`。与 B25-3 在安装器 `install-relay.ps1:408` 修掉的是同一类错误。
+
+**改动**：`device\start-relay.ps1:105-106` 改为「先取 `$headRaw` → 空白回落 `'none'` → 否则 `Trim()`」，与安装器逐字同构；`Copy-Item tool\templates\start-relay.ps1 device\start-relay.ps1 -Force` 同步，两处 SHA256 均为 `5C7D35CC3BA471628B4DA02F2F590D11BE4B302DE3F91A3057B0152F93FF9203`（47168 B / 非 ASCII=0 / 无 BOM）。
+
+**新增回归用例**：`scripts\selftest.ps1` case b26，夹具是只 `git init`、不 commit 的仓库，6 条断言：`nohead_fixture_really_has_no_head` / `nohead_install_exit_zero` / `nohead_install_reports_none` / `nohead_dryrun_exit_zero` / `nohead_dryrun_reports_none` / `nohead_dryrun_no_null_deref`。判别性：修前启动器干跑 `EXIT=1`，修后 `exit=0`。
+
+### 门禁数字（实数，盘上回读）
+
+- `SUITE_END pass=374 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-194608`（进程退出码 `0`；B25 是 368，+6 即 case b26 六条）
+- raw：`tool\references\selftest-2026-11-27-b25b.txt`（35877 B / 395 行 / CR=0 / BOM=no / SHA256 `0213495B2A499537E46B825364CCE997093A003DBA97E5F1857A2CE92FA77ACF`）+ 同名 `.md`
+- `publish-relay.ps1 -Direction publish|verify -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`
+- `-SkillRoot E:\Users\Duanyi\.claude\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`
+- 两个根的 `warn=2` 均为 `SNAPSHOT_DRIFT`（`examples\practilog` 历史快照，家规 8：只报不改、不同步）；发布后回读两个根 `templates\start-relay.ps1` = `5C7D35CC3BA47162`、`references\selftest-2026-11-27-b25b.txt` = `0213495B2A499537`
+
+**已验证**：case b26 六条全绿（`OK head=none dirty_files=16` 实测）；两处启动器逐字一致；两个部署根 publish/verify 均 OK。
+
+**未验证**：零提交仓库里跑到第一环之后的行为（台账写、写集指纹取 HEAD）未单独实测；本轮只覆盖安装 + 干跑。真链仍未实测（起环权在目标项目内）。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b25b.txt` + 同名 `.md`。
+
+---
+
+## B27 · relay-port 缺陷报告收口：R1/R1b/R2/R3/R5 修复 + 零提交仓库首环实测（2026-11-27）
+
+**用户指令（原话）**：「请阅读这份因使用relay工具造成bug的项目的Agents做出的诊断，参考进行修复：`F:/soft/00selfmade/filemanager/sigma-file-manager/docs/bugreport-2026-11-27-relay-port.md`」。
+
+**报告口径**：R1/R2/R3/R5 是实质缺陷；R4（`-Action doctor` 只读体检）与 R6（旧台账迁移）是能力缺失与迁移问题，报告自己写明 R4 可独立排期。本轮只修前四项，R4/R6 见「未做」。
+
+### 改动（`device\` → `tool\templates\` 逐字同步，四件全部 SAME / LF / 无 BOM）
+
+| 文件 | SHA256 前 12 位 | 字节 |
+|---|---|---|
+| `start-relay.ps1` | `FD0ED69B19CD` | 47167 |
+| `relay-ledger.ps1` | `8B44167DD7D8` | 22205 |
+| `relay-lock.ps1` | `9A36FFF3896C` | 19543 |
+| `relay-spawn.ps1` | `30C6E95F3020` | 23481 |
+
+- **R1**：`relay-ledger.ps1` 的 `next_session_id` 按「键在不在」处理——缺省不动；键在且空/null ⇒ 写空串 + `LEDGER_NEXT_SESSION_CLEARED before=<旧> after=(empty)`；非空 ⇒ 写值 + `LEDGER_NEXT_SESSION_SET`。修前空值被静默丢弃，停链配方清不掉已写的死 id。
+- **R1b**：F6 会话登记回落只在链仍 `running` 时生效；`blocked`/`done` 打 `LEDGER_SESSION_SKIPPED reason=chain_not_running status=<v>` 且不动 `sessions[]`。环自己写 `session_id` 的路径（`source=stage_field`）不受影响。
+- **R2**：启动器把已停链条的 `WARN reason=ledger_blocked` 改为 `FAIL reason=chain_blocked blocked_on=<...>`，退出码仍 `3`，与 `chain_exhausted` 靠 reason 区分。
+- **R3**：`set_status` 白名单收为 `pending/done/blocked`；`running` 为人工专属；`done` 需全阶段 done、`blocked` 需 `blocked_on` 非空。一致性校验放在 `$appendPairs` **之后**，否则「停链配方单 patch 成立」与「blocked 必须有理由」互斥。
+- **R5**：`relay-spawn.ps1` 新增 2a chain gate——`-Execute` 遇 `blocked`/`done` ⇒ `FAIL reason=chain_not_running status=<v> hint=...` + `exit 3`；干跑降级 `WARN ... (dry_run_would_not_execute)`；**台账缺失显式放行**（保住 case 27 与独立用法）。
+
+协议与说明书同步：`protocol\AGENT-RELAY.md` 与 `tool\templates\AGENT-RELAY.md` 同为 `EB7570BA6F2C` / 25625 B（F6 回落加 running-only 限制、`next_session_id` 按「键在不在」、状态机三值；另把闸门表 `status=blocked` 行的旧口径 `WARN reason=ledger_blocked` 订正为实况 `FAIL reason=chain_blocked`）；`tool\SKILL.md` `68FD5896673F` / 23553 B。
+
+### 新增回归用例 case b27（9 条断言）
+
+`b27_empty_next_session_id_clears` / `b27_non_empty_next_session_id_still_sets` / `b27_blocked_chain_does_not_register_stale_id` / `b27_done_with_open_stage_is_refused`（台账 sha256 不变）/ `b27_blocked_without_reason_is_refused` / `b27_unknown_status_is_refused`（`exit=2`）/ `b27_stop_recipe_commits_in_one_patch` / `b27_spawn_refuses_blocked_chain` / `b27_spawn_dryrun_only_warns`。九条全绿，对应上表四处修复。
+
+出口码口径未变：`2` = 参数与 patch 非法（枚举不在白名单），`3` = CAS / 规则违反。
+
+### 零提交仓库首环实测（闭合 B26 的「跑到第一环之后未实测」）
+
+- 夹具 A（修复前，旧模板）：`C:\Users\Duanyi\AppData\Local\Temp\relay-nohead-probe-20261127-195546`，仅 `git init`
+- 夹具 B（修复后）：`C:\Users\Duanyi\AppData\Local\Temp\relay-nohead-b27-20261127-200521`，仅 `git init`，`relay-ledger.ps1` 与 `device\` 同为 `8B44167DD7D8`；`INSTALL_EXIT=0` / `ledger_bootstrapped bytes=2200` / `REALRUN_EXIT=0`
+
+B 上逐 patch 实测：`source=stage_field` 登记 → `LEDGER_NEXT_SESSION_SET after=mvs_zb27s2` → `source=ledger_next_session_id` 登记 → 裸 `set_status=blocked` 被 `exit 3 status_blocked_without_blocked_on` 拦下 → 停链配方单 patch `exit 0` + `LEDGER_NEXT_SESSION_CLEARED before=mvs_zb27s2 after=(empty)` → `stage_done` 在 `blocked` 下 `LEDGER_SESSION_SKIPPED stage=3 reason=chain_not_running status=blocked`（sessions 2→2）→ `set_status=bogus` `exit 2 status_not_allowed`。终态：`next_session_id` 长度 0、`status=blocked`、`sessions=[mvs_zb27s1,mvs_zb27s2]`、`stages=3`、`LEDGER_STATE ... sha256=470AD2C6FEC3124180D9F31EC75173E9A4FA3BE18067FE4FDDEDAA6517E4EA83`。
+
+**结论**：零提交仓库的首环台账路径没有独立缺陷。A 上两处异常（空 `next_session_id` 无清空提示、`blocked` 下仍打印 `LEDGER_SESSION_ALREADY_REGISTERED`）就是 R1/R1b 本身，与「无 HEAD」前提无关。
+
+### 门禁数字（实数，盘上回读）
+
+- 首轮正式自测 `pass=381 fail=2`（两条都是本轮自己留下的不一致，见「工具坑」），修掉后重跑
+- 绿色轮：`SUITE_END pass=383 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-201612`，进程 `EXIT=0`，耗时 269 s，`CASE_FAIL=0` / `CASE_PASS=383`；B26 是 374，`+9` 即 case b27
+- raw：`tool\references\selftest-2026-11-27-b27.txt`（36873 B / 404 行 / CR=0 / BOM=no / SHA256 `AFC23B993D737736FDDB1359B69F36506D2D8EB0314D0A47ACD3098E47DFD850`）+ 同名 `.md` 留证（7353 B / SHA256 前 12 位 `83E12DECB6F6`）
+- `publish-relay.ps1 -Direction publish|verify -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`
+- `-SkillRoot E:\Users\Duanyi\.claude\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`
+- 两处 `warn=2` 均为 `SNAPSHOT_DRIFT`（`start-relay.ps1` 与 `relay-lock.ps1` 的 `examples\practilog` 历史快照，家规 8：只报不改、不同步）；发布后回读两个根：`templates\relay-ledger.ps1` = `8B44167DD7D8`/22205 B、`templates\AGENT-RELAY.md` = `EB7570BA6F2C`/25625 B、`references\selftest-2026-11-27-b27.txt` = `AFC23B993D73`/36873 B、`SKILL.md` = `68FD5896673F`/23553 B（两个根逐件同值）
+- `refresh-manifest.ps1`（收尾最后一步）：`FILE_COUNT=181`（MANIFEST 自身除外）/ `ENTRY_COUNT=181` / `INVARIANT_OK=True` / `BOM_FILES=0 PS1_NON_ASCII_FILES=0 MD_TXT_CR_TOTAL=0` / `MANIFEST_BYTES=11826` / `CHANGE_COUNT=0` / `verdict=PASS`，退出码 `0`
+
+### 已验证
+
+四处修复在装置与模板两处逐字一致；case b27 九条断言全绿；零提交仓库从安装到「第一环台账被 R1 清空 + R1b 正确跳过」全路径实测通过；协议文档与代码字面量对齐（`protocol_documents_launcher_literals` 恢复 `doc_missing=[] code_missing=[]`）。
+
+### 未验证
+
+- 真链未实测：本会话未起任何 relay 真链（起环权在目标项目内）。
+- `b27_spawn_*` 只覆盖 blocked 链条的拒绝/降级，未覆盖 `done` 链条与 `-Execute` 真正创建会话的成功路径。
+
+### 未做（报告里的后两项）
+
+- **R4**（`-Action doctor` 只读体检）：纯新增能力，不进任何现有判据；做了要同时扩 `SKILL.md` 命令表和自测用例，性价比高于 R6，建议下一轮先做。
+- **R6**（旧台账迁移）：要改别人仓库里的历史 `docs\relay.json` 结构，风险面（不可逆改用户数据）大于收益，暂不自动化，保持「人工按新 schema 重写」的口径。
+
+### 本轮工具坑
+
+- 验证轮次内**不得改任何被装置消费的文件**：首轮自测跑到 6 分钟时改了 `AGENT-RELAY.md`，整轮作废丢弃。
+- 改协议文档会连带打掉门禁要的字面量：改 F6 段时把 `chain_blocked` 从文档里弄丢，`protocol_documents_launcher_literals` 立刻 `doc_missing=[chain_blocked]` 抓住。动文档后要顺手查一遍被 `Cross` 检查的字面量表。
+- 管道 `| Select-Object -Last N` 会缓冲到进程结束才回显；判活只能看 `Get-Item` 字节增长或控制台重定向文件行数。
+- 后台任务结束前会话不能收工（额度闸门），ack 文件要写**当前** task_id，晚写会被闸门读到旧内容而再次拦截。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b27.txt` + 同名 `.md`；缺陷报告原文在对方仓库 `docs\bugreport-2026-11-27-relay-port.md`（未复制进本仓库）。
+---
+
+## B28 · R4 收口：`relay-ledger.ps1 -Action doctor` 只读体检 + case b28（2026-11-27）
+
+**用户指令（原话）**：「本轮按 B27 节「未做」清单实现 R4：给 `device\relay-ledger.ps1` 与 `tool\templates\relay-ledger.ps1` 同步加只读 `-Action doctor`（只报不改，零写入路径），并为它加自测 case；改完按家规顺序 selftest（要求 EXIT=0 且 fail=0）→ publish-relay.ps1 publish/verify（两个全局 skill 根各一次）→ refresh-manifest.ps1 收尾（必须最后一步），再更新 HANDOFF.md；不 commit，不读跨项目交接卡」。
+
+**报告口径**：R4 在缺陷报告 `docs\bugreport-2026-11-27-relay-port.md:152–172` 里是「能力缺失」——链条停下后没有任何只读手段能说清 `docs\relay.json` 是否自相矛盾。本轮把它做成零写入路径的第三个动作：**只报不改**，不做修复、不做迁移（R6 仍未做）。
+
+### 改动（`device\` → `tool\templates\` 逐字同步，四件逐一比对 `same=True`）
+
+| 文件 | SHA256 前 12 位 | 字节 |
+|---|---|---|
+| `relay-ledger.ps1`（本轮唯一改动件） | `82AED3A751E9` | 27727 |
+| `start-relay.ps1`（未动） | `FD0ED69B19CD` | 47167 |
+| `relay-lock.ps1`（未动） | `9A36FFF3896C` | 19543 |
+| `relay-spawn.ps1`（未动） | `30C6E95F3020` | 23481 |
+
+`relay-ledger.ps1` 纯 ASCII（`nonascii=0`）/ 无 BOM / LF；`tool\SKILL.md` 同步为 `B8B97AC36C9E` / 24972 B / CR=0（三处：组件表动作集合、退出码段、`doctor` 用法与检查项清单）；`protocol\AGENT-RELAY.md` 本轮未动（`EB7570BA6F2C` / 25625 B）。
+
+- **只读契约**：`-Action doctor` 全程不 `Enter-WriterLock`、不建目录、不写临时文件、不 `Move-Item` 落盘，只在 stdout 打结果。`b28_doctor_writes_no_byte` / `b28_doctor_takes_no_lock_and_leaves_no_temp` / `b28_reporting_writes_nothing` 三条守着它。
+- **输出形状**：首行 `DOCTOR_STATE path=… sha256=… status=… current_stage=… max_stages=… stages=N sessions=N notes=N`（`sha256` 是它真正读到的那个，`b28_doctor_reports_the_sha_it_read` 守）；中间逐条 `DANGLING …`；末行 `DOCTOR_VERDICT ok findings=0`（exit 0）或 `DOCTOR_VERDICT dangling findings=<n>`（exit 3）。
+- **检查项（只报盘上可判的自相矛盾）**：`status` 不在 `running|pending|done|blocked`；`current_stage` 非整数；`current_stage > max_stages`（`reason=beyond_stage_cap`）；`current_stage` 在 `stages[]` 里找不到（`reason=stage_missing`，**`stages` 为空时跳过**，否则启动器刚自举的新台账会被误报）；同一 stage id 重复（`reason=duplicate_stage_id`，只报一次并带 `count=<n>`）；`next_session_id` 非空但 `status≠running`（`reason=dead_pointer`）；`status=blocked` 却没有 `blocked_on`；`status=done` 却还有未完成阶段（`reason=open_stages`）。
+- **它不猜**：「这个 session 是否已被归档」要先问宿主，`doctor` 一律不出 `session_archived` 之类结论，避免把猜测写成判据。
+- **退出码复用既有契约**：`0` 干净 / `3` 有 findings（与「台账缺失或不可解析」同码）/ `2` 参数非法，不新增码，免得调用方判读口径分裂。
+
+### 身份键兼容（拿真实历史台账巡检逼出来的假阳性修补）
+
+`doctor` 首版只读 `stages[i].id`。对案例仓库的历史快照做**只读**巡检（`examples\practilog\docs\relay.json`，盘上 `sha256=67E1E5886874…`，未被改动）得到：
+
+- 首版：`DANGLING current_stage=6 stage_missing=6` + 五行空 `stage_id` 的 `DANGLING … reason=duplicate_stage_id`（空 id 互相「重复」）+ `DOCTOR_VERDICT dangling findings=6` / `EXIT=3`
+- 订正后：`DOCTOR_STATE … status=done current_stage=6 max_stages=6 stages=6 sessions=7 notes=1` + `DOCTOR_VERDICT ok findings=0` / `EXIT=0`，巡检前后台账 `sha256` 同为 `67E1E5886874`（**未改盘**）
+
+根因：该台账 `stages[]` 的元素键是 `stage`（`stage=1..6`），没有 `id`。三处补丁：① 身份键 `id` 缺失回退 `stage`（新增 `$stageKeys` 预计算，供匹配/重复/done 检查共用）；② 两者都缺 ⇒ 单报 `DANGLING stage_index=<i> reason=stage_id_missing`，不计入重复统计；③ 重复组归并为一行带 `count=<n>`。手工夹具冒烟两型老台账：`stage` 键 ⇒ `exit=0 findings=0`；双无键 ⇒ `stage_index=0` / `stage_index=1` 两条 `reason=stage_id_missing` + `findings=3`，且**无** `duplicate_stage_id`。
+
+### 新增回归用例 case b28（19 条断言，6 个夹具全是新造的，不碰真实项目）
+
+| 夹具 | 台账形态 | 断言 |
+|---|---|---|
+| `repo-b28-doctor-clean` | `running`、`current_stage=1`、`stages` 含 id 1 | `b28_clean_ledger_exits_zero` / `b28_doctor_reports_the_sha_it_read` / `b28_doctor_writes_no_byte` / `b28_doctor_takes_no_lock_and_leaves_no_temp` |
+| `repo-b28-doctor-dangling` | `blocked`、`blocked_on=[]`、`next_session_id=sess-b28-stale`、`current_stage=2` 但 `stages` 只有 id 1 | `b28_dangling_exit_is_three` / `b28_missing_stage_is_reported` / `b28_dead_next_session_is_reported` / `b28_blocked_without_reason_is_reported` / `b28_verdict_counts_every_finding`（`findings=3`）/ `b28_reporting_writes_nothing` |
+| `repo-b28-doctor-fresh` | `stages=[]`（启动器自举后的新台账） | `b28_fresh_seed_is_not_dangling`（防假阳性，守住启动器自举） |
+| `repo-b28-doctor-cap` / `-done` | `current_stage=9 > max_stages=3` + 两条 id 9；`done` 但 stage 2 仍 pending | `b28_stage_beyond_cap_is_reported` / `b28_duplicate_stage_id_is_reported` / `b28_duplicate_is_reported_once_with_count` / `b28_done_with_open_stage_is_reported` |
+| `repo-b28-doctor-stagekey` / `-unnamed` | 老式 `stage=1,2` 键、无 `id`；两条既无 `id` 也无 `stage` | `b28_stage_keyed_ledger_is_not_dangling` / `b28_stage_key_counts_as_the_current_stage` / `b28_stage_without_any_key_is_reported_once` / `b28_unnamed_stages_are_not_duplicates` |
+
+实测回显（盘上 raw 可查）：`DANGLING current_stage=2 stage_missing=2`、`DANGLING next_session_id=sess-b28-stale reason=dead_pointer status=blocked`、`DANGLING status=blocked blocked_on_present=false`、`DOCTOR_VERDICT dangling findings=3`；触顶夹具 `DANGLING current_stage=9 max_stages=3 reason=beyond_stage_cap`、`DANGLING stage_id=9 reason=duplicate_stage_id count=2`；终态夹具 `DANGLING status=done reason=open_stages open_stages=2`；`stage` 键夹具 `DOCTOR_VERDICT ok findings=0`；无名阶段夹具 `DANGLING stage_index=0 reason=stage_id_missing` + `DANGLING stage_index=1 reason=stage_id_missing` + `findings=3`。
+
+### 门禁数字（实数，盘上回读）
+
+- `SUITE_END pass=402 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-214320`（21:43:20 → 21:47:14，234 s），进程 `SELFTEST_EXIT=0`；B27 基线 383，`+19` 即 case b28
+- 作废轮说明：`tool\SKILL.md` 在首轮绿盘（`pass=402 fail=0 root=…20261127-213831`，21:38:31 → 21:42:15，224 s）之后又补了两处 `doctor` 口径，按家规 1「改 `tool\` 必重跑」整轮重跑，引用的是**重跑后**那一轮
+- raw：`tool\references\selftest-2026-11-27-b28.txt`（39184 B / 423 行 / CR=0 / BOM=no / nonascii=0 / SHA256 `5F8D32B5FACAED9AF4EFAE8E96DDF06776E4C095DA33EAA2B5952DEC01FEFBED`）+ 同名 `.md` 留证（9078 B / CR=0）
+- `publish-relay.ps1 -Direction publish|verify -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`，`exit=0`
+- `-SkillRoot E:\Users\Duanyi\.claude\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`，`exit=0`
+- 两处 `warn=2` 均为 `SNAPSHOT_DRIFT`（`start-relay.ps1` snapshot `29158782C8843588:9352`、`relay-lock.ps1` snapshot `227FA4696C69AADE:6441`，家规 8：只报不改、不同步）
+- `refresh-manifest.ps1`：本节写入**前**预跑 `FILE_COUNT=183` / `ENTRY_COUNT=183` / `INVARIANT_OK=True` / `BOM_FILES=0 PS1_NON_ASCII_FILES=0 MD_TXT_CR_TOTAL=0` / `MANIFEST_BYTES=11966` / `CHANGE_COUNT=6` / `verdict=PASS` / `exit=0`，六件逐条为 `device\relay-ledger.ps1` 与 `tool\templates\relay-ledger.ps1`（`8B44167DD7D8/22205 → 82AED3A751E9/27727`）、`scripts\selftest.ps1`（`8134C913AE28/126894 → EDCADE7FCB8C/134350`）、`tool\SKILL.md`（`68FD5896673F/23553 → B8B97AC36C9E/24972`）、新增 `tool\references\selftest-2026-11-27-b28.md` 与 `.txt`；本节写入后按家规再跑一次作为收尾最后一步（只多出 `HANDOFF.md` 一件），直到 `CHANGE_COUNT=0`
+
+### 已验证
+
+`doctor` 在装置与模板两处逐字一致（同哈希 `82AED3A751E9`/27727 B）；case b28 十九条断言全绿（`pass=402 fail=0`）；对真实历史台账的只读巡检从「6 条假 findings」订正到 `findings=0` 且盘上 `sha256` 前后同值；两个全局 skill 根发布与复核全绿（`fail=0`，仅 `SNAPSHOT_DRIFT` 两处历史快照）。
+
+### 未验证
+
+- 真链未实测：本会话不起任何 relay 真链（起环权在目标项目内）。
+- `doctor` 对真实历史台账只做过只读巡检，未据此改任何文件。
+- 「会话已归档」类悬空（宿主侧事实）不在 `doctor` 判据内，需人工或宿主查询确认。
+- `stage` 键回退只在一个真实历史台账（`examples\practilog\docs\relay.json`）上验过；其它老 schema（例如阶段键叫 `index`）未遇到，暂不猜。
+
+### 未做
+
+- **R6**（旧台账迁移）：要改别人仓库里的历史 `docs\relay.json` 结构，风险面（不可逆改用户数据）大于收益，仍不自动化，保持「人工按新 schema 重写」的口径。
+
+### 本轮工具坑
+
+- 冒烟阶段自查抓到一处自造 bug：判 `stage_missing` 时用 `[int]::TryParse(...,[ref]$curNum)` 把 `current_stage` 覆盖掉了，已改为字符串比较。
+- **首版绿盘不等于工具可用**：`pass=397 fail=0` 时 `doctor` 对真实历史台账仍报 6 条假 findings。只跑自造夹具发现不了这类缺陷，必须拿真实台账做一次只读巡检，用前后同 `sha256` 证明零写入。
+- `Get-Content <ledger> | ConvertFrom-Json` 后直接打印 `stages` 会把整段 note 正文吐进对话；只看键名，用 `.PSObject.Properties.Name`。
+- 临时目录夹具不能用 `Remove-Item` 清（本地安全策略直接拒绝整条命令），只能留原地或走 `mavis-trash`。
+- 判活只能看重定向控制台文件的行数/字节增长，`| Select-Object -Last N` 会缓冲到进程结束才回显。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b28.txt` + 同名 `.md`；缺陷报告原文在对方仓库 `docs\bugreport-2026-11-27-relay-port.md`（未复制进本仓库）。
+
+## B29 · R6 保守版：旧台账只读迁移建议 + 三个缺陷修复（2026-11-27）
+
+按 B28 节「未做」（R6 旧台账迁移）与「未验证」推进。裁决不变：**不自动迁移、不改任何历史 `docs\relay.json`**，把「这个旧台账要不要人工改写」做成一次只读巡检，由人看建议自己动手。
+
+### 改动（四件，实测同哈希）
+
+| 文件 | sha12 / bytes |
+|---|---|
+| `device\relay-ledger.ps1` | `B4E67A6C4B83` / 31954 B（与模板逐字一致） |
+| `tool\templates\relay-ledger.ps1` | `B4E67A6C4B83` / 31954 B |
+| `scripts\selftest.ps1` | `3DA04E20E208` / 143145 B（+ case b29 共 17 条断言） |
+| `tool\SKILL.md` | `0BEAB8C59D65` / 26522 B（动作清单 + 退出码 + 「旧 schema 只给建议」条目） |
+
+`start-relay.ps1` / `relay-lock.ps1` / `relay-spawn.ps1` 本轮未动（`FD0ED69B19CD` / `9A36FFF3896C` / `30C6E95F3020`），四件同名件逐字一致、CR=0、BOM=no、nonascii=0。
+
+### `-Action migrate-hint` 契约（新增）
+
+- **只读**：不加锁、不建临时文件、不写台账一个字节。自测用前后 `sha256` 同值 + 目录文件数 `1->1` 守这两条。
+- 首行 `MIGRATE_STATE path=… sha256=… stages=N max_stages=N`，末行 `MIGRATE_VERDICT none|suggested hints=<n>`，中间每行一条 `MIGRATE_HINT scope=… index=… item=… …`。
+- 退出码：`0` 无建议、`3` 有建议（刻意与 `doctor` 的 `0/3` 语义分开，好让调用方拿 `$LASTEXITCODE` 直接分流）。
+- 只报**真正改变闸门行为**的四种形状：阶段键不叫 `id`（`item=stage_key_not_id key=stage rename_to=id effect=commit_resolves_stage_done_by_id`）、阶段无任何身份键（`keys=<实际键名>`）、`max_stages` 不可解析（`value=(none) effect=stage_cap_cannot_be_compared`）、阶段状态不在 `pending|in_progress|done`（`status=complete`）。
+
+两条有意不做：一是**不把缺 `ledger_docs` / `human_checkpoints` / `stop_conditions` 列为建议**——`commit` 追加条目时会自建这些数组，报了等于几乎每个老台账全红；二是**未知身份键（如 `index`）只作 `keys=` 明细报键名，不猜语义**（不臆断它等价于 `id`）。
+
+### 为什么不混进 `doctor`
+
+`doctor` 答「这条链现在能不能自转」（悬空指针、超出阶段上限、重复阶段 id、终态却有未关阶段）；`migrate-hint` 答「这份老 schema 要不要人工改写」。混在一起会让「schema 建议」污染 `findings` 计数，出现「doctor 报 6 条 findings 但链其实健康」的自相矛盾。自测专门有一条 `b29_doctor_and_migrate_hint_answer_different_questions doctor_exit=0 hint_exit=3` 守这个分界：同一份老台账 `doctor` 绿、`migrate-hint` 给 6 条建议。
+
+### 顺手修掉的三个缺陷
+
+1. **死代码守卫**：`own stage key` 的拒绝分支写成 `foreach ($prop in @($oldEntry))`（只遍历对象自身、永远进不去），改为 `@($oldEntry.PSObject.Properties)`。变异体注入 `title` 后必须被拒，实测 `exit=3 LEDGER_FAIL reason=rule_edited_own_stage_key stage_id=1 key=title`；正对照改回声明内键 `exit=0 LEDGER_COMMITED`。
+2. **`stage_done=0` 误匹无名阶段**：匹配阶段时没跳过空 `id`，`0` 会命中第一条无 `id` 的阶段。改为跳过空 `id` 并逐条 `TryParse`，实测 `exit=3 reason=stage_not_found`。
+3. **非数字 `stage_done` 直接崩**：改用 `[int]::TryParse`，非数字 → `exit=2 LEDGER_FAIL reason=stage_done_not_an_integer value=one`，不再抛未捕获异常。
+
+三处都用「变异体 + 正对照」双向验证：注入前后必须一个红一个绿，避免只测到「脚本没崩」。
+
+### 夹具与断言
+
+| 夹具 | 台账形态 | 断言 |
+|---|---|---|
+| `repo-b29-hint-clean` | 现 schema、`id` 键、状态合法 | `b29_clean_ledger_exits_zero` / `b29_migrate_hint_writes_no_byte` / `b29_migrate_hint_takes_no_lock` |
+| `repo-b29-hint-stagekey` | 老式 `stage=1,2`、无 `id`、`max_stages` 缺失 | `b29_stage_key_is_reported_with_rename` / `b29_every_stage_key_is_reported`（`hits=2 hints=2`）/ `b29_missing_stage_id_is_reported` |
+| `repo-b29-hint-status` | 阶段 `status=complete` | `b29_unknown_stage_status_is_reported` |
+| `repo-b29-hint-cap` | `max_stages="none"` | `b29_unparsable_max_stages_is_reported` |
+| `repo-b29-doctor-vs-hint` | 一份 `doctor` 判绿的老台账 | `b29_doctor_and_migrate_hint_answer_different_questions` / `b29_hint_count_matches_lines`（`hits=3 hints=3` 自校验）|
+
+另有四条不依赖夹具的守卫：`b29_mutation_anchor_is_unique anchor_hits=1`（变异锚点唯一，防 `Replace` 静默零命中）、`b29_refused_commit_wrote_nothing sha=119B266D…`（被拒的 `commit` 零写入）、`b29_own_stage_key_guard_has_teeth` 与 `b29_own_stage_key_guard_allows_declared_keys` 一红一绿、`b29_stage_done_zero_does_not_match_id_less_stage`、`b29_non_numeric_stage_done_is_refused`。
+
+### 真实历史台账只读巡检（本轮最有力证据）
+
+对 `examples\practilog\docs\relay.json`：
+
+- `-Action migrate-hint` → `EXIT=3`、`MIGRATE_STATE … sha256=67E1E5886874CD698528D19B7D62F210E0B7ACDFF2CBCB304036C2FF331B69A7 stages=6 max_stages=6`、6 行 `stage_key_not_id key=stage rename_to=id`、`MIGRATE_VERDICT suggested hints=6`；
+- 同一份文件 `-Action doctor` → `DOCTOR_VERDICT ok findings=0`、`EXIT=0`；
+- 两次调用前后台账 `sha256` 均为 `67E1E5886874…`（未写一个字节）。
+
+结论写进 `tool\SKILL.md`：**`doctor` 绿 ≠ `commit` 能关阶段**；老台账的 `stage` 键必须人工改成 `id`（或由 `commit` 按 `stage_done` 新建的阶段自带 `id`）。
+
+### 门禁数字（实数，盘上回读）
+
+- `SUITE_END pass=419 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261127-223450`（22:34:50 → 22:40:38，348 s），进程 `SELFTEST_EXIT=0`；B28 基线 402，`+17` 即 case b29
+- 作废轮说明：首轮 `pass=419 fail=0`（root `…20261127-222839`）因把 `-EvidencePath` 与 `Tee-Object -FilePath` 指向同一文件，`WriteAllText` 撞锁导致 `SELFTEST_EXIT=1`，按家规整轮重跑；只认重跑那一轮
+- raw：`tool\references\selftest-2026-11-27-b29.txt`（41912 B / 441 行 / CR=0 / BOM=no / nonascii=0 / SHA256 `831CEB58C6B42FEFFC324CC9BCA560BD5D4D8432FB76A144E4274A493A24C76F`）+ 同名 `.md` 留证（10533 B / CR=0 / BOM=no）
+- `publish-relay.ps1 -Direction publish|verify -SkillRoot E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`，`exit=0`
+- `-SkillRoot E:\Users\Duanyi\.claude\skills\agentask-relay`：两次均 `STATUS=OK fail=0 warn=2`，`exit=0`
+- 两处 `warn=2` 仍均为 `SNAPSHOT_DRIFT`（`start-relay.ps1` snapshot `29158782C8843588:9352`、`relay-lock.ps1` snapshot `227FA4696C69AADE:6441`，家规 8：只报不改、不同步），另有 `[INFO] snapshot_absent file=relay-ledger.ps1`
+- 首轮 publish 早于 b29 留证落盘，故 b29 的 `.txt`/`.md` 是在此之后**重跑**一次 publish/verify 才进两个全局根的（上面四次即重跑结果）
+- `refresh-manifest.ps1`：本节写入**前**预跑 `FILE_COUNT=185` / `ENTRY_COUNT=185` / `INVARIANT_OK=True` / `BOM_FILES=0 PS1_NON_ASCII_FILES=0 MD_TXT_CR_TOTAL=0` / `MANIFEST_BYTES=12107` / `CHANGE_COUNT=6` / `verdict=PASS` / `exit=0`，六件逐条为 `device\relay-ledger.ps1` 与 `tool\templates\relay-ledger.ps1`（`82AED3A751E9/27727 → B4E67A6C4B83/31954`）、`scripts\selftest.ps1`（`EDCADE7FCB8C/134350 → 3DA04E20E208/143145`）、`tool\SKILL.md`（`B8B97AC36C9E/24972 → 0BEAB8C59D65/26522`）、新增 `tool\references\selftest-2026-11-27-b29.md` 与 `.txt`；本节写入后按家规再跑一次作为收尾最后一步（只多出 `HANDOFF.md` 一件），直到 `CHANGE_COUNT=0`
+
+### 已验证
+
+`migrate-hint` 在装置与模板两处逐字一致（同哈希 `B4E67A6C4B83`/31954 B）；case b29 十七条断言全绿（`pass=419 fail=0`、`SELFTEST_EXIT=0`）；对真实历史台账的只读巡检给出 6 条 `stage_key_not_id` 且盘上 `sha256` 前后同值、目录文件数不变；同台账 `doctor` 仍 `findings=0`（两条命令的判据确实分开）；三个缺陷各有变异体+正对照双向证据；两个全局 skill 根发布与复核全绿（`fail=0`，仅 `SNAPSHOT_DRIFT` 两处历史快照）。
+
+### 未验证
+
+- 真链未实测：本会话不起任何 relay 真链（起环权在目标项目内）。
+- `migrate-hint` 只在 `examples\practilog\docs\relay.json` 一份真实老台账上跑过；其它老 schema（例如阶段键叫 `index`）未遇到，只报键名不猜语义。
+- 人工按建议把 `stage` 键改成 `id` 后 `commit` 能否真的关阶段，没有在真实仓库里走一遍（会改别人数据，留给目标项目自己做）。
+- 「会话已归档」类悬空仍是宿主侧事实，不进 `migrate-hint` 也不进 `doctor` 判据。
+
+### 未做
+
+- **R6 自动迁移**：仍不做。本轮只把「需不需要迁移」变成可读建议，任何写入都要人拍板。
+- `-Action status` 的 `LEDGER_CHAIN` 仍只按 `id` 渲染，未跟进 `stage` 键：B19-a 的注释写明它与启动器渲染是「分开算、互相比对」的防漂移设计，单方面加回退会破坏这层对照。
+- 未新增「批量扫描多个台账」入口：`migrate-hint` 一次只吃一个 `-LedgerPath`。
+
+### 本轮工具坑
+
+- **`-EvidencePath` 不能与 `Tee-Object -FilePath` 指向同一文件**：selftest 自己 `WriteAllText` 写留证，外部再 tee 同一路径会撞文件锁，`pass` 全绿但 `SELFTEST_EXIT=1`，整轮作废。留证只由 selftest 写。
+- **后台任务 `succeeded` ≠ 被测脚本 `exit 0`**：包装命令最后一行决定了进程退出码，必须回读 `SELFTEST_EXIT=` 那行文本才算数。
+- **变异测试必须先断言锚点唯一**：`String.Replace` 零命中是静默的，会得到「突变体等于原文件、断言假绿」。先 `anchor_hits=1` 再注入。
+- `Join-Path` 不解析 `..\`；`| Select-Object -Last N` 会缓冲到进程结束（判活只能看文件行数/字节增长）。
+- `ConvertFrom-Json` 后直接打印 `stages` 会把 note 正文整段灌进对话，只看 `PSObject.Properties.Name`。
+- 临时目录夹具不能用 `Remove-Item` 清（本地安全策略拒绝整条命令），只能留原地或走 `mavis-trash`。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b29.txt` + 同名 `.md`；真实历史台账两次只读巡检的命令与回显在 `.md` 里逐条抄录（台账本体未改）。
+
+## B30 · 批量只读扫描 + 身份键/计数加固 + 十处缺陷修复（2026-11-27）
+
+按 B29 节「未做」推进两件事：①`migrate-hint` 一次只吃一本台账，装到多项目后要逐本手敲；②`LEDGER_CHAIN` 只按 `id` 渲染，B29 刚给出「旧台账阶段键叫 `stage`」的建议，可它自己的链视图对这类台账一片空白。R6 自动迁移仍按用户要求留待口径确认，**本轮不做、不写任何历史台账**。
+
+### 改动（六件，实测同哈希）
+
+| 文件 | sha12 / bytes |
+|---|---|
+| `device\relay-ledger.ps1` + `tool\templates\` 同名件 | `FCAA7FE4C0F4` / 38821 B |
+| `device\start-relay.ps1` + `tool\templates\` 同名件 | `3B6DEC9F8C8A` / 47737 B |
+| `scripts\selftest.ps1` | `488405A510E4` / 151333 B |
+| `tool\SKILL.md` | `F04BAC57CFF2` / 28511 B |
+
+`relay-lock.ps1` / `relay-spawn.ps1` 未动（`9A36FFF3896C` / `30C6E95F3020`）。四件同名件逐字一致，全部 CR=0 / BOM=no / nonascii=0 / parse=0；`docs\relay` 锁文件数 0。
+
+### `-LedgerPaths`：批量只读扫描
+
+- 每本一行 `MIGRATE_SCAN path=… readable=true sha256=… stages=<n> max_stages=<raw> hints=<n>`，逐条 `MIGRATE_HINT path=<p> scope=…`，末行 `MIGRATE_SCAN_VERDICT ledgers=<n> hints=<n> unreadable=<n>`。
+- 退出码 `hints>0 || unreadable>0 ⇒ 3`，干净 ⇒ `0`，参数非法 ⇒ `2`（复用既有码）。
+- **不可读台账只计数不中断**；单台账模式的 `MIGRATE_STATE`/`MIGRATE_HINT`/`MIGRATE_VERDICT` 与 `LEDGER_FAIL`+exit 3 语义逐字不变（不破坏既有调用方）。
+- 入参缺陷修复：`-File` 调用把 `-LedgerPaths a,b` 作为**单个** token 传入，原先被整体当一条路径。现在先 `Test-Path` 原始 token，确非已存在文件才按 `,`/`;` 拆分，去空去重保序——含逗号的真实路径仍可用。三条批量用例全部用「逗号拼接单 token」传参，正好压在缺陷上。
+
+### 身份键与计数加固（六处）
+
+1. `@($null).Count` 在 PS 7.7.0 实测为 `1`：缺 `sessions`/`notes` 的台账会把「没有」报成 1。新增唯一入口 `Get-Elements`，四个计数点全走它。
+2. `sessions[]` 改精确匹配（原先缀匹配，`sess-X-long` 会被当成 `sess-X` 已登记）：字符串 `Trim().Equals(OrdinalIgnoreCase)` → 对象比 `session_id` → 比 `id` → 最后 `"id"` 整词令牌正则。
+3. `stage_fields` 禁写身份键（`id`/`stage`）⇒ `reason=stage_fields_rewrites_identity … hint=identity_keys_are_not_stage_fields`，exit 2 且 sha 未变。
+4. `append_stage.id` 与 `bump_current_stage` 的 `current_stage` 一律 `[int]::TryParse`，非数字走 `LEDGER_FAIL reason=append_stage_id_not_an_integer` / `current_stage_not_an_integer`，exit 2，不再抛未捕获异常。
+5. 阶段身份键三级回退 **`id` → `stage` → `#<序号>`**，`LEDGER_CHAIN` 与启动器 cap 闸门渲染两处逐字同形（B19-a 的交叉比对才不会红）。
+6. `#` 前缀是有意设计：明确表示「这是序号，不是 id」，避免与真实 `id=0` 混淆；B29 的 `stage` 键台账现在能渲染成 `stages=1:done,2:done` 并与启动器 `FAIL reason=chain_at_stage_cap` 行逐字相等。
+
+### 首轮 fail=1：改断言不改产品
+
+首轮 `SUITE_END pass=434 fail=1`，唯一失败项 `chain_status_keeps_the_stage_count_distinct`——它把 `LEDGER_CHAIN` 列表半边写死为 ` stages=[0-9]+:`，被新渲染 `stages=#0:done` 卡住。该断言的意图是「`LEDGER_STATE` 的计数与 `LEDGER_CHAIN` 的列表同名不同形、必须分得开」，`#0:` 不削弱它，故放宽为 ` stages=(?:#)?[0-9]+:`；裸计数（无冒号）仍判失败，判别力未降。产品代码在首轮失败后**一个字节都没动**，重跑即 `pass=435 fail=0`。
+
+### 本轮工具坑
+
+- **证据文件每行带 `HH:mm:ss` 前缀**，`Select-String '^CASE_PASS'` 永远零命中；按用例名 grep，不要按行首。
+- **留证字节数不能当「这轮跑过没」的判据**：`CASE_FAIL` 与 `CASE_PASS` 等长，`pass=434 fail=1` 与 `pass=435 fail=0` 也等长，首轮与重跑的 raw 同为 44682 B。必须回读 `SUITE_END` 文本与 sha256。
+- **同一轮不要既改产品又改断言**：先在冻结树上跑出唯一失败项，只动那一处，再整轮重跑；否则分不清是新缺陷还是断言的形状假设过窄。
+- `-EvidencePath` 仍绝不能与 `Tee-Object -FilePath` 同文件（B29 已记，本轮沿用：stdout 只重定向到临时日志）。
+
+### 未做 / 后续候选
+
+- **R6 自动迁移**：仍不做。批量扫描只让「哪些台账要迁」一次可见，写不写由人拍板。
+- `-Action status` 仍只吃单台账；`doctor` 也还是单台账。要做「一次体检一仓库所有台账」是下一步候选，语义与 `migrate-hint` 批量不同，不能顺手合并。
+- 历史快照 `examples\practilog\docs\relay\` 的 `SNAPSHOT_DRIFT`（`start-relay.ps1`、`relay-lock.ps1`）按家规 8 只报不同步。
+
+### 未验证
+
+- 真链未实测：本会话不起任何 relay 真链（起环权在目标项目内）；suite 末尾照旧打印 `MANUAL_STEP real_session_activation`。
+- 批量扫描只在自造夹具（3 本台账、含 1 本缺失）上验过，**没扫过真实的多台账仓库**。
+- `id`/`stage` 之外的老 schema（阶段键叫 `index` 等）只按 `keys=` 报键名，语义不猜，无真实样本。
+
+**留证**：raw `tool\references\selftest-2026-11-27-b30.txt`（44682 B / 456 行 / SHA256 `F09A677EA8AF74865E34D84C91D81B31FBA025A4FB4E3CE6A51131DEEAF3EED3`）+ 同名 `.md`；两个全局 skill 根 publish 与 verify 均 `STATUS=OK fail=0 warn=2`（warn 仅 `SNAPSHOT_DRIFT`）。
+
+---
+
+## B31（2026-11-28）工具深度 bug 检查与修复 —— 定稿
+
+### 背景与目标
+
+B30 收口后仓库停在 `b07f6f4`（B21），B22–B30 的旧改动与本轮 B31 改动**全部未提交**。本轮目标：**不留遗留**地把工具本体
+（`tool\templates\` 四个装置脚本 + `tool\scripts\install-relay.ps1`）的缺陷查出来、修掉，并让公开契约（退出码、判据行、文档）
+与代码**逐字对齐**；然后按家规顺序走完收尾：一键自测（EXIT=0 且 fail=0）→ 两个全局 skill 根各 publish+verify →
+写自测留证 → 本节定稿 → `refresh-manifest.ps1`（必须最后一步）→ commit + push 到 GitHub main。
+
+R6（台账字段自动迁移）**未获口径确认，本轮不实现自动写盘**：`relay-ledger.ps1 -Action migrate-hint` 仍只读给建议，
+不静默改名。其余 bug 修复不受此项阻塞。
+
+### 本轮修了什么（工具本体）
+
+| 文件 | 缺陷 | 修法 |
+| --- | --- | --- |
+| `tool\templates\relay-ledger.ps1`（+ `device\` 副本） | F1–F11 + F3b 共 12 项：append-only 列表按对象计数（`@($null).Count` 是 1）⇒ 台账报假计数；追加负载被改写成字符串；stage 字段形状未校验；`append_stage` 状态未校验；`bump_current_stage` 接受非布尔；非 migrate 动作误带台账路径；写回与读台账失败时裸 `exit 1` + 栈 | 一律改成显式拒绝并打印 `FAIL reason=<snake_case>`；写回加 try/catch 与临时文件清理；`LEDGER_COMMITED` 行补上 `notes=` 计数（与 `LEDGER_CHAIN` 的计数同形） |
+| `tool\templates\relay-lock.ps1`（+ `device\` 副本） | ① 安装器写的 TTL 是死参数（无人消费）② 心跳损坏时解析抛异常 ⇒ 裸 `exit 1` + 栈 ③ `verify` 不带 nonce 也放行（一次性凭据形同虚设）④ `adopt` 无凭据即可夺锁、且不看停止哨兵 ⑤ `acquire` 把「锁目录不存在」误报成 `LOCK_RACE` | TTL 三级来源（显式参数 > 锁内记录值 > 描述符 `lock_ttl_seconds` > 1800），输出 `ttl_s=<n> ttl_source=…`；心跳读不出或落在未来按「不可证明存活」接管并留 `.stale.<epoch_ms>`；`verify` 缺 nonce ⇒ `PERMIT_INVALID reason=nonce_required`（exit 6）；`adopt` 必须有未消费 permit + 匹配 nonce，停止哨兵存在时拒绝（exit 3）；新增 `LOCK_DIR_MISSING`（exit 2）；取锁成功后清掉遗留 permit，使首环 bootstrap `verify` 仍成立 |
+| `tool\templates\relay-spawn.ps1`（+ `device\` 副本） | CLI 运行时直接 `adopt`，既不取凭据也不校验停止哨兵 | 改为先 `prespawn` 取 permit、再 `adopt -Nonce`；nonce 缺失或 `prespawn` 失败时打 `FAIL reason=lock_prespawn_failed|permit_nonce_missing` |
+| `tool\templates\start-relay.ps1`（+ `device\` 副本） | D1–D11：空 `-Target` 走绑定器 ⇒ `exit 1` + 栈；台账结构无效仍放行；阶段上限无法比较仍放行；`-MaxStages` 非整数走绑定器；闸门脚本/锁脚本缺失无单独判据；prompt 写失败未释放锁；TTL 只认硬编码 1800；起环身份不落台账 | 空目标改手工判 ⇒ `FAIL reason=bad_parameter target=empty`（exit 2）；台账闸门补 `ledger_shape_invalid` / `ledger_stage_cap_unknown`（exit 3）；`-MaxStages` 改字符串参数 + `TryParse` ⇒ `FAIL reason=max_stages_invalid`（exit 2）；新增 `lock_script_missing` / `prompt_write_failed` / `bad_parameter` 判据；TTL 改「参数 > 描述符 > 1800」并打 `TLAUNCH ttl_s=<n> ttl_source=…`；起环身份写进台账并回显 `OK chain_identity source=ledger` |
+| `tool\templates\start-relay.ps1` + `tool\scripts\install-relay.ps1` | `-TtlSeconds`（启动器）与 `-MaxStages` / `-TtlSeconds`（安装器）是 `[int]` ⇒ 传非数字时被**参数绑定器**拒掉，进程以 `exit 1` + 栈信息结束，而公开退出码契约里没有 `1`（启动器 `{0,2,3,4}`、安装器 `{0,2,5}`） | 两处都改成**字符串参数**并手工解析：非整数或越界 ⇒ `FAIL reason=max_stages_invalid` / `FAIL reason=ttl_invalid` + `exit 2`（启动器上限 1000 / 86400，安装器 100 / 86400） |
+| `tool\scripts\install-relay.ps1` | H1–H6 / M1–M6 / L1–L5 共 16 项：答案文件缺失/解析失败/为空无专门判据、未知键被静默吞掉、宿主项目不一致仍装、适配「已确认」名不副实（答了一部分也算 confirmed）、`lock_ttl_seconds` 未落盘、缺 `present_unparsed` 判据、ASCII 门禁未覆盖台账脚本等 | 新增 `answers_file_missing|unparsable|empty|unknown_keys`、`host_project_mismatch`、`workspace_dir_invalid`、`chain_blocked`、`ledger_shape_invalid`、`ledger_stage_cap_unknown`、`lock_script_missing`、`max_stages_invalid`、`prompt_write_failed`、`bad_parameter` 判据；确认口径改成 **8 键全答 = `confirmed`，答一部分 = `partial`**（打 `WARN adaptation_answers_partial applied=N/8 missing=…`）；`lock_ttl_seconds` 写进 `relay-runtime.json` |
+| `protocol\AGENT-RELAY.md` + `tool\templates\AGENT-RELAY.md` | 协议没写交接闸门、12 个锁动作、退出码 6、收编信号、B31 的新判据 | 补 §11 交接闸门、§12 锁凭据/TTL/新增拒绝原因、§9.1 安装器参数校验与拒绝原因；**两份逐字一致** |
+| `tool\SKILL.md` | 装置契约与锁动作/退出码口径漂移；安装器问答与参数口径漂移 | 补「锁的凭据与 TTL（B31）」一节；补安装器 `-MaxStages`/`-TtlSeconds` 字符串参数口径、问答 `unknown_keys` 与 `confirmed`/`partial` 口径 |
+| `scripts\selftest.ps1` | 用例没跟上新契约（夹具 `status='idle'` 不再合法；提交行缺 `notes=` 计数；适配断言仍按旧语义） | 夹具改 `status='running'`；新增 15 条 `b31l_*` 锁侧断言 + 13 条台账/协议断言 + 4 条参数绑定安全断言 + 适配 `partial`/`confirmed` 两态断言 |
+
+### 公开契约的变化（退出码与判据行）
+
+| 工具 | 退出码契约 | 本轮新增判据 |
+| --- | --- | --- |
+| `relay-ledger.ps1` | `{0,2,3,4,5}` | `FAIL reason=<snake_case>` 一律显式拒绝，不再有裸 `exit 1` + 栈 |
+| `relay-lock.ps1` | `{0,2,3,5,6}` | `PERMIT_INVALID reason=nonce_required`(6)、`LOCK_REFUSED reason=permit_required|nonce_required|nonce_mismatch|permit_consumed|permit_expired|chain_stopped`(3)、`LOCK_DIR_MISSING`(2)、`LOCK_TAKEOVER reason=unreadable_lock|unreadable_heartbeat|future_heartbeat`(0)、`LOCK_STATE state=UNREADABLE`(0)、`LOCK_PERMIT_CLEARED`(0) |
+| `start-relay.ps1` | `{0,2,3,4}` | `bad_parameter target=empty`、`max_stages_invalid`、`ttl_invalid`、`ledger_shape_invalid`、`ledger_stage_cap_unknown`、`lock_script_missing`、`prompt_write_failed`、`host_project_mismatch` |
+| `install-relay.ps1` | `{0,2,5}` | `max_stages_invalid`、`ttl_invalid`、`answers_file_missing|unparsable|empty|unknown_keys`、`host_project_mismatch`、`workspace_dir_invalid`、`chain_blocked`、`ledger_shape_invalid`、`ledger_stage_cap_unknown`、`lock_script_missing`、`prompt_write_failed` |
+| `relay-spawn.ps1` | `{0,2,3,4}` | `FAIL reason=lock_prespawn_failed|permit_nonce_missing` |
+
+### 已验证（全部盘上回读）
+
+- 一键自测：`scripts\selftest.ps1` **pass=480 / fail=0**，`CASE_FAIL` 条数 = 0；证据文件
+  `tool\references\selftest-2026-11-28-b31.txt`（sha256 `C57729554349F96516DCCF4F400AE98D5970BD19CB2FE74D56E12088010DB433`，56384 字节，CR=0，BOM=False）。
+  本节所有数字由脚本从证据文件回读，不是抄摘要。
+- 自测运行根：`C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-004506`；结束行 `00:50:48 SUITE_END pass=480 fail=0 root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-004506`；自测留证：`tool\references\selftest-2026-11-28-b31.md`。
+- 定点烟测：台账侧 `10/10 PASS`（`$env:TEMP\relay-b31-ledger-smoke.ps1`）、锁侧 `24/24 PASS`（`$env:TEMP\relay-b31-lock-smoke.ps1`）。
+- 编码门禁与两侧逐字一致：ledger=True、lock=True、spawn=True、start=True、协议=True（True = 逐字一致）。
+
+| 文件 | 字节 | sha16 | CR | BOM |
+| --- | --- | --- | --- | --- |
+| `tool\templates\relay-ledger.ps1` | 44050 | `9331CE155AFA9DA1` | 0 | False |
+| `tool\templates\relay-lock.ps1` | 25728 | `E6720164D93E2027` | 0 | False |
+| `tool\templates\relay-spawn.ps1` | 24478 | `1AC5B6B4B469D709` | 0 | False |
+| `tool\templates\start-relay.ps1` | 57250 | `A8511A769B3EA351` | 0 | False |
+| `tool\scripts\install-relay.ps1` | 51116 | `082A31D8426FDF0B` | 0 | False |
+| `device\relay-ledger.ps1` | 44050 | `9331CE155AFA9DA1` | 0 | False |
+| `device\relay-lock.ps1` | 25728 | `E6720164D93E2027` | 0 | False |
+| `device\relay-spawn.ps1` | 24478 | `1AC5B6B4B469D709` | 0 | False |
+| `device\start-relay.ps1` | 57250 | `A8511A769B3EA351` | 0 | False |
+| `tool\templates\AGENT-RELAY.md` | 37838 | `E949D967AAABBD0F` | 0 | False |
+| `protocol\AGENT-RELAY.md` | 37838 | `E949D967AAABBD0F` | 0 | False |
+| `tool\SKILL.md` | 32039 | `60085EF6EBA7D76F` | 0 | False |
+| `scripts\selftest.ps1` | 175163 | `7D3F40BCFB9F92DE` | 0 | False |
+
+- publish / verify（两个全局 skill 根，各 publish 一次 + verify 一次）：
+PUBLISH_EXIT=0 / VERIFY_EXIT=0 / PUBLISH_EXIT=0 / VERIFY_EXIT=0
+
+### 推断（尚未在本轮直接验证）
+
+- `relay-spawn.ps1` 的新 `prespawn` → `adopt` 链路只做了静态推理与锁侧定点烟测，**未在真实 CLI 运行时上跑过**（自测只做干跑）。
+- 锁的「心跳落在未来 ⇒ 可接管」按「不可证明存活」处理，与台账的负龄规则一致，但两端时间源不同步时接管窗口可能偏宽。
+
+### 未验证 / 风险
+
+- R6 自动迁移**未实现**（口径未获确认）：`migrate-hint` 仍只读给建议，不写盘。
+- `examples\practilog\docs\relay\` 是历史留证快照，与当前装置有差异属预期，只报 `SNAPSHOT_DRIFT`，**不得为它同步**。
+- 自测**从不调用 `session_create`**：真链激活仍是人工/代理侧的一步，本轮只到干跑与锁级验证。
+
+### 证据路径
+
+- 自测证据：`tool\references\selftest-2026-11-28-b31.txt`（原始日志，每行带 `HH:mm:ss`）
+- 自测留证：`tool\references\selftest-2026-11-28-b31.md`
+- publish / verify 记录：`tool\references\publish-2026-11-28-b31.txt`
+- 打补丁前的基线证据（pass=470 / fail=4）：`reports\selftest-2026-11-28-b31-baseline-pass470-fail4.txt`
+- 补丁脚本：`$env:TEMP\relay-b31-patch-ledger.ps1`、`relay-b31-patch-lock.ps1`、`relay-b31-patch-lock2.ps1`、`relay-b31-patch-protocol.ps1`、
+  `relay-b31-patch-protocol2.ps1`、`relay-b31-patch-selftest.ps1`、`relay-b31-patch-selftest-lock.ps1`、`relay-b31-patch-skill.ps1`、
+  `relay-b31-patch-final.ps1`、`relay-b31-finalize-chain3.ps1`
+- 定点烟测：`$env:TEMP\relay-b31-ledger-smoke.ps1`、`$env:TEMP\relay-b31-lock-smoke.ps1`
+
+### 工具坑
+
+- 本地安全策略：`Set-Location` 之后用相对路径写文件会被硬拦 ⇒ 一律用绝对路径。
+- 临时夹具不可 `Remove-Item` ⇒ 用唯一路径（时间戳目录），不要清理旧夹具。
+- 一次性补丁脚本用「精确匹配 + 命中数必须等于 1，否则整体 abort 不写盘」的写法；命中失败时打印命中数再退出，避免十几次零散编辑。
+- 自测 `-EvidencePath` 不得与 `Tee-Object -FilePath` 同文件；判绿要回读 `SUITE_END` + 包装层 `EXIT=` + 证据文件 sha/CR/BOM。
+- 证据文件是**套件结束后**才落盘的，跑到一半去看会得到「文件不存在」，不是没跑；而且它可能还是**上一轮**的内容 ——
+  判定「本轮已重写」要看 mtime，不能只看「文件里有 SUITE_END」。
+- **双引号 here-string 里的 markdown 反引号会被 PowerShell 当转义**：`reports` 变成回车、`unknown_keys` 直接解析报错、
+  `tool\...` 变成制表符。生成文档的脚本必须用**单引号 here-string + 占位符替换**，并对产物做 CR/BOM 回读。
+- 子代理长时间零输出不等于没干活：以文件 mtime 与 sha 为准，不要只看输出流。
+- 协议文档两份副本（`protocol\` 与 `tool\templates\`）必须**逐字一致**：改一份就 `Copy-Item` 到另一份，再回读 sha16 比对。
+
+### 下一段候选
+
+1. R6：确认自动迁移口径后，实现 `relay-ledger.ps1 -Action migrate`（默认 dry-run + 写前 CAS + 备份 + 只做机械改名）。
+2. 把 `relay-spawn.ps1` 的新 `prespawn` → `adopt` 链路在真实 CLI 运行时上真跑一次（当前只有干跑与锁侧烟测）。
+3. `migrate-hint` 建议项的批量落地演练（多台账一次扫）。

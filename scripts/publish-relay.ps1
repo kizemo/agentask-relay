@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  One-shot release tool for the relay-port kit: enforce device/template identity and sync tool/ to the global skill.
+  One-shot release tool for the agentask-relay kit: enforce device/template identity and sync tool/ to the global skill.
 .DESCRIPTION
   Why this exists
     Project rule 2 says: editing tool/ only takes effect after the four parts (SKILL.md, scripts/, templates/,
@@ -121,7 +121,7 @@ function Get-RelaySkillCandidate {
     $key = $root.ToLowerInvariant()
     if ($seen.ContainsKey($key)) { continue }
     $seen[$key] = $true
-    $cand = Join-Path $root 'skills\relay-port'
+    $cand = Join-Path $root 'skills\agentask-relay'
     if (-not (Test-Path -LiteralPath $cand -PathType Container)) { continue }
     $activity = (Get-Item -LiteralPath $cand).LastWriteTime
     $live = Join-Path $root 'v2\sessions'

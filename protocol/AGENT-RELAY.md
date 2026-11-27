@@ -72,10 +72,16 @@
      `ledger_docs_append` / `blocked_on_append` / `set_status` / `bump_current_stage` / `next_session_id`；
      未知键直接 `exit 2`，防拼错静默失效；`*_append` 去重后追加 ⇒ 同环重跑幂等）；
      **会话流水由闸门兜底**：`stage_done` 提交时闸门自己把本环会话 ID 登记进 `sessions[]`
-     （先取 `stages[N].session_id`；没有就取台账里的 `next_session_id` —— 那正是当前在跑的这一环），
+     （先取 `stages[N].session_id`；没有就取台账里的 `next_session_id` —— 那正是当前在跑的这一环，
+     **但只在链仍是 `running` 时回落**：`blocked` / `done` 的链上 `next_session_id` 是遗留值，
+     再登记就等于让停掉的链条继续显得活着，闸门改为回显
+     `LEDGER_SESSION_SKIPPED stage=… reason=chain_not_running status=…` 且不动 `sessions[]`），
      只追加、不改写、已登记过的不重复 ⇒ 忘了写 `sessions_append` 也不会留下空会话流水
      （回显 `LEDGER_SESSION_REGISTERED session=… stage=… source=…`；两个来源都没有时回显
      `LEDGER_SESSION_SKIPPED reason=no_session_id`，**不编造**会话 ID）；
+     **`next_session_id` 按「键在不在」处理**：键缺省 = 不动；键存在但值为 `""` / `null` = **清空**
+     （回显 `LEDGER_NEXT_SESSION_CLEARED before=… after=(empty)`），停链配方就靠这一条把旧 id 真正撤掉；
+     非空 = 写值（回显 `LEDGER_NEXT_SESSION_SET after=…`）；
      ③ 加 `-DryRun` 先验一次（`LEDGER_DRYRUN_OK`，不写盘、不留锁文件）；
      ④ `-Action commit -Patch <p.json> -ExpectSha256 <第①步的sha>` 正式提交。
      闸门内部保证五件事：**独占写锁**（`docs\relay\.ledger.lock`，`FileMode.CreateNew`，被占 5s 超时、
@@ -86,14 +92,27 @@
      这就是「重读盘再合并」的机制化：2026-11-24 实测第 3 环读到比第 2 环最终落盘更早的台账，
      那种跨会话竞态现在由 CAS 判死，不再靠自觉。
      退出码：`0` 已提交（回显 `LEDGER_COMMITED before= after=`，`before` 必须等于你传的 sha）；
-     `2` 参数/patch 键/意图非法（含 `missing_expect_sha256`）；`3` `cas_conflict` 或不变式违反；`4` 写锁超时；`5` patch 不可解析。
+     `2` 参数/patch 键/意图非法（含 `missing_expect_sha256`、`stage_fields_not_an_object`、
+     `append_stage_status_not_allowed`、`bump_current_stage_not_a_boolean`、`ledger_paths_not_supported_for_action`）；
+     `3` `cas_conflict` 或不变式违反（另含 `ledger_unreadable` / `writeback_failed`）；
+     `4` 写锁超时；`5` patch 不可解析。
+     三条形状硬规矩：① `stage_fields` 必须是**对象**，字符串 / 数组一律 exit 2（否则它会被当成一个
+     名为 `Length` 的字段写进阶段）；② `append_stage` 只能声明 `pending`，自带 `status:"done"` 一律 exit 2
+     （否则绕过「每个阶段必须由自己的 stage_done 关掉」那条守卫）；③ `bump_current_stage` 必须是 JSON
+     **布尔**，字符串 `"true"` 不算数（exit 2）。`append_stage` / `*_append` 的负载按原样落盘：对象仍是对象，
+     不会被压成字符串；台账缺某个数组时追加**不会**往里写 `null`。
      拿到 `3 cas_conflict` 的**唯一正确动作**：重新 `-Action status` 取新 sha、按新台账重建 patch、再试一次；
      仍冲突就按第 4 步走停链分支，**绝不允许**改用裸写绕过闸门。判据：`exit=0` 且回显里自己的署名已入列。
-   - 3.3 按运行时起下一环：MCode 用 `session_create`（配方见 §3），Claude Code / Codex CLI / OpenClaw 见 §10。
+   - 3.3 按运行时起下一环：**链内起环的运行时（MCode / OpenClaw）必须先过交接闸门**
+     （`prespawn` → 起下一环 → `verify -Nonce`，配方见 §10.7）：不取 permit 就起环 = 开了第二个写者；
+     Claude Code / Codex CLI 由 `relay-spawn.ps1` 驱动起环，驱动自己完成交接（见 §10）。
 4. **停链分支**：需要人工验收 / 缺权限 / 连续两轮无进展 / 已达 `max_stages` / 全部完成
    → 同样走 3.2 的闸门写 `status`：**全部阶段完成且 `blocked_on` 无未结项 ⇒ `done`**
    （`current_stage > max_stages` 是完成信号，不是故障），其余停链原因 ⇒ `blocked` + `blocked_on_append` 写明缺什么
-   —— `set_status` 只接受 `idle` / `awaiting_user` / `blocked` / `done`，`running` 是人类专属（会话身份提交会判死），
+   —— `set_status` 只接受 `pending` / `done` / `blocked`（其余值 `exit 2 status_not_allowed`），`running` 是人类专属（会话身份提交会判死）；
+   `done` 还要求**所有** `stages[].status` 都是 `done`，否则 `exit 3 status_done_but_stages_open open_stages=…`；
+   `blocked` 还要求 `blocked_on` 非空（同一 patch 里 `blocked_on_append` + `"set_status":"blocked"` 合法），
+   否则 `exit 3 status_blocked_without_blocked_on` —— 状态必须与阶段表、停链原因互相印证，
    在回答里说明，**不得**新建会话；`blocked` 的等人介入，`done` 的如实收尾。
 
 **链条能自转的唯一支点 = 每一环都执行了 3.3。任何一环漏写，链当场断。**
@@ -112,16 +131,21 @@ mcp_invoke(
   tool_name = "session_create",
   arguments = {
     "agent_name": "me",
-    "title": "relay-<NN>of<MM>-<阶段短名>",
-    "workspace_dir": "<relay.json.workspace_dir，必须显式传>",
+    "title": "relay-<NN>of<MM>-<阶段短名> [<relay.json.chain_tag>]",
+    "project": "<relay.json.host_project，必须与 project_list 的某一项逐字相等>",
     "content": "<§4 的接力 prompt 正文，把 <N> 换成 <N+1>>"
   }
 )
 ```
 
 - 返回 `ok:true` 且 `turn.mode:"activated"` ⇒ 新会话**已自动开跑**，不需要人在场点发送。
+- **只传 `project`，禁传 `workspace_dir`**：两者互斥，同时传会被 `SESSION_CREATE_INVALID_ARGUMENT` 拒绝；
+  而 `workspace_dir` 会让宿主按该目录**精确匹配**项目，匹配不到就**自动插一行新项目**——这就是侧栏里
+  「凭空多出一个项目」的唯一成因。
+- `project` 的值**必须先在 `project_list` 里逐字找到**（等于某个项目的 `workspace_dir`）。找不到 ⇒
+  **写 `blocked`，绝不回退传 `workspace_dir`**：回退等于给这个仓库新建一个项目行。
 - 若新会话的 `location.workspace_dir` 落到了 `...sessions\<sid>\workspace` 之类的私有临时目录，
-  说明 `workspace_dir` 没生效 ⇒ **这一环等于没接上**，必须重投或写 `blocked`。
+  说明 `project` 没被解析到 ⇒ 这一环等于没接上，写 `blocked` 重投，**不要补传 `workspace_dir`**。
 - 注意 `mavis` 的 `session create` 子命令不存在（报 `SESSION_CREATE_MOVED`），必须走 tool_search + mcp_invoke。
 
 ---
@@ -131,7 +155,8 @@ mcp_invoke(
 ```text
 你在无人值守接力链的第 <N> 环，只做这一个阶段，不要向人提问。
 
-0. 工作区就是本仓库根。先读 docs/relay.json 与 docs/agent-relay.md（本协议），再读 relay.json.plan_doc。
+0. 仓库根见 relay.json.workspace_dir；会话 cwd 不一定是它（host_project_mode=parent 时跑在父目录），
+   所以一切路径写绝对路径、git 一律 `git -C <repo>`。先读 docs/relay.json 与 docs/agent-relay.md（本协议），再读 relay.json.plan_doc。
 1. 校验 relay.json：status 必须为 running、current_stage 必须等于 <N>、<N> 不得大于 max_stages。
    任一不符 → 按 §2 第 4 步停链，不得新建会话。
 2. 只做 current_stage 阶段，做到 acceptance 判据成立并跑出证据；工具调用 >40 次未收敛就停下写「未完成」。
@@ -139,9 +164,16 @@ mcp_invoke(
    3.1 结论落盘 docs/handoff-*.md（续编现有编号，不新建跨项目指针）；
    3.2 回写 docs/relay.json：一律走闸门 `docs/relay/relay-ledger.ps1`
       （status 取 sha -> 写 patch -> commit -ExpectSha256），禁止裸写整文件；
-   3.3 调 session_create 开下一环：workspace_dir 沿用 relay.json.workspace_dir，
-       title="relay-<NN>of<MM>-<阶段短名>"，content 用本段正文、<N> 换成 <N+1>，
-       并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
+   3.3 先过交接闸门，再开下一环：
+       3.3a 跑 `pwsh -NoProfile -File docs\relay\relay-lock.ps1 -Action prespawn -Stage <N>`，
+             只认它打印的 `SPAWN_PERMIT ok nonce=<16 位>`；被拒（exit 3/5/6）就**不起环**，
+             走第 4 步写 blocked 并汇报。
+       3.3b 调 session_create 开下一环：project 沿用 relay.json.host_project（先在 project_list 里逐字确认），
+             **禁传 workspace_dir**；title="relay-<NN>of<MM>-<阶段短名> [<chain_tag>]"，content 用本段正文、
+             <N> 换成 <N+1>，并要求下一环完成后把 relay.json 的 sessions[] 追加其自身会话 ID。
+             匹配不到 project ⇒ 写 blocked，不得回退传 workspace_dir。
+       3.3c 把 nonce 写进下一环 prompt 的第一句，并要求下一环**第一件事**就是
+             `pwsh -NoProfile -File docs\relay\relay-lock.ps1 -Action verify -SessionId <它自己的会话 id> -Nonce <nonce>`。
 4. 命中停链条件（提交/发布/删数据/付费/不可逆、缺权限、无进展）：
    写 blocked（blocked_on 写明缺什么）并汇报，不得新建会话。
    全部阶段完成（current_stage > max_stages 且 stages 全 done）⇒ 写 done，同样不建会话。
@@ -184,7 +216,7 @@ mcp_invoke(
 
 - 本项目遵循 `docs/agent-relay.md`。任何会话开始工作前，先看 `docs/relay.json`。
 - 若 `docs/relay.json` 存在且 `status == "running"`：本轮必须按 `docs/agent-relay.md` §2 推进
-  `current_stage`，并在收尾时按 §3 自行 `session_create` 接力下一环（**必须显式传 workspace_dir**）。
+  `current_stage`，并在收尾时按 §3 自行 `session_create` 接力下一环（**必须显式传 project=<relay.json.host_project>，禁传 workspace_dir**）。
 - 若不存在或 `status != "running"`：正常干活，不要擅自起链。
 - 起链只能由人的明确指令触发（如「按 docs/plan-xxx.md 起接力链」），不得自我起链。
 ```
@@ -224,11 +256,13 @@ mcp_invoke(
 | 情形 | 判据行 | 退出码 |
 |---|---|---|
 | 台账存在但 `ConvertFrom-Json` 失败 | `FAIL reason=ledger_unparsable path=...` | `3` |
+| 台账存在但结构无效（`status` 缺失，或不在 running·pending·done·blocked 内） | `FAIL reason=ledger_shape_invalid path=... status=... allowed=running,pending,done,blocked` | `3` |
+| 台账的 `max_stages` / `current_stage` 不是整数（阶段上限无法比较） | `FAIL reason=ledger_stage_cap_unknown path=... current_stage=... max_stages=...` | `3` |
 | 有阶段 `in_progress`（一人一棒被占） | `CONFLICT stage=... session=... status=in_progress` + `FAIL reason=stage_in_progress rule=one_writer_per_project` | `3` |
 | `status=running` 且 `next_session_id` 非空 | `FAIL reason=chain_already_running next_session_id=...` | `3` |
 | `status=running` 且 `current_stage >= max_stages`（触顶：末阶段已跑完却没人翻终态；**也可能还有阶段没跑**） | `FAIL reason=chain_at_stage_cap ... stages=<id:status,...\|none> all_done=<true\|false\|unknown>` + HINT 按形态三选一：`all_stages_done_but_status_running`（全 done，可提交 `{"set_status":"done"}` 收尾）/ `stage_cap_reached_with_open_stage`（还有阶段没跑，**禁止**收尾，先把该阶段跑完或解卡）/ `stage_cap_reached_with_no_stage_records`（台账里一条阶段记录都没有，完成性无法证明，先补记录）。显式传 `-AutoFinalize` 时启动器只在「全 done」形态替你收尾：内部调 `relay-ledger.ps1 -Action commit`（先 status 取 sha256、写后回读），成功打 `AUTO_FINALIZED status=done before=<sha> after=<sha>` 并把 HINT 换成 `chain_closed_by_auto_finalize`；失败只打 `WARN auto_finalize=failed reason=...`、台账不动。默认关闭，`-DryRun` 只打 `DRYRUN skip=auto_finalize`，退码始终 `3` | `3` |
 | `status=done` 且 `current_stage >= max_stages` | `FAIL reason=chain_exhausted ...` + `HINT=start a fresh chain...` | `3` |
-| `status=blocked` | `WARN reason=ledger_blocked blocked_on=...` + `HINT=blocked chains need a human decision first...` | `3` |
+| `status=blocked` | `FAIL reason=chain_blocked blocked_on=...` + `HINT=blocked chains need a human decision first; do not silently resume.` | `3` |
 | 无台账 | `OK ledger_absent path=... (will bootstrap)` | 继续 |
 
 计划解析成功行固定为 `OK plan_doc=<相对路径> source=<来源> bytes=<N>`；`-DryRun` 时打 `DRYRUN skip=lock_acquire skip=ledger_bootstrap skip=prompt_write`。
@@ -240,6 +274,11 @@ mcp_invoke(
 | 工作区路径不存在 | `FAIL reason=workspace_missing path=...` | `2` |
 | 工作区存在但不是 git 仓库 | `FAIL reason=not_a_git_repo path=...` | `2` |
 | 非 `-DryRun` 且回写闸门脚本 `relay-ledger.ps1` 缺失 | `FAIL reason=ledger_gate_missing path=...`（附 `re-run install-relay.ps1`） | `2` |
+| 锁脚本 `relay-lock.ps1` 缺失 | `FAIL reason=lock_script_missing path=...`（附 `re-run install-relay.ps1`） | `2` |
+| `-MaxStages` 不是整数或不在 1…1000 | `FAIL reason=max_stages_invalid value=...` | `2` |
+| `-TtlSeconds` 不是整数或不在 0…86400 | `FAIL reason=ttl_invalid value=...` | `2` |
+| `-Target` 为空 | `FAIL reason=bad_parameter target=empty` | `2` |
+| 写接力 prompt 失败（目标目录不可写等） | `FAIL reason=prompt_write_failed path=...`（已释放锁，并回滚本次自举出来的台账） | `2` |
 | 取锁失败（透传 `relay-lock.ps1` 的退出码） | `FAIL reason=lock_unavailable exit=N` | `4` |
 
 取锁时启动器固定传 `-Action acquire -Stage 1 -Title 'relay-start' -TtlSeconds <TTL>`，**不传** `-SessionId`、
@@ -286,6 +325,36 @@ mcp_invoke(
 安装器每次都会打一行机读复核判据 `AGENTS_MARKERS begin=<N> end=<N>`：收编成功应当是 `begin=1 end=1`，
 出现 `begin=2` 之类即托管块重叠，属于要人工处理的状态，别继续起链。
 
+### 9.1 安装器的参数校验与拒绝原因（B31）
+
+安装器的 `-MaxStages` / `-TtlSeconds` 都是**字符串参数**，解析通过后才使用：写成 `[int]` 时绑定器会先拒掉，
+进程以 `exit 1` + 栈信息结束，而安装器的退出码契约是 `{0,2,5}`，里面没有 `1`。非法值一律 `exit 2`：
+
+| 情形 | 判据行 | 退出码 |
+|---|---|---|
+| `-MaxStages` 不是整数 | `FAIL reason=max_stages_invalid value=... hint=expected_an_integer` | `2` |
+| `-MaxStages` 不在 1…100 | `FAIL reason=max_stages_invalid value=... min=1 max=100` | `2` |
+| `-TtlSeconds` 不是整数 | `FAIL reason=ttl_invalid value=... hint=expected_an_integer` | `2` |
+| `-TtlSeconds` 不在 1…86400 | `FAIL reason=ttl_invalid value=... min=1 max=86400` | `2` |
+| `-RepoRoot` 不存在 | `FAIL reason=repo_missing path=...` | `2` |
+| 目标目录不是 git 仓库 | `FAIL reason=not_a_git_repo path=...` | `2` |
+| `-WorkspaceDir` 不存在 | `FAIL reason=workspace_dir_invalid path=...` | `2` |
+| `-Runtime` 不在已知集合 | `FAIL reason=runtime_unsupported runtime=... known=...` | `2` |
+| `-AnswersFile` 不存在 | `FAIL reason=answers_file_missing path=...` | `2` |
+| `-AnswersFile` 解析失败 | `FAIL reason=answers_file_unparsable path=...` | `2` |
+| `-AnswersFile` 一个可用键都没有 | `FAIL reason=answers_file_empty path=...` | `2` |
+| `-AnswersFile` 含未知键且一个可用键都没有 | `FAIL reason=answers_file_unknown_keys path=... ignored=...` | `2` |
+
+`answers_file_unknown_keys` 只在**一个可用键都没有**时才拒绝：有可用键但夹带了陌生键时，打
+`WARN adaptation_answers_unknown_keys ignored=...` 继续装，陌生键被忽略，不写进 `docs\RELAY-ADAPTATION.md`。
+
+适配问答的确认口径：**8 个键全部答了**才是 `confirmed`，答了一部分就是 `partial`。
+`ADAPT answers=... applied=N/8 status=... missing=...` 报实际落地的键数，缺键打
+`WARN adaptation_answers_partial applied=N/8 missing=...`；一个都没答时是 `WARN adaptation_defaults_unconfirmed`。
+控制台三行分别是 `ADAPTATION_STATUS=pending|confirmed|partial`（确认程度）、
+`ADAPTATION_SOURCE=defaults|answers`（来源文件）、`ADAPTATION_QUESTIONS=docs\relay\adaptation-questions.md`（待答清单，仅 pending 时出现）；
+生成出来的 `docs\RELAY-ADAPTATION.md` 里的来源标签在部分作答时写成 `answers (partial)`，不冒充已确认。
+
 ---
 
 ## 10. 运行时适配（MCode / Claude Code / Codex CLI / OpenClaw）
@@ -314,7 +383,8 @@ Claude Code 读 `CLAUDE.md`；**只有仓库没有 `CLAUDE.md` 时才回退读 `
 MCode 的下一环是一个**常驻会话**，`session_create` 之后它自己接着干活；CLI 运行时的下一环是
 **跑完即退的无头子进程**，所以「起下一环」这一步由当前环自己再跑一次 spawn 命令完成。
 家规 §A.5 与 §B.9 的表述已改成运行时中立，起环方式由安装器按 `-Runtime` 注入。
-锁的转交统一走 `docs\relay\relay-lock.ps1 -Action adopt`（`relay-spawn.ps1 -AdoptLock` 会自动调它）。
+**CLI 运行时的**锁转交走 `docs\relay\relay-lock.ps1 -Action adopt`（`relay-spawn.ps1 -AdoptLock` 会自动调它）；
+**链内起环的运行时**（MCode / OpenClaw）不走 adopt，走 §10.7 的 permit 闸门。
 
 ### 10.4 起环驱动 `relay-spawn.ps1`
 
@@ -335,3 +405,98 @@ OpenClaw 只注入**它自己 workspace 根目录**的 `AGENTS.md`（子 agent �
 换运行时**必须重装**（`install-relay.ps1 -Runtime <新> -Force`），否则 `docs\RELAY-ADAPTATION.md`
 与家规块里还写着旧运行时，两边会各说各话。`install-relay.ps1` 遇到不认识的 `-Runtime`
 会响亮失败（`reason=runtime_unsupported`，退出码 2），不静默退回默认运行时。
+---
+
+## 11. 交接闸门：prespawn → 起下一环 → verify -Nonce
+
+`session_create`（MCode）与 `sessions_spawn`（OpenClaw）都是**从链内开下一个写者**。前台会话在前端里
+已经显示为「已停止」，若它还能随手再开一个写者，两个写者就会同时改同一个仓库 —— 这正是本 kit 要防的
+事。所以这两种运行时在开下一环前必须先取一张**一次性 permit**：
+
+1. **取 permit**：`pwsh -NoProfile -File docs\relay\relay-lock.ps1 -Action prespawn -Stage <下一环阶段号>`
+   - `-SessionId` 可省：省略时装置用**当前锁持有者**当身份（链内环通常读不到自己的会话 id）。
+   - 成功时打印 `SPAWN_PERMIT ok nonce=<16 位十六进制> owner=… stage=… expires_in_s=… path=…`，并退出 0。
+   - 拒绝情形（**一律不起下一环**，走 §2 第 4 步写 `blocked` 并汇报）：
+     | 拒绝 | 判据行 | 退出码 |
+     |---|---|---|
+     | 缺会话身份（既没给 `-SessionId`，盘上也没有锁） | `SPAWN_REFUSED reason=missing_session` | `6` |
+     | 链已停（有人打了停链哨兵） | `SPAWN_REFUSED reason=chain_stopped note=…` | `3` |
+     | 链锁不在（没有锁记录） | `SPAWN_REFUSED reason=lock_missing` | `3` |
+     | 链锁在别人手上 | `SPAWN_REFUSED reason=lock_not_mine holder=… requester=…` | `5` |
+     | 本会话登记的后台任务还活着 | `SPAWN_REFUSED reason=background_jobs_live owner=… pids=…` | `5` |
+     | 上一张 permit 还没用掉也没过期 | `SPAWN_REFUSED reason=permit_outstanding nonce=… expires_at=…` | `3` |
+2. **起下一环**：把 nonce 写进下一环 prompt 的第一句，然后按运行时开新会话（MCode `session_create` /
+   OpenClaw `sessions_spawn`）。
+3. **消费 permit**：`pwsh -NoProfile -File docs\relay\relay-lock.ps1 -Action verify -SessionId <新会话 id> -Nonce <nonce>`
+   - 成功打印 `SPAWN_VERIFIED ok nonce=… from=… to=… driver_adopted=… stage=…`，退出 0；
+     permit 被标记为已消费，链锁转到新会话。
+   - 拒绝情形：`PERMIT_INVALID reason=chain_stopped|lock_missing|no_permit|permit_consumed|nonce_mismatch|permit_expired|holder_changed`
+     （退出码 `3`；缺 `-SessionId` 是 `PERMIT_INVALID reason=missing_session`，退出码 `6`）。
+   - **verify 被拒就不要再起一次**：同一张 prompt 被起两次时，第二次 verify 会撞上
+     `permit_consumed`，第二个会话必须停手、不许写任何东西。
+
+后台任务登记：起了会活过你这一轮的后台进程，先
+`pwsh -NoProfile -File docs\relay\relay-lock.ps1 -Action job-register -ProcId <pid>`
+（`-SessionId` 同上可省），任务结束后 `-Action job-clear -ProcId <pid>`。否则下一个环会在你还有活儿的时候
+开新写者。
+
+### 锁的全部动作（12 个）
+
+`acquire` · `renew` · `release` · `status` · `adopt` · `prespawn` · `verify` ·
+`stop-mark` · `stop-clear` · `job-register` · `job-clear` · `gate-status`
+
+退出码：`0` 成功 / `2` 锁被占或竞争失败 / `3` 状态不允许（缺锁、已停、permit 失效…）/
+`5` 锁不归我（`LOCK_NOT_MINE`）、后台任务还活着 / `6` 参数非法（`LOCK_BAD_ARG` / `missing_session`）。
+`gate-status` 一次打印闸门全景：`GATE holder=… stop=… permit=… jobs_live=… lock=…`。
+## 12. 锁的凭据、TTL 与新增拒绝原因（B31）
+
+本节描述 `relay-lock.ps1` 的凭据规则与 B31 新增的拒绝原因。装置本体与 `tool\templates\relay-lock.ps1` 逐字一致。
+
+### 12.1 一次交接 = 一个一次性凭据
+
+- `prespawn` 发行一次性凭据（permit），nonce 为 16 位十六进制，TTL 300 秒；输出 `SPAWN_PERMIT ok nonce=<nonce> owner= stage= expires_in_s= path=`。
+- `verify -SessionId <本环会话 id> -Nonce <nonce>`：**nonce 必填**。缺 nonce 的 verify 一律拒绝（`PERMIT_INVALID reason=nonce_required`，退出码 6）——不携带凭据的调用什么都证明不了。
+- `adopt -SessionId <新环会话 id> -Nonce <nonce>`：**必须**先有未消费的 permit，且 nonce 匹配。CLI 运行时由 `relay-spawn.ps1` 先 `prespawn` 再 `adopt -Nonce`。
+- permit 一经消费（verify 或 adopt）即失效；重复起环必然撞上 `permit_consumed`。
+
+### 12.2 锁动作的凭据要求
+
+| 动作 | 凭据要求 | 拒绝时退出码 |
+| --- | --- | --- |
+| `prespawn` | 持有者身份（缺 `-SessionId` 时回退为锁内 holder） | 3 / 5 / 6 |
+| `verify` | `-Nonce`（permit 存在时必填） | 3 / 6 |
+| `adopt` | 未消费的 permit + 匹配的 `-Nonce` | 3 |
+
+### 12.3 TTL 的来源与优先级
+
+TTL 是项目级决定：安装器把它写进 `docs\relay\relay-runtime.json` 的 `lock_ttl_seconds`；调用方显式传 `-TtlSeconds` 时以参数为准；锁被 `renew` 时保留它自己记录的值。优先级：**显式参数 > 锁内记录值 > 描述符 > 1800**。
+`LOCK_ACQUIRED` / `LOCK_RENEWED` 打印 `ttl_s=<n> ttl_source=parameter|recorded|descriptor|default`。
+
+`-TtlSeconds` 在启动器与安装器上都是**字符串参数**：写成 `[int]` 时绑定器会先拒掉，进程以 `exit 1` + 栈信息结束，
+而退出码契约里没有 `1`（启动器 `{0,2,3,4}`、安装器 `{0,2,5}`）。所以两处都手工解析：非整数或越界一律
+`FAIL reason=ttl_invalid value=...` + `exit 2`（启动器范围 0…86400，安装器 1…86400）。`-MaxStages` 同理，
+两处都改成字符串参数后手工解析，越界仍是 `FAIL reason=max_stages_invalid` + `exit 2`（启动器 1…1000、安装器 1…100）。
+
+### 12.4 B31 新增的拒绝原因与状态
+
+| 字面量 | 含义 | 退出码 |
+| --- | --- | --- |
+| `PERMIT_INVALID reason=nonce_required` | verify 没有带 nonce | 6 |
+| `LOCK_REFUSED reason=permit_required` | adopt 时没有未消费的 permit | 3 |
+| `LOCK_REFUSED reason=nonce_required` | adopt 没有带 nonce | 3 |
+| `LOCK_REFUSED reason=nonce_mismatch` | adopt 的 nonce 与 permit 不符 | 3 |
+| `LOCK_REFUSED reason=permit_consumed` | permit 已被消费 | 3 |
+| `LOCK_REFUSED reason=permit_expired` | permit 已过期 | 3 |
+| `LOCK_REFUSED reason=chain_stopped` | 停止哨兵存在 | 3 |
+| `LOCK_DIR_MISSING` | 锁目录不存在 | 2 |
+| `LOCK_TAKEOVER reason=unreadable_lock` | 锁文件无法解析为 JSON，按「不可证明存活」处理并接管 | 0 |
+| `LOCK_TAKEOVER reason=unreadable_heartbeat` | 心跳读不出，按「不可证明存活」处理并接管 | 0 |
+| `LOCK_TAKEOVER reason=future_heartbeat` | 心跳落在未来，按「不可证明存活」处理并接管 | 0 |
+| `LOCK_STATE state=UNREADABLE` | 锁文件存在但读不出内容 | 0 |
+| `LOCK_PERMIT_CLEARED` | 新链取锁时清掉了上一个持有者遗留的 permit | 0 |
+
+被接管的锁文件保留为 `.relay.lock.stale.<epoch_ms>` 供取证；新链取锁时会清掉遗留的 permit，使首环的 bootstrap verify 仍然成立。
+
+### 12.5 退出码契约（未变）
+
+`relay-lock.ps1`：`0` 成功 / `2` 锁被占或参数无效 / `3` 状态不允许 / `5` 锁不属于本会话 / `6` 参数缺失。

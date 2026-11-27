@@ -72,12 +72,63 @@ param(
   [string]$SessionId = '',
   [int]$MaxTurns = 0,
   [switch]$Execute,
-  [switch]$AdoptLock
+  [switch]$AdoptLock,
+  # Ephemeral workspace (B22): the workspace is a throwaway fixture, not a real
+  # project. Claude Code keys every session by its working directory and writes
+  # the entry into <user profile>\.claude\projects\<mangled cwd>, and the desktop
+  # client renders exactly that directory as its project list: a test run leaves
+  # a project behind that the user never asked for. With this switch the driver
+  # moves the entry its own child created out of the registry and keeps the
+  # transcript as evidence next to the run output.
+  [switch]$EphemeralWorkspace
 )
 
 $ErrorActionPreference = 'Stop'
 
 function Say([string]$Text) { Write-Host $Text }
+
+# Claude Code stores every session under a directory that is named after the
+# working directory of the session, and the desktop client renders exactly that
+# directory as its project list. The name is the path with every character that
+# is not a letter or a digit replaced by a dash.
+function Get-ClaudeProjectKey([string]$Path) {
+  return ($Path -replace '[^A-Za-z0-9]', '-')
+}
+# The registry itself is looked up in every place a Claude build may keep it: a
+# build that honours CLAUDE_CONFIG_DIR writes there, a build that ignores it
+# writes under the profile of the current user. Both are checked, so the cleanup
+# works on either build.
+function Get-ProjectRegistryCandidates {
+  $list = New-Object System.Collections.Generic.List[string]
+  $cfg = $env:CLAUDE_CONFIG_DIR
+  if (-not [string]::IsNullOrWhiteSpace($cfg)) { $list.Add((Join-Path $cfg 'projects')) }
+  foreach ($profile in @(Get-ProfileDirectories)) {
+    $list.Add((Join-Path $profile '.claude\projects'))
+  }
+  return @($list | Select-Object -Unique)
+}
+
+# The profile directory is derived at run time and never written down: the kit
+# is installed into other machines and other users, so a home path of its own
+# would be wrong everywhere else. Three sources, all of them optional:
+# the shell home variable, the drive plus path pair Windows keeps for the
+# profile, and the application data folder whose two parents are the profile.
+function Get-ProfileDirectories {
+  $list = New-Object System.Collections.Generic.List[string]
+  if (-not [string]::IsNullOrWhiteSpace($env:HOME)) { $list.Add($env:HOME) }
+  $drive = $env:HOMEDRIVE
+  $tail = $env:HOMEPATH
+  if (-not [string]::IsNullOrWhiteSpace($drive) -and -not [string]::IsNullOrWhiteSpace($tail)) {
+    if ($tail -notmatch '^[\\/]') { $tail = '\' + $tail }
+    $list.Add($drive + $tail)
+  }
+  $appData = [Environment]::GetFolderPath('ApplicationData')
+  if (-not [string]::IsNullOrWhiteSpace($appData)) {
+    $profile = Split-Path -Parent (Split-Path -Parent $appData)
+    if (-not [string]::IsNullOrWhiteSpace($profile)) { $list.Add($profile) }
+  }
+  return @($list | Select-Object -Unique)
+}
 
 # --- 1. parameters --------------------------------------------------------------
 $cliRuntimes = @('claude-code', 'codex')
@@ -150,6 +201,38 @@ if ($Runtime -eq 'claude-code') {
   }
 }
 
+# --- 2a. chain gate: only a running chain may be spawned -----------------------
+# A blocked or finished chain that is still spawned runs work no human approved:
+# the driver used to read next_session_id out of the ledger without ever looking
+# at status, so a chain a human had stopped could still take another turn. The
+# ledger is the only place that knows, so it is read here even when the caller
+# passed -SessionId. A workspace without a ledger is allowed on purpose: the
+# driver is also used before a chain exists.
+$spawnLedgerFile = Join-Path $WorkspaceDir 'docs\relay.json'
+$spawnLedgerStatus = 'absent'
+if (Test-Path -LiteralPath $spawnLedgerFile -PathType Leaf) {
+  try {
+    $spawnLedgerObj = Get-Content -LiteralPath $spawnLedgerFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($null -eq $spawnLedgerObj) {
+      $spawnLedgerStatus = 'unreadable'
+    } else {
+      $spawnLedgerStatus = ([string]$spawnLedgerObj.status).Trim().ToLowerInvariant()
+    }
+  } catch {
+    $spawnLedgerStatus = 'unreadable'
+  }
+}
+Say ("SPAWN_LEDGER status=" + $spawnLedgerStatus + " path=" + $spawnLedgerFile)
+if ($spawnLedgerStatus -ne 'absent' -and $spawnLedgerStatus -ne 'running') {
+  $chainWhy = "status=" + $spawnLedgerStatus + " hint=a_blocked_done_pending_or_unreadable_chain_needs_a_human_decision_first"
+  if ($Execute) {
+    Say ("FAIL reason=chain_not_running " + $chainWhy)
+    Say 'HINT=relay-ledger.ps1 -Action status shows the chain state; only a human moves a chain out of blocked.'
+    exit 3
+  }
+  Say ("WARN reason=chain_not_running " + $chainWhy + " (dry_run_would_not_execute)")
+}
+
 # A headless link cannot answer a question, and a question nobody answers turns
 # into a multi-minute stall in the middle of a stage.
 #
@@ -216,6 +299,9 @@ if ($Runtime -eq 'claude-code') {
   # permissions the link had, and a dry run shows them without touching the disk.
   Say ("SPAWN_SETTINGS_JSON " + $headlessSettings)
 }
+if ($EphemeralWorkspace) {
+  Say ("SPAWN_EPHEMERAL_WORKSPACE=true key=" + (Get-ClaudeProjectKey $WorkspaceDir))
+}
 
 if (-not $Execute) {
   Say 'SPAWN_EXECUTE=false (add -Execute to run the command above)'
@@ -252,14 +338,33 @@ if ($AdoptLock) {
     Say ("FAIL reason=lock_script_missing path=" + $lockScript)
     exit 2
   }
+  # The hand-over is a one-time permit, the same one the mcode flow uses: the
+  # driver takes a permit as the current holder and hands it over together with
+  # its nonce, so a second driver cannot take the lock away from the chain.
+  $permitNonce = ''
+  $permitOut = @(& (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action prespawn -Stage 0 | ForEach-Object { [string]$_ })
+  $permitExit = $LASTEXITCODE
+  foreach ($permitLine in $permitOut) {
+    if ($permitLine -match 'SPAWN_PERMIT ok nonce=(\w+)') { $permitNonce = $matches[1] }
+  }
+  if ($permitExit -ne 0) {
+    Say ("FAIL reason=lock_prespawn_failed exit=" + $permitExit)
+    foreach ($permitLine in $permitOut) { Say ("SPAWN_OUTPUT " + $permitLine) }
+    exit 3
+  }
+  if ($permitNonce -eq '') {
+    Say 'FAIL reason=permit_nonce_missing'
+    foreach ($permitLine in $permitOut) { Say ("SPAWN_OUTPUT " + $permitLine) }
+    exit 3
+  }
   if ($Runtime -eq 'claude-code' -and $requestedSessionId -ne '') {
-    & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action adopt -SessionId $requestedSessionId
+    & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action adopt -SessionId $requestedSessionId -Nonce $permitNonce
     $lockExit = $LASTEXITCODE
     if ($lockExit -ne 0) {
       Say ("FAIL reason=lock_adopt_failed exit=" + $lockExit + " session_id=" + $requestedSessionId)
       exit 3
     }
-    Say ("SPAWN_LOCK_PRE_ADOPTED session_id=" + $requestedSessionId)
+    Say ("SPAWN_LOCK_PRE_ADOPTED session_id=" + $requestedSessionId + " nonce=" + $permitNonce)
     $preAdopted = $true
   }
 }
@@ -271,6 +376,53 @@ function Release-PreAdoptedLock {
   & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action release -SessionId $requestedSessionId | Out-Null
   if ($LASTEXITCODE -eq 0) {
     Say ("SPAWN_LOCK_RELEASED session_id=" + $requestedSessionId + " reason=link_failed")
+  }
+}
+
+# --- 3b. ephemeral workspace: keep the project registry clean --------------------
+# A link that runs in a throwaway fixture leaves a project behind in the
+# registry of the client, and a whole test batch leaves a dozen of them. The
+# driver can undo that for its own child: it remembers the registry before the
+# child starts and moves away exactly the entry the child created. The entry is
+# moved, not deleted: the transcript stays on disk as evidence, next to the
+# registry but outside it, so the client does not show it as a project.
+$ephemeralRegistries = @()
+$ephemeralSnapshot = @{}
+if ($EphemeralWorkspace) {
+  $ephemeralRegistries = @(Get-ProjectRegistryCandidates)
+  $ephemeralKey = Get-ClaudeProjectKey $WorkspaceDir
+  foreach ($reg in $ephemeralRegistries) {
+    if (-not (Test-Path -LiteralPath $reg -PathType Container)) { continue }
+    $names = @(Get-ChildItem -LiteralPath $reg -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    $ephemeralSnapshot[$reg] = $names
+    Say ("SPAWN_EPHEMERAL_SNAPSHOT registry=" + $reg + " entries=" + $names.Count + " key=" + $ephemeralKey)
+  }
+}
+function Clear-EphemeralProject {
+  if (-not $EphemeralWorkspace) { return }
+  $key = Get-ClaudeProjectKey $WorkspaceDir
+  foreach ($reg in $ephemeralRegistries) {
+    if (-not (Test-Path -LiteralPath $reg -PathType Container)) { continue }
+    $target = Join-Path $reg $key
+    if (-not (Test-Path -LiteralPath $target -PathType Container)) { continue }
+    $before = @()
+    if ($ephemeralSnapshot.ContainsKey($reg)) { $before = @($ephemeralSnapshot[$reg]) }
+    if ($before -contains $key) {
+      Say ("SPAWN_EPHEMERAL_PROJECT_KEPT registry=" + $reg + " key=" + $key + " reason=pre_existing")
+      continue
+    }
+    try {
+      # The stash sits next to the registry, not in the workspace: the registry
+      # and the workspace are often on different volumes, and a move across
+      # volumes is not a move.
+      $stashDir = Join-Path (Split-Path -Parent $reg) '_relay-ephemeral'
+      $stash = Join-Path $stashDir ($key + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+      if (-not (Test-Path -LiteralPath $stashDir -PathType Container)) { New-Item -ItemType Directory -Path $stashDir -Force | Out-Null }
+      Move-Item -LiteralPath $target -Destination $stash -Force
+      Say ("SPAWN_EPHEMERAL_PROJECT_CLEANED registry=" + $reg + " key=" + $key + " moved_to=" + $stash)
+    } catch {
+      Say ("WARN reason=ephemeral_project_not_cleaned registry=" + $reg + " key=" + $key + " error=" + $_.Exception.Message)
+    }
   }
 }
 
@@ -292,12 +444,14 @@ try {
   $outLines = & $exeCmd.Source @cmdArgs 2>&1 | ForEach-Object { [string]$_ }
 } catch {
   Release-PreAdoptedLock
+  Clear-EphemeralProject
   Say ("FAIL reason=runtime_run_threw exe=" + $exe + " error=" + $_.Exception.Message)
   exit 3
 } finally {
   Set-Location -LiteralPath $prevCwd
 }
 $runExit = $LASTEXITCODE
+Clear-EphemeralProject
 $outText = ($outLines -join "`n")
 
 # Keep the raw runtime output on disk: without it a link that did nothing is
@@ -346,7 +500,7 @@ if ($AdoptLock -and -not $preAdopted) {
     Say ("FAIL reason=lock_script_missing path=" + $lockScript)
     exit 2
   }
-  & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action adopt -SessionId $sessionId
+  & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lockScript -Action adopt -SessionId $sessionId -Nonce $permitNonce
   $lockExit = $LASTEXITCODE
   if ($lockExit -ne 0) {
     Say ("FAIL reason=lock_adopt_failed exit=" + $lockExit + " session_id=" + $sessionId)

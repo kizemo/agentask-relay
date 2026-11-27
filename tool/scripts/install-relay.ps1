@@ -41,9 +41,12 @@ param(
   [string]$Target = 'relay batch',
   [string]$PlanDoc = '',
   [string]$StageTitles = '',
-  [int]$MaxStages = 6,
+  # Typed as strings on purpose: a typed integer parameter is refused by the
+  # parameter binder, which ends the run with exit 1 and a stack trace instead
+  # of the documented exit 2 with a verdict line.
+  [string]$MaxStages = '6',
   [string]$WorkspaceDir = '',
-  [int]$TtlSeconds = 1800,
+  [string]$TtlSeconds = '1800',
   [string]$Runtime = 'mcode',
   [string]$AnswersFile = '',
   [switch]$Force,
@@ -57,8 +60,154 @@ $templateDir = Join-Path $skillRoot 'templates'
 $reportLines = New-Object System.Collections.Generic.List[string]
 $warnLines   = New-Object System.Collections.Generic.List[string]
 
+# Everything the report needs is initialised before any work runs, so the trap
+# below can always land a report even when the run dies early. Later steps only
+# ever move the verdict from PASS to FAIL, nothing resets it.
+$verdict = 'PASS'
+$repo = ''
+$repoName = ''
+$ruleFilesText = ''
+$planRel = ''
+$adaptStatus = 'pending'
+$adaptSource = 'defaults'
+$adaptSourceLabel = 'defaults'
+$adaptAnswersRel = ''
+$adaptApplied = 0
+$adaptTotal = 0
+$adaptMissing = @()
+$adaptPacket = $null
+$adaptQuestionsRel = ''
+$reportPath = ''
+
 function Log { param([string]$Line) Write-Host $Line; $reportLines.Add($Line) }
 function Warn { param([string]$Line) Write-Host "WARN $Line"; $warnLines.Add($Line) }
+
+function Write-Utf8NoBom {
+  param([string]$Path, [string]$Content)
+  [IO.File]::WriteAllText($Path, [string]$Content, [Text.UTF8Encoding]::new($false))
+}
+
+function Write-InstallReport {
+  if ([string]::IsNullOrWhiteSpace([string]$reportPath)) { return $false }
+  $md = New-Object System.Collections.Generic.List[string]
+  $md.Add('# Relay kit install report')
+  $md.Add('')
+  $md.Add("- installed_at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+  $md.Add('- tool: agentask-relay skill (installed from the skill directory; path omitted on purpose)')
+  $md.Add("- repo: $repo")
+  $md.Add("- runtime: $Runtime")
+  $md.Add("- rule_files: $ruleFilesText")
+  $md.Add("- target: $Target")
+  $md.Add("- plan_doc: $planRel")
+  $md.Add("- max_stages: $maxStagesNum")
+  $md.Add("- verdict: $verdict")
+  $md.Add('')
+  $md.Add('## Console log')
+  $md.Add('')
+  $md.Add('```')
+  foreach ($l in $reportLines) { $md.Add($l) }
+  $md.Add('```')
+  if ($warnLines.Count -gt 0) {
+    $md.Add('')
+    $md.Add('## Warnings')
+    $md.Add('')
+    foreach ($w in $warnLines) { $md.Add("- $w") }
+  }
+  $md.Add('')
+  $md.Add('## Adaptation status')
+  $md.Add('')
+  $md.Add("- status: $adaptStatus")
+  $md.Add("- source: $adaptSource")
+  if ($adaptStatus -ne 'pending') {
+    $md.Add("- applied: $adaptApplied/$adaptTotal")
+    if ($adaptMissing.Count -gt 0) { $md.Add("- missing: " + ($adaptMissing -join ',')) }
+  }
+  $md.Add('- doc: docs\RELAY-ADAPTATION.md')
+  if ($null -ne $adaptPacket -and $adaptPacket.Questions -gt 0) {
+    $md.Add("- questions: $adaptQuestionsRel")
+    $md.Add('- answers_template: docs\relay\adaptation-answers.template.json')
+  }
+  $md.Add('')
+  $md.Add('## Next step')
+  $md.Add('')
+  $zhAct = -join [char[]](0x6309)
+  $zhChain = -join [char[]](0x542F,0x52A8,0x63A5,0x529B,0x94FE)
+  if ($adaptStatus -eq 'partial') {
+    # No "confirmed" wording here: the file covered some keys only, and the rest
+    # still holds probe defaults that nobody signed off.
+    $md.Add('The answers file covered ' + $adaptApplied + '/' + $adaptTotal + ' adaptation keys.')
+    $md.Add('The keys still holding the installer probe defaults: ' + ($adaptMissing -join ',') + '.')
+    $md.Add('Ask the user about those keys, record them in the answers file and re-run this')
+    $md.Add('installer with -AnswersFile. Only sections 3/4/5 of docs\RELAY-ADAPTATION.md are')
+    $md.Add('rewritten; the rest of the doc is left alone.')
+    $md.Add('Open a session whose workspace IS this repo and say:')
+  } elseif ($adaptStatus -eq 'pending' -and $adaptQuestionsRel -ne '') {
+    $md.Add('Do NOT start the chain yet. Sections 3/4/5 of docs\RELAY-ADAPTATION.md currently hold')
+    $md.Add('probe defaults that nobody confirmed.')
+    $md.Add('')
+    $md.Add('1. Ask the user every question listed in ' + $adaptQuestionsRel + '.')
+    $md.Add('2. Record the answers in docs\relay\adaptation-answers.json')
+    $md.Add('   (same shape as docs\relay\adaptation-answers.template.json).')
+    $md.Add('3. Re-run this installer with -AnswersFile docs\relay\adaptation-answers.json.')
+    $md.Add('   Only sections 3/4/5 are rewritten; the rest of the doc is left alone. It prints')
+    $md.Add('   ADAPTATION_STATUS=confirmed only when every key is covered, and')
+    $md.Add('   ADAPTATION_STATUS=partial when some keys are still missing.')
+    $md.Add('4. Open a session whose workspace IS this repo and say:')
+  } elseif ($adaptStatus -eq 'pending') {
+    $md.Add('The adaptation values are unconfirmed and no question packet was written (template missing).')
+    $md.Add('Fill sections 3/4/5 of docs\RELAY-ADAPTATION.md by hand, then open a session')
+    $md.Add('whose workspace IS this repo and say:')
+  } else {
+    $md.Add('The adaptation values were confirmed from ' + $adaptAnswersRel + '.')
+    $md.Add('Open a session whose workspace IS this repo and say:')
+  }
+  $md.Add('')
+  $md.Add('    ' + $zhAct + ' docs\relay\ACTIVATION-PROMPT.txt ' + $zhChain)
+  Write-Utf8NoBom -Path $reportPath -Content ((($md -join "`n")) + "`n")
+  return $true
+}
+
+# Fallback trap. An unhandled error must not leave the previous run's report
+# behind (a stale "verdict: PASS" is a false receipt) and must not end the run
+# with a bare exit 1. The contract is 0 = ok, 2 = bad input, 5 = self check
+# failed, so an unhandled error is reported as a failed self check.
+$script:trapDepth = 0
+trap {
+  $script:trapDepth++
+  $msg = 'unknown_error'
+  try { $msg = [string]$_.Exception.Message } catch { }
+  $msg = (($msg -replace "`r", ' ') -replace "`n", ' ').Trim()
+  if ($script:trapDepth -gt 1) { exit 5 }
+  $script:verdict = 'FAIL'
+  try { Warn ("installer_unhandled_exception message=" + $msg) } catch { }
+  try { Write-InstallReport | Out-Null } catch { }
+  Write-Host "INSTALL_VERDICT=FAIL"
+  if (-not [string]::IsNullOrWhiteSpace([string]$reportPath)) { Write-Host "INSTALL_REPORT=$reportPath" }
+  exit 5
+}
+
+# MaxStages is validated by hand on purpose: a ValidateRange violation ends the
+# run with exit 1, and an illegal parameter owes the caller exit 2. The value
+# arrives as a string, because a typed integer parameter never reaches this
+# code: the binder refuses it first and the run ends with exit 1.
+$maxStagesNum = 0
+if (-not [int]::TryParse([string]$MaxStages, [ref]$maxStagesNum)) {
+  Write-Host ("FAIL reason=max_stages_invalid value=" + $MaxStages + " hint=expected_an_integer")
+  exit 2
+}
+if ($maxStagesNum -lt 1 -or $maxStagesNum -gt 100) {
+  Write-Host ("FAIL reason=max_stages_invalid value=" + $maxStagesNum + " min=1 max=100")
+  exit 2
+}
+$ttlNum = 0
+if (-not [int]::TryParse([string]$TtlSeconds, [ref]$ttlNum)) {
+  Write-Host ("FAIL reason=ttl_invalid value=" + $TtlSeconds + " hint=expected_an_integer")
+  exit 2
+}
+if ($ttlNum -lt 1 -or $ttlNum -gt 86400) {
+  Write-Host ("FAIL reason=ttl_invalid value=" + $ttlNum + " min=1 max=86400")
+  exit 2
+}
 
 function Get-RelPath {
   param([string]$Base, [string]$Full)
@@ -95,7 +244,7 @@ function Expand-Template {
   # Sections 3/4/5 of the adjudication doc used to ship as TODO. They are now filled
   # from a probe (or from an answers file). Every one of these placeholders is replaced
   # unconditionally when a value set is supplied: a doc that still shows {{...}} is a
-  # kit bug, and the install check below fails loudly on it.
+  # kit bug, and the install check below fails loudly on it (verdict FAIL).
   if ($null -ne $Adapt) {
     $t = $t.Replace('{{WRITE_SET_ALLOW}}', (Format-BulletList -Items $Adapt['write_set_allow'] -Indent '  '))
     $t = $t.Replace('{{WRITE_SET_DENY}}', (Format-BulletList -Items $Adapt['write_set_deny'] -Indent '  '))
@@ -106,13 +255,9 @@ function Expand-Template {
     $t = $t.Replace('{{MODEL_FALLBACK_DAY}}', [string]$Adapt['model_fallback_day'])
     $t = $t.Replace('{{MODEL_FALLBACK_NIGHT}}', [string]$Adapt['model_fallback_night'])
     $t = $t.Replace('{{ADAPTATION_SOURCE}}', [string]$Adapt['ADAPTATION_SOURCE'])
+    $t = $t.Replace('{{SOURCE_NOTE}}', [string]$Adapt['SOURCE_NOTE'])
   }
   return $t
-}
-
-function Write-Utf8NoBom {
-  param([string]$Path, [string]$Content)
-  [IO.File]::WriteAllText($Path, [string]$Content, [Text.UTF8Encoding]::new($false))
 }
 
 function Get-FileStamp {
@@ -395,17 +540,40 @@ if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
   exit 2
 }
 $repo = (Resolve-Path -LiteralPath $RepoRoot).Path
-$gitTop = (& git -C $repo rev-parse --show-toplevel 2>$null)
-if ([string]::IsNullOrWhiteSpace($gitTop)) {
+$gitTop = ''
+try { $gitTop = (& git -C $repo rev-parse --show-toplevel 2>$null) } catch { $gitTop = '' }
+if ([string]::IsNullOrWhiteSpace([string]$gitTop)) {
   Write-Host "FAIL reason=not_a_git_repo path=$repo"
   exit 2
 }
 $repo = (Resolve-Path -LiteralPath ($gitTop.Trim() -replace '/', '\')).Path
-if ([string]::IsNullOrWhiteSpace($WorkspaceDir)) { $WorkspaceDir = $repo }
+if ([string]::IsNullOrWhiteSpace($WorkspaceDir)) {
+  $WorkspaceDir = $repo
+} else {
+  # An illegal workspace is a caller error, not a kit failure: exit 2, not 5.
+  $wsCandidate = $WorkspaceDir
+  if (-not [IO.Path]::IsPathRooted($wsCandidate)) { $wsCandidate = Join-Path $repo $wsCandidate }
+  $wsResolved = ''
+  try {
+    if (Test-Path -LiteralPath $wsCandidate -PathType Container) {
+      $wsResolved = (Resolve-Path -LiteralPath $wsCandidate).Path
+    }
+  } catch {
+    $wsResolved = ''
+  }
+  if ([string]::IsNullOrWhiteSpace($wsResolved)) {
+    Write-Host "FAIL reason=workspace_dir_invalid path=$WorkspaceDir"
+    exit 2
+  }
+  $WorkspaceDir = $wsResolved
+}
 $repoName = Split-Path -Leaf $repo
 Log "REPO root=$repo"
 Log "REPO name=$repoName"
-Log "REPO head=$((& git -C $repo rev-parse --short HEAD).Trim())"
+$headRaw = ''
+try { $headRaw = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { $headRaw = '' }
+if ([string]::IsNullOrWhiteSpace([string]$headRaw)) { $headShort = 'none' } else { $headShort = ([string]$headRaw).Trim() }
+Log "REPO head=$headShort"
 Log ("RUNTIME name=" + $Runtime + " spawn_template=" + (Split-Path -Leaf $spawnTplPath))
 
 # --- 2. resolve the plan doc ---------------------------------------------------
@@ -490,7 +658,7 @@ if ($planWillBeCreated -and -not (Test-Path -LiteralPath $planPath)) {
 - installed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 - repo: $repo
 - runtime: $Runtime
-- max_stages: $MaxStages
+- max_stages: $maxStagesNum
 - protocol: docs/AGENT-RELAY.md
 - adjudication: docs/RELAY-ADAPTATION.md
 
@@ -524,6 +692,12 @@ $adaptDefaults = Get-AdaptationProbe -Repo $repo
 $adaptSource = 'defaults'
 $adaptAnswersRel = ''
 $adaptPacket = $null
+$adaptApplied = 0
+$adaptTotal = @($adaptDefaults.Keys).Count
+$adaptMissing = @()
+# Metadata keys the generated answers template carries. They are not typos, so
+# they never count as unknown keys.
+$answerMetaKeys = @('schema', 'confirmed_by', 'confirmed_at')
 if (-not [string]::IsNullOrWhiteSpace($AnswersFile)) {
   $ansPath = $AnswersFile
   if (-not [IO.Path]::IsPathRooted($ansPath)) { $ansPath = Join-Path $repo $ansPath }
@@ -538,7 +712,21 @@ if (-not [string]::IsNullOrWhiteSpace($AnswersFile)) {
     Write-Host "FAIL reason=answers_file_unparsable path=$ansPath"
     exit 2
   }
-  $overlaid = 0
+  # A key the installer does not know is dropped silently, so a typo in the
+  # answers file looks exactly like a question nobody answered. Report them.
+  $unknownKeys = @()
+  foreach ($p in $ans.PSObject.Properties) {
+    $nk = [string]$p.Name
+    if ($adaptDefaults.Contains($nk)) { continue }
+    if ($answerMetaKeys -contains $nk) { continue }
+    $unknownKeys += $nk
+  }
+  if ($unknownKeys.Count -gt 0) {
+    Warn ("adaptation_answers_unknown_keys ignored=" + ($unknownKeys -join ','))
+  }
+  # One covered key is not a confirmation. Count the keys that really landed:
+  # the rest keep the probe defaults and must not ship as "confirmed".
+  $appliedKeys = New-Object System.Collections.Generic.List[string]
   foreach ($k in @($adaptDefaults.Keys)) {
     $prop = $ans.PSObject.Properties[$k]
     if ($null -eq $prop) { continue }
@@ -547,24 +735,57 @@ if (-not [string]::IsNullOrWhiteSpace($AnswersFile)) {
     if ($val -is [string] -and [string]::IsNullOrWhiteSpace([string]$val)) { continue }
     if ($val -is [array] -and @($val).Count -eq 0) { continue }
     $adaptDefaults[$k] = $val
-    $overlaid++
+    $appliedKeys.Add([string]$k)
   }
-  if ($overlaid -eq 0) {
-    Write-Host "FAIL reason=answers_file_empty path=$ansPath"
+  if ($appliedKeys.Count -eq 0) {
+    if ($unknownKeys.Count -gt 0) {
+      Write-Host ("FAIL reason=answers_file_unknown_keys path=" + $ansPath + " ignored=" + ($unknownKeys -join ','))
+    } else {
+      Write-Host "FAIL reason=answers_file_empty path=$ansPath"
+    }
     exit 2
   }
   $adaptSource = 'answers'
   $adaptAnswersRel = Get-RelPath -Base $repo -Full $ansPath
-  Log ("ADAPT answers=" + $adaptAnswersRel + " applied=" + $overlaid + "/" + @($adaptDefaults.Keys).Count)
+  $adaptApplied = $appliedKeys.Count
+  $adaptMissing = @(@($adaptDefaults.Keys) | Where-Object { $appliedKeys -notcontains $_ })
+  if ($adaptMissing.Count -eq 0) {
+    $adaptStatus = 'confirmed'
+  } else {
+    $adaptStatus = 'partial'
+    Warn ("adaptation_answers_partial applied=" + $adaptApplied + "/" + $adaptTotal + " missing=" + ($adaptMissing -join ','))
+  }
+  Log ("ADAPT answers=" + $adaptAnswersRel + " applied=" + $adaptApplied + "/" + $adaptTotal + " status=" + $adaptStatus + " missing=" + ($adaptMissing -join ','))
 }
 $adaptValues = [ordered]@{}
 foreach ($k in @($adaptDefaults.Keys)) { $adaptValues[$k] = $adaptDefaults[$k] }
-$adaptValues['ADAPTATION_SOURCE'] = $adaptSource
-$adaptStatus = 'pending'
-if ($adaptSource -eq 'answers') { $adaptStatus = 'confirmed' }
+# The source label is what the section headings show. A partial answers file
+# must not read like a full confirmation.
+$adaptSourceLabel = $adaptSource
+if ($adaptStatus -eq 'partial') { $adaptSourceLabel = 'answers (partial)' }
+$adaptValues['ADAPTATION_SOURCE'] = $adaptSourceLabel
 
 if (Test-Path -LiteralPath $adaptSrc) {
-  $adaptText = Expand-Template -Text (Read-TextOrEmpty -Path $adaptSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -Adapt $adaptValues
+  # The source note is a template variant, not a hardcoded paragraph: a doc whose
+  # values came from the user's answers must not tell the agent to ask again.
+  $adaptTplText = Read-TextOrEmpty -Path $adaptSrc
+  $noteTag = 'SOURCE_NOTE_DEFAULTS'
+  if ($adaptStatus -eq 'partial') { $noteTag = 'SOURCE_NOTE_PARTIAL' }
+  elseif ($adaptStatus -eq 'confirmed') { $noteTag = 'SOURCE_NOTE_ANSWERS' }
+  $noteRx = '(?s)<!--\s*' + $noteTag + '_BEGIN\s*-->(.*?)<!--\s*' + $noteTag + '_END\s*-->'
+  $noteMatch = [regex]::Match($adaptTplText, $noteRx)
+  $sourceNote = ''
+  if ($noteMatch.Success) {
+    $sourceNote = $noteMatch.Groups[1].Value.Trim()
+  } else {
+    Warn ("adaptation_source_note_variant_missing tag=" + $noteTag)
+  }
+  # The variant blocks are installer scaffolding: they must never reach the doc.
+  foreach ($tag in @('SOURCE_NOTE_DEFAULTS', 'SOURCE_NOTE_ANSWERS', 'SOURCE_NOTE_PARTIAL')) {
+    $adaptTplText = [regex]::Replace($adaptTplText, '(?s)<!--\s*' + $tag + '_BEGIN\s*-->.*?<!--\s*' + $tag + '_END\s*-->', '')
+  }
+  $adaptValues['SOURCE_NOTE'] = $sourceNote
+  $adaptText = Expand-Template -Text $adaptTplText -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $maxStagesNum -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -Adapt $adaptValues
   if (-not (Test-Path -LiteralPath $adaptPath)) {
     Write-Utf8NoBom -Path $adaptPath -Content $adaptText
     Log ("WRITE RELAY-ADAPTATION.md created source=" + $adaptSource + " bytes=" + (Get-Item -LiteralPath $adaptPath).Length)
@@ -576,7 +797,10 @@ if (Test-Path -LiteralPath $adaptSrc) {
     # installer, so an answers rerun patches exactly those and leaves the rest alone.
     $sect = Update-AdaptationSections -Path $adaptPath -RenderedText $adaptText -Numbers @(3, 4, 5)
     Log ("PATCH RELAY-ADAPTATION.md sections=" + (@($sect.Applied) -join ',') + " missing=" + (@($sect.Missing) -join ',') + " answers=" + $adaptAnswersRel)
-    if (@($sect.Missing).Count -gt 0) { Warn ("adaptation_sections_missing numbers=" + (@($sect.Missing) -join ',')) }
+    if (@($sect.Missing).Count -gt 0) {
+      Warn ("adaptation_sections_missing numbers=" + (@($sect.Missing) -join ','))
+      $verdict = 'FAIL'
+    }
   } else {
     Log "SKIP RELAY-ADAPTATION.md exists kept (no -AnswersFile: the project adjudication stays authoritative)"
   }
@@ -584,7 +808,20 @@ if (Test-Path -LiteralPath $adaptSrc) {
     $adaptNow = Read-TextOrEmpty -Path $adaptPath
     $phLeft = ([regex]::Matches($adaptNow, '\{\{[A-Z_]+\}\}')).Count
     Log ("ADAPT_CHECK doc=" + (Get-RelPath -Base $repo -Full $adaptPath) + " placeholders=" + $phLeft + " source=" + $adaptSource)
-    if ($phLeft -gt 0) { Warn "adaptation_placeholder_left count=$phLeft path=docs\RELAY-ADAPTATION.md" }
+    if ($phLeft -gt 0) {
+      Warn "adaptation_placeholder_left count=$phLeft path=docs\RELAY-ADAPTATION.md"
+      $verdict = 'FAIL'
+    }
+    # Sections 3/4/5 carry the adjudication. If the installed doc cannot locate
+    # them, the doc does not adjudicate anything and must not read as green.
+    $missingSections = @()
+    foreach ($n in @(3, 4, 5)) {
+      if ([string]::IsNullOrWhiteSpace((Split-Section -Text $adaptNow -Number $n))) { $missingSections += $n }
+    }
+    if ($missingSections.Count -gt 0) {
+      Warn ("adaptation_sections_missing numbers=" + ($missingSections -join ','))
+      $verdict = 'FAIL'
+    }
   }
 } else {
   Warn 'adaptation_template_missing section_3_4_5_not_rendered'
@@ -607,7 +844,7 @@ if ($adaptStatus -eq 'pending' -and (Test-Path -LiteralPath $adaptPath)) {
 $blockSrc = Join-Path $templateDir 'AGENTS-RELAY-BLOCK.md'
 $beginMark = '<!-- BEGIN RELAY-PORT -->'
 $endMark = '<!-- END RELAY-PORT -->'
-$blockText = Expand-Template -Text (Read-TextOrEmpty -Path $blockSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText
+$blockText = Expand-Template -Text (Read-TextOrEmpty -Path $blockSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $maxStagesNum -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText
 
 function Install-RuleBlock {
   param([string]$Path, [string]$BlockText, [string]$BeginMark, [string]$EndMark)
@@ -639,7 +876,10 @@ function Install-RuleBlock {
         $action = 'present_kept'
       }
     } else {
+      # Both markers are there but the block cannot be located: the file is left
+      # alone on purpose, and a human has to look at it.
       $action = 'present_unparsed'
+      Warn 'agents_relay_block_unlocatable markers_present_but_not_in_order manual_fix_required'
     }
   } else {
     if ($hasBegin -or $hasEnd) {
@@ -732,6 +972,8 @@ foreach ($t in $ruleTargets) {
   $reasonText = $res.Reason
   if ([string]::IsNullOrWhiteSpace($reasonText)) { $reasonText = 'n/a' }
   Log ($t.Label + " action=" + $res.Action + " reason=" + $reasonText + " before=[" + $res.Before + "] after=[" + $res.After + "] bom=" + $res.Bom)
+  # The marker count below cannot see a broken order, so this case is judged here.
+  if ($res.Action -eq 'present_unparsed') { $verdict = 'FAIL' }
 }
 
 # --- 7b. runtime descriptor ----------------------------------------------------
@@ -745,6 +987,7 @@ elseif ($Runtime -eq 'openclaw') { $nextLinkMode = 'sessions_spawn_tool' }
 $descriptor = [ordered]@{
   runtime        = $Runtime
   next_link_mode = $nextLinkMode
+  lock_ttl_seconds = $ttlNum
   stage_titles   = $stageTitlesExplicit
   spawn_rule     = $spawnRule
   spawn_command  = $spawnCommand
@@ -757,8 +1000,8 @@ Log "WRITE relay-runtime.json bytes=$((Get-Item -LiteralPath $descriptorPath).Le
 # --- 8. activation packet -----------------------------------------------------
 $actSrc = Join-Path $templateDir 'ACTIVATION-PROMPT.md'
 if (Test-Path -LiteralPath $actSrc) {
-  $actText = Expand-Template -Text (Read-TextOrEmpty -Path $actSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
-  $spawnText = Expand-Template -Text $spawnTplText -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $MaxStages -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
+  $actText = Expand-Template -Text (Read-TextOrEmpty -Path $actSrc) -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $maxStagesNum -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
+  $spawnText = Expand-Template -Text $spawnTplText -RepoName $repoName -RepoPath $repo -Plan $planRel -Goal $Target -Stages $maxStagesNum -StagesText $stageText -RuntimeName $Runtime -SpawnRule $spawnRule -RuleFiles $ruleFilesText -SpawnCommand $spawnCommandTpl
   $actText = $actText.Replace('{{SPAWN_STEPS}}', ($spawnText -replace "`r`n", "`n"))
   Write-Utf8NoBom -Path $activationPath -Content ($actText -replace "`r`n", "`n")
   Log "WRITE ACTIVATION-PROMPT.txt bytes=$((Get-Item -LiteralPath $activationPath).Length)"
@@ -772,9 +1015,8 @@ if (Test-Path -LiteralPath $ledgerPath) {
 }
 
 # --- 10. self check -----------------------------------------------------------
-$verdict = 'PASS'
 if (-not $SkipVerify) {
-  foreach ($f in @($relayLockPath, $relayStartPath, $relaySpawnPath)) {
+  foreach ($f in @($relayLockPath, $relayStartPath, $relayLedgerPath, $relaySpawnPath)) {
     if (-not (Test-Path -LiteralPath $f)) { Log "ASCII_CHECK file=$([IO.Path]::GetFileName($f)) missing=true"; $verdict = 'FAIL'; continue }
     $bytes = [IO.File]::ReadAllBytes($f)
     $nonAscii = 0
@@ -792,15 +1034,39 @@ if (-not $SkipVerify) {
     if ($bc -ne 1 -or $ec -ne 1) { $verdict = 'FAIL' }
   }
 
-  $lockOut = & $relayLockPath -Action status *>&1
-  $lockExit = $LASTEXITCODE
-  Log "LOCK_STATUS exit=$lockExit line=$(($lockOut | Select-Object -First 1))"
+  # The self check runs files that live in the target repository. A user may
+  # have edited them, and a broken one must fail the install (exit 5) instead of
+  # killing the installer with an unhandled error (exit 1).
+  $lockExit = -1
+  try {
+    $lockOut = & $relayLockPath -Action status *>&1
+    $lockExit = $LASTEXITCODE
+    Log "LOCK_STATUS exit=$lockExit line=$(($lockOut | Select-Object -First 1))"
+  } catch {
+    $lockExit = -1
+    $lockMsg = ([string]$_.Exception.Message) -replace "`r", ' '
+    $lockMsg = ($lockMsg -replace "`n", ' ').Trim()
+    Log "INSTALL_SELFCHECK_ERROR stage=lock_status message=$lockMsg"
+    $verdict = 'FAIL'
+  }
 
-  $dryOut = & $relayStartPath -Target $Target -PlanDoc $planRel -MaxStages $MaxStages -WorkspaceDir $WorkspaceDir -DryRun *>&1
-  $dryExit = $LASTEXITCODE
-  $dryText = ($dryOut | ForEach-Object { [string]$_ }) -join "`n"
+  $dryExit = -1
+  $dryText = ''
   $dryPath = Join-Path $relayDir 'install-dryrun.txt'
-  Write-Utf8NoBom -Path $dryPath -Content ($dryText + "`n")
+  try {
+    $dryOut = & $relayStartPath -Target $Target -PlanDoc $planRel -MaxStages $maxStagesNum -WorkspaceDir $WorkspaceDir -DryRun *>&1
+    $dryExit = $LASTEXITCODE
+    $dryText = ($dryOut | ForEach-Object { [string]$_ }) -join "`n"
+    Write-Utf8NoBom -Path $dryPath -Content ($dryText + "`n")
+  } catch {
+    $dryExit = -1
+    $dryMsg = ([string]$_.Exception.Message) -replace "`r", ' '
+    $dryMsg = ($dryMsg -replace "`n", ' ').Trim()
+    $dryText = 'INSTALL_SELFCHECK_ERROR stage=dryrun message=' + $dryMsg
+    Log ("INSTALL_SELFCHECK_ERROR stage=dryrun message=" + $dryMsg)
+    Write-Utf8NoBom -Path $dryPath -Content ($dryText + "`n")
+    $verdict = 'FAIL'
+  }
   if ($dryExit -eq 0) {
     Log "DRYRUN exit=0 verdict=OK artifact=$dryPath"
   } elseif ($dryExit -eq 3) {
@@ -816,69 +1082,10 @@ if (-not $SkipVerify) {
 }
 
 # --- 11. report ---------------------------------------------------------------
-$md = New-Object System.Collections.Generic.List[string]
-$md.Add('# Relay kit install report')
-$md.Add('')
-$md.Add("- installed_at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
-$md.Add("- tool: relay-port skill ($skillRoot)")
-$md.Add("- repo: $repo")
-$md.Add("- runtime: $Runtime")
-$md.Add("- rule_files: $ruleFilesText")
-$md.Add("- target: $Target")
-$md.Add("- plan_doc: $planRel")
-$md.Add("- max_stages: $MaxStages")
-$md.Add("- verdict: $verdict")
-$md.Add('')
-$md.Add('## Console log')
-$md.Add('')
-$md.Add('```')
-foreach ($l in $reportLines) { $md.Add($l) }
-$md.Add('```')
-if ($warnLines.Count -gt 0) {
-  $md.Add('')
-  $md.Add('## Warnings')
-  $md.Add('')
-  foreach ($w in $warnLines) { $md.Add("- $w") }
-}
-$md.Add('')
-$md.Add('## Adaptation status')
-$md.Add('')
-$md.Add("- status: $adaptStatus")
-$md.Add("- source: $adaptSource")
-$md.Add('- doc: docs\RELAY-ADAPTATION.md')
-$adaptQuestionsRel = ''
 if ($null -ne $adaptPacket -and $adaptPacket.Questions -gt 0) {
   $adaptQuestionsRel = Get-RelPath -Base $repo -Full $adaptPacket.Md
-  $md.Add("- questions: $adaptQuestionsRel")
-  $md.Add('- answers_template: docs\relay\adaptation-answers.template.json')
 }
-$md.Add('')
-$md.Add('## Next step')
-$md.Add('')
-$zhAct = -join [char[]](0x6309)
-$zhChain = -join [char[]](0x542F,0x52A8,0x63A5,0x529B,0x94FE)
-if ($adaptStatus -eq 'pending' -and $adaptQuestionsRel -ne '') {
-  $md.Add('Do NOT start the chain yet. Sections 3/4/5 of docs\RELAY-ADAPTATION.md currently hold')
-  $md.Add('probe defaults that nobody confirmed.')
-  $md.Add('')
-  $md.Add('1. Ask the user every question listed in ' + $adaptQuestionsRel + '.')
-  $md.Add('2. Record the answers in docs\relay\adaptation-answers.json')
-  $md.Add('   (same shape as docs\relay\adaptation-answers.template.json).')
-  $md.Add('3. Re-run this installer with -AnswersFile docs\relay\adaptation-answers.json.')
-  $md.Add('   Only sections 3/4/5 are rewritten; the rest of the doc is left alone. It prints')
-  $md.Add('   ADAPTATION_STATUS=confirmed when the answers landed.')
-  $md.Add('4. Open a session whose workspace IS this repo and say:')
-} elseif ($adaptStatus -eq 'pending') {
-  $md.Add('The adaptation values are unconfirmed and no question packet was written (template missing).')
-  $md.Add('Fill sections 3/4/5 of docs\RELAY-ADAPTATION.md by hand, then open a session')
-  $md.Add('whose workspace IS this repo and say:')
-} else {
-  $md.Add('The adaptation values were confirmed from ' + $adaptAnswersRel + '.')
-  $md.Add('Open a session whose workspace IS this repo and say:')
-}
-$md.Add('')
-$md.Add('    ' + $zhAct + ' docs\relay\ACTIVATION-PROMPT.txt ' + $zhChain)
-Write-Utf8NoBom -Path $reportPath -Content ((($md -join "`n")) + "`n")
+Write-InstallReport | Out-Null
 
 Write-Host "INSTALL_VERDICT=$verdict"
 Write-Host "ADAPTATION_STATUS=$adaptStatus"

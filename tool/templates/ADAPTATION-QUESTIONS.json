@@ -1,7 +1,7 @@
 {
-  "schema": "relay-port/adaptation-questions@1",
-  "title": "relay-port 首次安装：三项裁决待确认",
-  "intro": "安装器已经替你探测过一遍，下面每项都带一个 `default` 值。\n\n**`default` 不是用户确认值**：它是安装器按仓库现状猜出来的。把这三项（写集 / 验收门禁 / 模型策略）当成默认值直接起链，是 relay-port 最常见的翻车方式——链会改到你不想让它改的目录，或者把「命令退出码 0」当成门禁绿。\n\n确认流程：\n\n1. 逐项向用户提问（`ask_user`），一次 2-3 项，不要一次抛 8 项。\n2. 把确认结果写成一个 JSON 文件，键名照抄下面的 `answer_key`。\n3. 用 `-AnswersFile` 重跑安装器（幂等，只定点替换 §3/§4/§5，不动其它章节）。\n\n```\npwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\docs\\relay\\install-relay.ps1 -RepoRoot <repo> -AnswersFile <repo>\\docs\\relay\\adaptation-answers.json\n```\n\n用户明确说「就按探测值」时，才算 `source=defaults` 可接受，并把这句确认写进台账。",
+  "schema": "agentask-relay/adaptation-questions@1",
+  "title": "agentask-relay 首次安装：三项裁决待确认",
+  "intro": "安装器已经替你探测过一遍，下面每项都带一个 `default` 值。\n\n**`default` 不是用户确认值**：它是安装器按仓库现状猜出来的。把这三项（写集 / 验收门禁 / 模型策略）当成默认值直接起链，是 agentask-relay 最常见的翻车方式——链会改到你不想让它改的目录，或者把「命令退出码 0」当成门禁绿。\n\n确认流程：\n\n1. 逐项向用户提问（`ask_user`），一次 2-3 项，不要一次抛 8 项。\n2. 把确认结果写成一个 JSON 文件，键名照抄下面的 `answer_key`。\n3. 用 `-AnswersFile` 重跑安装器（幂等，只定点替换 §3/§4/§5，不动其它章节）。\n\n```\npwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\docs\\relay\\install-relay.ps1 -RepoRoot <repo> -AnswersFile <repo>\\docs\\relay\\adaptation-answers.json\n```\n\n用户明确说「就按探测值」时，才算 `source=defaults` 可接受，并把这句确认写进台账。",
   "render": {
     "answer_key_label": "答案键",
     "type_label": "类型",

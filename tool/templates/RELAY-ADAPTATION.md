@@ -2,7 +2,7 @@
 
 > 通用协议见 `docs/AGENT-RELAY.md`（自包含、全部仓库相对路径）。
 > 本文件是**本项目专属裁决**：优先级高于通用协议，低于 `AGENTS.md` 其余家规。
-> 由 relay-port 安装器生成：§3/§4/§5 的取值由安装器**首次运行即自动探测**，或在托管 agent 提问后按
+> 由 agentask-relay 安装器生成：§3/§4/§5 的取值由安装器**首次运行即自动探测**，或在托管 agent 提问后按
 > `-AnswersFile` 直接落盘，本文件**不保留待填占位**。来源标成 `defaults` 时，起链前必须与用户确认。
 
 ## 1. 项目身份
@@ -31,8 +31,7 @@
   - `{{CONCURRENCY_CHECK}}`
   - 退出码 4 或输出含 `LOCK_HELD` ⇒ 立刻停链回写 `blocked`，**不要抢锁**。
 
-> `source=defaults` 表示本节三段是安装器的**探测值**，不是用户确认值：起链前必须按
-> `docs/relay/adaptation-questions.md` 向用户逐项发问，拿到答案后用 `-AnswersFile` 重跑安装器。
+{{SOURCE_NOTE}}
 
 ## 4. 验收门禁（source: {{ADAPTATION_SOURCE}}）
 
@@ -40,6 +39,8 @@
 - 判绿口径：**只认产物文件里的结论字段，不认管道末端的 `$LASTEXITCODE`**。当前口径：`{{GATE_VERDICT_FIELD}}`
 - 核数口径：`git status --porcelain` 一律带 `--untracked-files=all`。
 - 门禁脚本的阈值与白名单属**人工验收点**，agent 不得自行修改。
+
+{{SOURCE_NOTE}}
 
 ## 5. 模型与额度策略（source: {{ADAPTATION_SOURCE}}）
 
@@ -52,6 +53,8 @@
 - `session_create` **没有** `effort` 字段，任何情况下都不传；同样禁传 `defer_first_turn` / `parent_session_id`。
 - 建环即开跑（`turn.mode=activated`）：建环后立刻 `session get` 回读 `workspace_dir` / `effective_model` / `status` 三要素再登记。
 - 判活看 `session messages` 末条 timestamp，**不看** `session get.updatedAt`。
+
+{{SOURCE_NOTE}}
 
 ## 6. 人工验收点（命中即停链写 blocked）
 
@@ -90,3 +93,17 @@
   - `claude-code`：下一环是无头 `claude -p` 进程，子进程跑完即结束，靠 `relay-spawn.ps1` 再起下一环。
   - `codex`：下一环是无头 `codex exec` 进程，退出码即成败。
   - `openclaw`：下一环用 `sessions_spawn` 工具；**OpenClaw 只注入它 workspace 根目录的 `AGENTS.md`**，仓库不是 workspace 时必须先把家规块复制过去。
+
+<!-- SOURCE_NOTE_DEFAULTS_BEGIN -->
+> `source=defaults` 表示本节取值是安装器的**探测值**，不是用户确认值：起链前必须按
+> `docs/relay/adaptation-questions.md` 向用户逐项发问，拿到答案后用 `-AnswersFile` 重跑安装器。
+<!-- SOURCE_NOTE_DEFAULTS_END -->
+
+<!-- SOURCE_NOTE_ANSWERS_BEGIN -->
+> 本节取值来自用户确认的答案文件（`docs/relay/adaptation-answers.json`），可直接起链。
+<!-- SOURCE_NOTE_ANSWERS_END -->
+
+<!-- SOURCE_NOTE_PARTIAL_BEGIN -->
+> 本节取值**部分**来自用户确认的答案文件；未被答案覆盖的键仍是安装器的**探测值**，不是用户确认值：
+> 起链前必须向用户逐项补齐，再用 `-AnswersFile` 重跑安装器。
+<!-- SOURCE_NOTE_PARTIAL_END -->
