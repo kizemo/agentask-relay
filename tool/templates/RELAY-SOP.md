@@ -17,6 +17,7 @@
 ## 二、一条链的时序
 
 1. 人工：写好 `plan-*.md`（阶段拆分 + 每阶段 acceptance 判据），把 `relay-prompt.md` 的 A 模板粘进一个会话。
+1b. 激活会话的目标确认轮（B33）：目标不明确 ⇒ 一轮 `ask_user` 确认，裁决只追加进计划文档「目标确认（B33）」节，再跑启动器；目标明确 ⇒ 直接跑。一轮后仍不明确 ⇒ 不起链。链内各环不提问、不改计划内容（详见 `docs\AGENT-RELAY.md` §14）。
 2. 第 1 环：建/校 `relay.json` → 做阶段 1 → 结论落盘仓库 `docs/` → 回写 `relay.json` → `session_create` 投第 2 环。
 3. 第 2..N 环：读 `relay.json` 为唯一进度真相 → 重复第 2 步（模板 B）。
 4. 终止：全部完成写 `status=done`；遇停止条件写 `status=blocked` + 缺什么，并停下等人。

@@ -1,0 +1,30 @@
+FILE_COUNT=245 (MANIFEST excluded)
+ENTRY_COUNT=245
+INVARIANT_OK=True
+BOM_FILES=0 PS1_NON_ASCII_FILES=0 MD_TXT_CR_TOTAL=0
+MANIFEST_BYTES=16157 MANIFEST_NON_ASCII=0
+CHANGE_COUNT=23
+  CHANGED reports\headless-drill-console.txt : BFFFB26EC95AC212/2105 -> 855FB8CC39CC0394/2065
+  CHANGED reports\headless-drill-run1-budget-cap\acquire.txt : BCD965DDBC05A4D7/326 -> 396C60F29AD4F74E/324
+  CHANGED reports\headless-drill-run1-budget-cap\install.txt : 8BDCEEE260F43E84/2484 -> CC86832CDF8B0DD8/2446
+  CHANGED reports\headless-drill-run1-budget-cap\launcher.txt : 5B43CB237F0C5B37/2035 -> EE16B6F8BF35A528/2016
+  CHANGED reports\headless-drill-run1-budget-cap\real-run.txt : FC686E0AE800EB63/3475 -> 31C92632C7707D72/3457
+  CHANGED reports\headless-drill-run1-budget-cap\release.txt : 47FE7A5CE7F695BA/59 -> 48226C1632BA958F/58
+  CHANGED reports\headless-drill-run1-budget-cap\stub-run.txt : 4567793CDE50467A/1834 -> 1DD7D5827690B38C/1821
+  CHANGED reports\headless-drill-run1-console.txt : BB8D6B50CA471541/1981 -> FB479187D123A8AC/1945
+  CHANGED reports\headless-drill\acquire.txt : 510DE977598EBC9B/326 -> 6DAA4DF6BF90B7F5/324
+  CHANGED reports\headless-drill\install.txt : D60B6C01EE71E3AD/2484 -> AC74464BEE1B424C/2446
+  CHANGED reports\headless-drill\launcher.txt : C52BFEBEED854170/2036 -> EF71D4ABF91BC6E4/2017
+  CHANGED reports\headless-drill\real-run.txt : 78EF75356F47787E/2418 -> 8A8F94020776D2C3/2402
+  CHANGED reports\headless-drill\release.txt : 057998610BB77065/59 -> 43CBE34BA91B3503/58
+  CHANGED reports\headless-drill\stub-run.txt : 16AD5EC86CBAB56B/1835 -> 44F323197F1344C0/1822
+  CHANGED reports\headless-drill\summary.txt : A35A808F35127644/1710 -> 83F9F3BBCE452C74/1709
+  CHANGED reports\publish-b35-run1.txt : 397B4365C47896CC/8910 -> 8E9862EEF2CC5848/8779
+  CHANGED reports\publish-b35-run2.txt : D45C0B6FD94E226A/8973 -> AFC17FC456D48BE8/8841
+  NEW_ENTRY reports\publish-b35-run3.txt
+  NEW_ENTRY reports\refresh-b35-run1.txt
+  CHANGED reports\selftest-b35-console-run2.txt : CD099DE5D294F45D/62609 -> E9E908F8F74EEB69/61956
+  CHANGED reports\selftest-b35-console.txt : C84C965164CF380E/62595 -> 08DC00E0C2CC7D48/61942
+  CHANGED tool\references\selftest-2026-11-28-b35.md : F148C0488DB21E91/10735 -> 21944AB31E1A3484/11276
+  CHANGED tool\scripts\relay-headless-drill.ps1 : 9B594DEBE3D4017F/20947 -> 9FBB3AE0DD7565E6/21429
+REFRESH_MANIFEST verdict=PASS

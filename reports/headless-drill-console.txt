@@ -1,0 +1,38 @@
+DRILL_START evidence=F:\soft\00selfmade\agentask-relay\reports\headless-drill
+DRILL_WORKDIR work=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344
+DRILL_CLAUDE version=999.0.0-local (Claude Code)
+  [PASS] drill_claude_cli_present  (999.0.0-local (Claude Code))
+DRILL_FLAG --max-turns=ABSENT
+  [PASS] drill_credentials_present
+  [PASS] drill_install_exit_zero  (exit=0)
+  [PASS] drill_kit_installed
+  [PASS] drill_launcher_exit_zero  (exit=0)
+  [PASS] drill_launcher_wrote_the_chain_prompt  (chars=7418)
+  [PASS] drill_chain_prompt_names_the_spawn_driver
+  [PASS] drill_ledger_created  (status=running)
+  [PASS] drill_ledger_status_running  (status=running)
+  [PASS] drill_lock_taken_by_the_launcher  (holder=start-relay:145932)
+  [PASS] drill_stub_run_exit_zero  (exit=0)
+  [PASS] drill_stub_pre_adopted
+  [PASS] drill_stub_lock_handed_over
+  [PASS] drill_stub_prev_holder_named
+  [PASS] drill_stub_lock_holder_is_the_new_link  (holder=50013adb-bd50-4902-ba81-a63cf9fc3eef)
+  [PASS] drill_stub_output_captured
+DRILL_RELEASE exit=0
+DRILL_ACQUIRE exit=0
+  [PASS] drill_real_run_exit_zero  (exit=0 timed_out=False)
+  [PASS] drill_real_run_not_timed_out  (timeout_s=300)
+  [PASS] drill_real_pre_adopted
+  [PASS] drill_real_lock_handed_over
+  [PASS] drill_real_session_id_matches_request
+  [PASS] drill_real_output_file_written  (chars=1014)
+  [PASS] drill_real_output_carries_the_session_id
+  [PASS] drill_real_output_carries_a_result
+DRILL_COST usd=0.26217
+  [PASS] drill_real_run_was_not_cut_off  (cost_usd=0.26217)
+  [PASS] drill_real_lock_holder_is_the_new_link  (holder=e0691cf0-e58e-49a1-8316-737c761d248d)
+  [PASS] drill_registry_did_not_grow  (before=33 after=33)
+  [PASS] drill_fixture_project_not_in_the_registry  (key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-153344-repo)
+  [PASS] drill_transcript_kept_as_evidence
+DRILL_RESULT pass=29 fail=0 evidence=F:\soft\00selfmade\agentask-relay\reports\headless-drill
+DRILL_CLEANUP removed=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344

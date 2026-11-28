@@ -270,7 +270,29 @@ if ($Runtime -eq 'claude-code') {
   if (-not [string]::IsNullOrWhiteSpace($AllowedTools)) { $cmdArgs += @('--allowedTools', $AllowedTools) }
   $cmdArgs += @('--settings', $settingsFile)
   if ($budgetArg -ne '') { $cmdArgs += @('--max-budget-usd', $budgetArg) }
-  if ($MaxTurns -gt 0) { $cmdArgs += @('--max-turns', [string]$MaxTurns) }
+  if ($MaxTurns -gt 0) {
+    # A turn cap is only useful when the build knows the flag. The build that
+    # was measured on this machine does not know it, and an unknown flag makes
+    # the whole link fail before it does anything at all. The help of the build
+    # is asked once and the cap is dropped with a warning when the flag is
+    # unknown, so the link still runs and the budget cap still applies.
+    $turnsFlagKnown = $false
+    $exeProbe = Get-Command $exe -ErrorAction SilentlyContinue
+    if ($null -ne $exeProbe) {
+      try {
+        foreach ($h in @(& $exeProbe.Source --help 2>&1 | ForEach-Object { [string]$_ })) {
+          if ($h -match '--max-turns') { $turnsFlagKnown = $true; break }
+        }
+      } catch {
+        $turnsFlagKnown = $false
+      }
+    }
+    if ($turnsFlagKnown) {
+      $cmdArgs += @('--max-turns', [string]$MaxTurns)
+    } else {
+      Say ("WARN reason=max_turns_flag_unsupported flag=--max-turns requested=" + $MaxTurns + " action=dropped hint=the_budget_cap_still_applies")
+    }
+  }
   $cmdArgs += @('-p', $promptText)
 } else {
   $exe = 'codex'

@@ -1,0 +1,38 @@
+REPO root=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo
+REPO name=repo
+REPO head=none
+RUNTIME name=claude-code spawn_template=ACTIVATION-SPAWN-claude-code.md
+PLAN doc=docs\plan-headless.md created=False
+COPY relay-lock.ps1 bytes=25728 sha16=E6720164D93E2027
+COPY start-relay.ps1 bytes=57250 sha16=A8511A769B3EA351
+COPY relay-ledger.ps1 bytes=45524 sha16=C8E393FC848C3D38
+COPY relay-spawn.ps1 bytes=25437 sha16=01A9F10BD3D898EA
+COPY AGENT-RELAY.md bytes=40902 sha16=F48F2D415CBDF5AF
+COPY RELAY-SOP.md bytes=7455 sha16=882011499729E86C
+WRITE RELAY-ADAPTATION.md created source=defaults bytes=6345
+ADAPT_CHECK doc=docs\RELAY-ADAPTATION.md placeholders=0 source=defaults
+WRITE adaptation-questions.md questions=8 path=docs\relay\adaptation-questions.md
+WRITE adaptation-answers.template.json path=docs\relay\adaptation-answers.template.json
+WARN adaptation_defaults_unconfirmed ask_the_user_before_starting_the_chain packet=docs\relay\adaptation-questions.md
+AGENTS action=appended reason=n/a before=[absent] after=[bytes=4704 sha16=EE295E93946B517A] bom=False
+CLAUDE action=appended reason=n/a before=[absent] after=[bytes=4704 sha16=EE295E93946B517A] bom=False
+WRITE relay-runtime.json bytes=729 mode=cli_driver
+WRITE ACTIVATION-PROMPT.txt bytes=5971
+LEDGER absent (the launcher creates it at activation; the installer never writes it)
+ASCII_CHECK file=relay-lock.ps1 non_ascii=0 bom=False bytes=25728
+ASCII_CHECK file=start-relay.ps1 non_ascii=0 bom=False bytes=57250
+ASCII_CHECK file=relay-ledger.ps1 non_ascii=0 bom=False bytes=45524
+ASCII_CHECK file=relay-spawn.ps1 non_ascii=0 bom=False bytes=25437
+AGENTS_MARKERS begin=1 end=1
+CLAUDE_MARKERS begin=1 end=1
+LOCK_STATUS exit=0 line=LOCK_FREE path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\.relay.lock
+DRYRUN exit=0 verdict=OK artifact=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\install-dryrun.txt
+INSTALL_VERDICT=PASS
+ADAPTATION_STATUS=pending
+ADAPTATION_SOURCE=defaults
+ADAPTATION_DOC=docs\RELAY-ADAPTATION.md
+ADAPTATION_QUESTIONS=docs\relay\adaptation-questions.md
+INSTALL_REPORT=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\install-report.md
+ACTIVATION_PROMPT=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\ACTIVATION-PROMPT.txt
+INSTALL_RUNTIME=claude-code
+WARN_COUNT=1

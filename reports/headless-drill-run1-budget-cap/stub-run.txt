@@ -1,0 +1,13 @@
+SPAWN_LEDGER status=running path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo\docs\relay.json
+SPAWN_RUNTIME runtime=claude-code
+SPAWN_COMMAND claude --output-format json --session-id 721e3d79-6d03-408a-a6da-49fe7cc1367f --add-dir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo\docs\relay\relay-settings.json -p <prompt from file>
+SPAWN_PROMPT_FILE file=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo\docs\relay\next-relay-prompt.txt chars=7418
+SPAWN_WORKSPACE dir=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo
+SPAWN_SESSION_ID id=721e3d79-6d03-408a-a6da-49fe7cc1367f source=parameter
+SPAWN_SETTINGS_JSON {"autoQuestion":{"enabled":false},"defaultMode":"bypassPermissions","permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Bash(pwsh:*)","Bash(powershell:*)","Read","Write","Edit","Glob","Grep"]}}
+SPAWN_SETTINGS_FILE path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo\docs\relay\relay-settings.json bytes=207
+LOCK_ADOPTED holder=721e3d79-6d03-408a-a6da-49fe7cc1367f prev_holder=start-relay:39516 stage=1 nonce=4d99ab3200ac40d1
+SPAWN_LOCK_PRE_ADOPTED session_id=721e3d79-6d03-408a-a6da-49fe7cc1367f nonce=4d99ab3200ac40d1
+SPAWN_OUTPUT_FILE path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748\repo\docs\relay\relay-spawn-output\721e3d79-6d03-408a-a6da-49fe7cc1367f.txt bytes=223
+SPAWN_LOCK_ADOPTED session_id=721e3d79-6d03-408a-a6da-49fe7cc1367f mode=pre
+RELAY_SPAWN_OK runtime=claude-code session_id=721e3d79-6d03-408a-a6da-49fe7cc1367f

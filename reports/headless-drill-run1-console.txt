@@ -1,0 +1,36 @@
+DRILL_START evidence=F:\soft\00selfmade\agentask-relay\reports\headless-drill
+DRILL_WORKDIR work=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748
+DRILL_CLAUDE version=999.0.0-local (Claude Code)
+  [PASS] drill_claude_cli_present  (999.0.0-local (Claude Code))
+DRILL_FLAG --max-turns=ABSENT
+  [PASS] drill_credentials_present
+  [PASS] drill_install_exit_zero  (exit=0)
+  [PASS] drill_kit_installed
+  [PASS] drill_launcher_exit_zero  (exit=0)
+  [PASS] drill_launcher_wrote_the_chain_prompt  (chars=7418)
+  [PASS] drill_chain_prompt_names_the_spawn_driver
+  [PASS] drill_ledger_created  (status=running)
+  [PASS] drill_ledger_status_running  (status=running)
+  [PASS] drill_lock_taken_by_the_launcher  (holder=start-relay:39516)
+  [PASS] drill_stub_run_exit_zero  (exit=0)
+  [PASS] drill_stub_pre_adopted
+  [PASS] drill_stub_lock_handed_over
+  [PASS] drill_stub_prev_holder_named
+  [PASS] drill_stub_lock_holder_is_the_new_link  (holder=721e3d79-6d03-408a-a6da-49fe7cc1367f)
+  [PASS] drill_stub_output_captured
+DRILL_RELEASE exit=0
+DRILL_ACQUIRE exit=0
+  [FAIL] drill_real_run_exit_zero  (exit=3 timed_out=False)
+  [PASS] drill_real_run_not_timed_out  (timeout_s=300)
+  [PASS] drill_real_pre_adopted
+  [PASS] drill_real_lock_handed_over
+  [FAIL] drill_real_session_id_matches_request
+  [PASS] drill_real_output_file_written  (chars=1050)
+  [PASS] drill_real_output_carries_the_session_id
+  [PASS] drill_real_output_carries_a_result
+  [FAIL] drill_real_lock_holder_is_the_new_link  (holder=)
+  [PASS] drill_registry_did_not_grow  (before=33 after=33)
+  [PASS] drill_fixture_project_not_in_the_registry  (key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-151748-repo)
+  [PASS] drill_transcript_kept_as_evidence
+DRILL_RESULT pass=25 fail=3 evidence=F:\soft\00selfmade\agentask-relay\reports\headless-drill
+DRILL_CLEANUP removed=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-151748

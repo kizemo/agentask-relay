@@ -1990,6 +1990,336 @@ $missingGate31 = @($ledgerTokens31 | Where-Object { $gateSrc31 -notmatch [regex]
 $missingDoc31 = @($ledgerTokens31 | Where-Object { $proto31 -notmatch [regex]::Escape($_) })
 Check 'b31_ledger_refusal_tokens_are_documented' ($missingGate31.Count -eq 0 -and $missingDoc31.Count -eq 0) ('gate_missing=' + ($missingGate31 -join ',') + ' doc_missing=' + ($missingDoc31 -join ','))
 
+# --- B32: a legacy ledger keyed its stages by stage, not by id ----------------
+# R6 was decided by the user: the tool learns the old shape instead of rewriting
+# the file. A stage_done commit closes a legacy stage through its legacy stage
+# key, the key itself is never renamed, and when both shapes carry the same
+# number the stage that has an id wins - guessing there would close the wrong
+# stage, which is the trap the last case pins down with a mutant.
+$legacy32 = @"
+{
+  "status": "running",
+  "current_stage": 1,
+  "max_stages": 2,
+  "next_session_id": "sess-b32-legacy",
+  "stages": [
+    { "stage": 1, "title": "b32 legacy one", "status": "in_progress" },
+    { "stage": 2, "title": "b32 legacy two", "status": "pending" }
+  ],
+  "sessions": [],
+  "notes": []
+}
+"@
+$r32a = New-GateRepoRaw 'repo-b32-legacy' $legacy32
+$g32a = Join-Path $r32a 'docs\relay\relay-ledger.ps1'
+$l32a = Join-Path $r32a 'docs\relay.json'
+$p32a = Patch31 $r32a 'p32a.json' '{"stage_done":1}'
+$c32a = Run $g32a @('-Action','commit','-ExpectSha256',(Get-FileHash -Algorithm SHA256 -LiteralPath $l32a).Hash,'-Patch',$p32a)
+$led32a = Get-Content -LiteralPath $l32a -Raw | ConvertFrom-Json
+$s32a = @($led32a.stages)[0]
+$keys32a = @($s32a.PSObject.Properties.Name)
+Check 'b32_legacy_stage_can_be_closed' ($c32a.Code -eq 0 -and $c32a.Text -match 'LEDGER_COMMITED' -and ([string]$s32a.status) -eq 'done') ('exit=' + $c32a.Code + ' status=' + [string]$s32a.status)
+Check 'b32_legacy_stage_keeps_its_shape' (($keys32a -contains 'stage') -and -not ($keys32a -contains 'id') -and ([string]$s32a.title) -eq 'b32 legacy one') ('keys=' + ($keys32a -join ','))
+Check 'b32_legacy_trail_records_the_stage_number' ($c32a.Text -match 'LEDGER_SESSION_REGISTERED session=sess-b32-legacy stage=1 ') ('line=' + (($c32a.Text -split "`n") | Where-Object { $_ -match 'LEDGER_SESSION_REGISTERED' } | Select-Object -First 1))
+$s32b = @($led32a.stages)[1]
+Check 'b32_other_legacy_stage_is_untouched' (([string]$s32b.status) -eq 'pending' -and ([string]$s32b.title) -eq 'b32 legacy two') ('status=' + [string]$s32b.status)
+
+$amb32 = @"
+{
+  "status": "running",
+  "current_stage": 0,
+  "max_stages": 2,
+  "next_session_id": "sess-b32-amb",
+  "stages": [
+    { "stage": 1, "title": "b32 legacy one", "status": "in_progress" },
+    { "id": 1, "title": "b32 modern one", "status": "in_progress" }
+  ],
+  "sessions": [],
+  "notes": []
+}
+"@
+$r32b = New-GateRepoRaw 'repo-b32-ambiguous' $amb32
+$g32b = Join-Path $r32b 'docs\relay\relay-ledger.ps1'
+$l32b = Join-Path $r32b 'docs\relay.json'
+$p32b = Patch31 $r32b 'p32b.json' '{"stage_done":1}'
+$c32b = Run $g32b @('-Action','commit','-ExpectSha256',(Get-FileHash -Algorithm SHA256 -LiteralPath $l32b).Hash,'-Patch',$p32b)
+$led32b = Get-Content -LiteralPath $l32b -Raw | ConvertFrom-Json
+$leg32b = @($led32b.stages)[0]
+$mod32b = @($led32b.stages)[1]
+Check 'b32_modern_id_wins_over_legacy_key' ($c32b.Code -eq 0 -and ([string]$mod32b.status) -eq 'done' -and ([string]$leg32b.status) -eq 'in_progress') ('exit=' + $c32b.Code + ' legacy=' + [string]$leg32b.status + ' modern=' + [string]$mod32b.status)
+
+$r32c = New-GateRepoRaw 'repo-b32-unknown' $legacy32
+$g32c = Join-Path $r32c 'docs\relay\relay-ledger.ps1'
+$l32c = Join-Path $r32c 'docs\relay.json'
+$p32c = Patch31 $r32c 'p32c.json' '{"stage_done":9}'
+$sha32c = (Get-FileHash -Algorithm SHA256 -LiteralPath $l32c).Hash
+$c32c = Run $g32c @('-Action','commit','-ExpectSha256',$sha32c,'-Patch',$p32c)
+Check 'b32_unknown_stage_is_still_refused' ($c32c.Code -eq 3 -and $c32c.Text -match 'stage_not_found stage_done=9' -and (Get-FileHash -Algorithm SHA256 -LiteralPath $l32c).Hash -eq $sha32c) ('exit=' + $c32c.Code)
+
+# The mutant resolves a legacy key before an id, so the legacy stage wins the
+# number 1 and the modern one stays open. If the check above still passed with
+# this gate in place, it would prove nothing.
+$r32d = New-GateRepoRaw 'repo-b32-mutant' $amb32
+$g32d = Join-Path $r32d 'docs\relay\relay-ledger.ps1'
+$mutant32 = [IO.File]::ReadAllText($g32d)
+$mutOld32 = @"
+      if (-not [int]::TryParse(([string]`$stageRef[`$i].id).Trim(), [ref]`$stageIdNum)) { continue }
+"@
+$mutNew32 = @"
+      `$idText32 = ([string]`$stageRef[`$i].id).Trim()
+      if (`$idText32 -eq '') { `$idText32 = ([string]`$stageRef[`$i].stage).Trim() }
+      if (-not [int]::TryParse(`$idText32, [ref]`$stageIdNum)) { continue }
+"@
+$mutHits32 = ([regex]::Matches($mutant32, [regex]::Escape($mutOld32))).Count
+if ($mutHits32 -ne 1) { Write-Output ('ABORT mutant anchor hits=' + $mutHits32); exit 9 }
+$mutant32 = $mutant32.Replace($mutOld32, $mutNew32)
+[IO.File]::WriteAllText($g32d, $mutant32, (New-Object Text.UTF8Encoding($false)))
+$l32d = Join-Path $r32d 'docs\relay.json'
+$p32d = Patch31 $r32d 'p32d.json' '{"stage_done":1}'
+$c32d = Run $g32d @('-Action','commit','-ExpectSha256',(Get-FileHash -Algorithm SHA256 -LiteralPath $l32d).Hash,'-Patch',$p32d)
+$led32d = Get-Content -LiteralPath $l32d -Raw | ConvertFrom-Json
+$leg32d = @($led32d.stages)[0]
+$mod32d = @($led32d.stages)[1]
+Check 'b32_mutant_with_legacy_first_closes_the_wrong_stage' ($c32d.Code -eq 0 -and ([string]$leg32d.status) -eq 'done' -and ([string]$mod32d.status) -eq 'in_progress') ('exit=' + $c32d.Code + ' legacy=' + [string]$leg32d.status + ' modern=' + [string]$mod32d.status)
+
+$proto32 = [IO.File]::ReadAllText((Join-Path $repoRoot 'protocol\AGENT-RELAY.md'))
+$protoCopy32 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\AGENT-RELAY.md'))
+Check 'b32_protocol_documents_the_legacy_compat' ($proto32 -match 'B32' -and $proto32 -match 'stage_not_found') ('hits=' + ([regex]::Matches($proto32,'B32')).Count)
+Check 'b32_protocol_copies_are_identical' ($proto32 -ceq $protoCopy32) ('same=' + ($proto32 -ceq $protoCopy32))
+# --- B33: goal confirmation round at activation --------------------------------
+$proto33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'protocol\AGENT-RELAY.md'))
+$protoCopy33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\AGENT-RELAY.md'))
+$actTpl33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\ACTIVATION-PROMPT.md'))
+$block33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\AGENTS-RELAY-BLOCK.md'))
+$skill33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\SKILL.md'))
+$sop33 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\RELAY-SOP.md'))
+Check 'b33_protocol_documents_confirmation_round' ($proto33 -match 'B33' -and $proto33 -match 'goal confirmation round' -and $proto33 -match 'append-only' -and $proto33 -match 'exactly one round') ('hits=' + ([regex]::Matches($proto33,'B33')).Count)
+Check 'b33_protocol_copies_are_identical' ($proto33 -ceq $protoCopy33) ('same=' + ($proto33 -ceq $protoCopy33))
+$i033 = $actTpl33.IndexOf('STEP 0'); $i133 = $actTpl33.IndexOf('STEP 1')
+Check 'b33_activation_step0_precedes_launcher' ($i033 -ge 0 -and $i133 -ge 0 -and $i033 -lt $i133) ('i0=' + $i033 + ' i1=' + $i133)
+Check 'b33_activation_step0_is_one_round_and_append_only' ($actTpl33 -match 'exactly one confirmation round' -and $actTpl33 -match 'Append only' -and $actTpl33 -match 'B33') ''
+Check 'b33_activation_step0_refuses_unclear_goal' ($actTpl33 -match 'DO NOT run the launcher') ''
+$mutant33 = $actTpl33.Replace('STEP 0', 'STEP X')
+$m033 = $mutant33.IndexOf('STEP 0'); $m133 = $mutant33.IndexOf('STEP 1')
+Check 'b33_mutant_without_step0_is_detected' (-not ($m033 -ge 0 -and $m133 -ge 0 -and $m033 -lt $m133)) ('mutant_i0=' + $m033)
+Check 'b33_managed_block_carries_confirmation_rule' ($block33 -match 'B33' -and $block33 -match 'ask_user') ('hits=' + ([regex]::Matches($block33,'B33')).Count)
+Check 'b33_skill_documents_confirmation_round' ($skill33 -match 'B33' -and $skill33 -match 'STEP 0') ('hits=' + ([regex]::Matches($skill33,'B33')).Count)
+Check 'b33_sop_documents_confirmation_round' ($sop33 -match 'B33') ('hits=' + ([regex]::Matches($sop33,'B33')).Count)
+Check 'b33_installed_packet_carries_step0' ($act16m -match 'STEP 0' -and $act16m.IndexOf('STEP 0') -lt $act16m.IndexOf('STEP 1')) ('i0=' + $act16m.IndexOf('STEP 0'))
+# --- B34 (a): -Force must propagate the CURRENT managed block and refresh the packet ---
+$r34f = New-Repo 'repo-b34-force'
+$ag34f = Join-Path $r34f 'AGENTS.md'
+Set-Content -LiteralPath (Join-Path $r34f 'docs\plan-b34.md') -Value '# b34 force plan' -Encoding utf8
+$null = Run $installer @('-RepoRoot', $r34f, '-Target', 'b34 force batch', '-PlanDoc', 'docs\plan-b34.md', '-MaxStages', '2')
+$act34f = Join-Path $r34f 'docs\relay\ACTIVATION-PROMPT.txt'
+Check 'b34_force_baseline_packet_present' (Test-Path $act34f) ('path=' + $act34f)
+$txt34f = [IO.File]::ReadAllText($ag34f)
+$bi34 = $txt34f.IndexOf($beginMark); $ei34 = $txt34f.IndexOf($endMark)
+Check 'b34_force_baseline_markers_located' ($bi34 -ge 0 -and $ei34 -gt $bi34) ('begin=' + $bi34 + ' end=' + $ei34)
+if ($bi34 -lt 0 -or $ei34 -le $bi34) { Say 'B34 ABORT managed markers not found'; exit 9 }
+$stale34f = $txt34f.Substring(0, $bi34 + $beginMark.Length) + "`n" + 'STALE-B34-BLOCK' + "`n" + $txt34f.Substring($ei34)
+[IO.File]::WriteAllText($ag34f, $stale34f, (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText($act34f, 'STALE-B34-PACKET', (New-Object Text.UTF8Encoding($false)))
+$f34 = Run $installer @('-RepoRoot', $r34f, '-Target', 'b34 force batch', '-PlanDoc', 'docs\plan-b34.md', '-MaxStages', '2', '-Force')
+$after34f = [IO.File]::ReadAllText($ag34f)
+Check 'b34_force_action_replaced' ($f34.Text -match 'AGENTS action=replaced') ('line=' + ((($f34.Text -split "`n") | Where-Object { $_ -match 'AGENTS action=' } | Select-Object -First 1)))
+Check 'b34_force_drops_stale_block' (-not $after34f.Contains('STALE-B34-BLOCK')) ''
+$block34 = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\AGENTS-RELAY-BLOCK.md'))
+$line34 = (($block34 -split "`n") | Where-Object { $_ -match 'B33' -and $_ -match 'ask_user' -and -not ($_ -match '\{\{') } | Select-Object -First 1)
+Check 'b34_force_current_block_line_found' ($null -ne $line34) ''
+if ($null -eq $line34) { Say 'B34 ABORT no B33 ask_user line in block template'; exit 9 }
+Check 'b34_force_propagates_current_block' ($after34f.Contains($line34.TrimEnd("`r"))) ''
+$pack34f = [IO.File]::ReadAllText($act34f)
+Check 'b34_force_drops_stale_packet' (-not $pack34f.Contains('STALE-B34-PACKET')) ''
+Check 'b34_force_packet_carries_step0' ($pack34f.IndexOf('STEP 0') -ge 0 -and $pack34f.IndexOf('STEP 0') -lt $pack34f.IndexOf('STEP 1')) ('i0=' + $pack34f.IndexOf('STEP 0'))
+Check 'b34_force_keeps_project_prose' ($after34f.Contains('Be nice.')) ''
+# --- B34 (b): real old-schema ledger drill on a COPY; the original stays read-only ---
+$real34 = Join-Path $repoRoot 'examples\practilog\docs\relay.json'
+$real34Sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $real34).Hash
+$real34Obj = ([IO.File]::ReadAllText($real34)) | ConvertFrom-Json
+$topKeys34 = @($real34Obj.PSObject.Properties.Name)
+$n34 = @($real34Obj.stages).Count
+Check 'b34_real_sample_shape' (($topKeys34 -contains 'stages') -and ($n34 -ge 6)) ('keys=' + $topKeys34.Count + ' stages=' + $n34)
+$idx34 = -1
+for ($i = 0; $i -lt $n34; $i++) { if ([int]$real34Obj.stages[$i].stage -eq 3) { $idx34 = $i } }
+Check 'b34_real_stage3_located' ($idx34 -ge 0) ('idx=' + $idx34)
+if ($idx34 -lt 0) { Say 'B34 ABORT stage 3 not found in real sample'; exit 9 }
+$sid34 = [string]$real34Obj.stages[$idx34].session_id
+Check 'b34_real_stage3_has_session' ($sid34.Length -gt 0) ('len=' + $sid34.Length)
+if ($sid34.Length -eq 0) { Say 'B34 ABORT stage 3 session_id empty'; exit 9 }
+$real34Obj.status = 'running'
+$real34Obj.current_stage = 3
+$real34Obj.stages[$idx34].status = 'in_progress'
+$copy34 = ConvertTo-Json -InputObject $real34Obj -Depth 100
+$r34 = New-GateRepoRaw 'repo-b34-real-legacy' $copy34
+$g34 = Join-Path $r34 'docs\relay\relay-ledger.ps1'
+$l34 = Join-Path $r34 'docs\relay.json'
+$st34 = Run $g34 @('-Action', 'status')
+Check 'b34_real_status_ok' ($st34.Code -eq 0) ('code=' + $st34.Code)
+Check 'b34_real_status_legacy_render' ($st34.Text -match 'LEDGER_CHAIN') ''
+$before34 = ([IO.File]::ReadAllText($l34)) | ConvertFrom-Json
+$stageSer34 = @($before34.stages | ForEach-Object { ConvertTo-Json -InputObject $_ -Depth 100 -Compress })
+$topSer34 = @{}
+foreach ($k in $topKeys34) { if ($k -ne 'stages') { $topSer34[$k] = ConvertTo-Json -InputObject $before34.$k -Depth 100 -Compress } }
+$sha34pre = (Get-FileHash -Algorithm SHA256 -LiteralPath $l34).Hash
+$bad34 = Run $g34 @('-Action', 'commit', '-ExpectSha256', ('0' * 64), '-Patch', (Patch31 $r34 'p34bad.json' '{"stage_done":3}'))
+Check 'b34_real_cas_conflict_exit3' ($bad34.Code -eq 3) ('code=' + $bad34.Code)
+Check 'b34_real_cas_conflict_reason' ($bad34.Text -match 'cas_conflict') ''
+Check 'b34_real_cas_conflict_bytes_intact' ((Get-FileHash -Algorithm SHA256 -LiteralPath $l34).Hash -eq $sha34pre) ''
+$c34 = Run $g34 @('-Action', 'commit', '-ExpectSha256', $sha34pre, '-Patch', (Patch31 $r34 'p34.json' '{"stage_done":3}'))
+Check 'b34_real_commit_ok' ($c34.Code -eq 0) ('code=' + $c34.Code)
+Check 'b34_real_commit_marker' ($c34.Text -match 'LEDGER_COMMITED') ''
+# The real ledger already carries a sessions[] trail of entry objects, and the
+# gate registers a stage session only once: an id already in the trail must
+# yield ALREADY_REGISTERED and no second entry, a fresh id must yield
+# REGISTERED with source=stage_field. Derive the expected branch from the
+# pre-state so the check keeps its teeth on both paths (a mutant that double
+# appends or silently skips registration goes red either way).
+$pat34 = '"' + [regex]::Escape($sid34) + '"'
+$known34 = $false
+foreach ($s in @($before34.sessions)) { if ((ConvertTo-Json -InputObject $s -Compress -Depth 100) -match $pat34) { $known34 = $true; break } }
+if ($known34) {
+  Check 'b34_real_session_trail_stage_field' ($c34.Text -match ('LEDGER_SESSION_ALREADY_REGISTERED session=' + [regex]::Escape($sid34))) 'branch=already_registered'
+} else {
+  Check 'b34_real_session_trail_stage_field' ($c34.Text -match ('LEDGER_SESSION_REGISTERED session=' + [regex]::Escape($sid34) + ' stage=3 source=stage_field')) 'branch=stage_field'
+}
+$after34 = ([IO.File]::ReadAllText($l34)) | ConvertFrom-Json
+$hits34 = 0
+foreach ($s in @($after34.sessions)) { if ((ConvertTo-Json -InputObject $s -Compress -Depth 100) -match $pat34) { $hits34++ } }
+Check 'b34_real_session_trail_exactly_once' ($hits34 -eq 1) ('hits=' + $hits34)
+$delta34 = @($after34.sessions).Count - @($before34.sessions).Count
+if ($known34) {
+  Check 'b34_real_trail_append_delta' ($delta34 -eq 0) ('delta=' + $delta34 + ' branch=already_registered')
+} else {
+  Check 'b34_real_trail_append_delta' ($delta34 -eq 1) ('delta=' + $delta34 + ' branch=stage_field')
+}
+Check 'b34_real_stage3_done' ($after34.stages[$idx34].status -eq 'done') ('status=' + $after34.stages[$idx34].status)
+Check 'b34_real_stage_count_kept' (@($after34.stages).Count -eq $n34) ('n=' + @($after34.stages).Count)
+$k34b = @($before34.stages[$idx34].PSObject.Properties.Name | Sort-Object)
+$k34a = @($after34.stages[$idx34].PSObject.Properties.Name | Sort-Object)
+Check 'b34_real_stage3_keys_preserved' (@(Compare-Object $k34b $k34a).Count -eq 0) ('diff=' + @(Compare-Object $k34b $k34a).Count)
+$idinj34 = $false
+foreach ($s in $after34.stages) { if (@($s.PSObject.Properties.Name) -contains 'id') { $idinj34 = $true } }
+Check 'b34_real_no_id_injection_any_stage' (-not $idinj34) ''
+Check 'b34_real_finished_at_kept' (([string]$after34.stages[$idx34].finished_at) -eq ([string]$before34.stages[$idx34].finished_at)) ''
+$same34 = $true
+for ($i = 0; $i -lt $n34; $i++) { if ($i -ne $idx34) { if ((ConvertTo-Json -InputObject $after34.stages[$i] -Depth 100 -Compress) -cne $stageSer34[$i]) { $same34 = $false } } }
+Check 'b34_real_other_stages_untouched' $same34 ''
+$allow34 = @('status', 'current_stage', 'next_session_id', 'updated_at')
+$afterKeys34 = @($after34.PSObject.Properties.Name)
+$missing34 = $false; $keep34 = $true
+foreach ($k in $topKeys34) {
+  if (-not ($afterKeys34 -contains $k)) { $missing34 = $true }
+  if (($k -ne 'stages') -and (-not ($allow34 -contains $k))) {
+    if ((ConvertTo-Json -InputObject $after34.$k -Depth 100 -Compress) -cne $topSer34[$k]) { $keep34 = $false }
+  }
+}
+Check 'b34_real_top_keys_survive' (-not $missing34) ''
+Check 'b34_real_top_values_preserved' $keep34 ''
+$onlyGate34 = $true
+foreach ($k in $afterKeys34) { if (-not ($topKeys34 -contains $k) -and -not (@('updated_at', 'sessions') -contains $k)) { $onlyGate34 = $false } }
+Check 'b34_real_only_gate_keys_added' $onlyGate34 ''
+Check 'b34_real_original_readonly' ((Get-FileHash -Algorithm SHA256 -LiteralPath $real34).Hash -eq $real34Sha) ('sha=' + $real34Sha.Substring(0,16))
+# --- case b35: the headless hand-over path (permit -> adopt -> child) -----------
+# The hand-over path of a headless link had no gate at all: the driver takes a
+# permit, hands the lock over BEFORE the child starts, and releases it again
+# when the child dies. None of that was ever executed by a test, so a link could
+# have started with the lock still in the hands of a dead link. The cases below
+# run the real driver against a stub runtime, so the order is observable: the
+# stub copies the lock file as it is at the moment the child starts.
+$repo35 = New-Repo 'repo-b35-handover'
+Set-Content -LiteralPath (Join-Path $repo35 'docs\plan-35.md') -Value '# plan 35' -Encoding utf8
+$i35 = Run $installer @('-RepoRoot', $repo35, '-Target', 'b35 handover', '-PlanDoc', 'docs\plan-35.md', '-MaxStages', '2', '-Runtime', 'claude-code')
+Check 'b35_install_exit_zero' ($i35.Code -eq 0) ('exit=' + $i35.Code)
+$spawn35 = Join-Path $repo35 'docs\relay\relay-spawn.ps1'
+$lock35 = Join-Path $repo35 'docs\relay\relay-lock.ps1'
+$lockFile35 = Join-Path $repo35 'docs\relay\.relay.lock'
+$permitFile35 = Join-Path $repo35 'docs\relay\.spawn-permit.json'
+Check 'b35_kit_installed' ((Test-Path -LiteralPath $spawn35) -and (Test-Path -LiteralPath $lock35)) ''
+$prompt35 = Join-Path $script:root 'relay-prompt-35.txt'
+[IO.File]::WriteAllText($prompt35, ("b35 prompt`n"), (New-Object Text.UTF8Encoding($false)))
+# The stub runtime. It answers --help with a build that knows only the flags
+# this kit uses, and it copies the lock file into the marker file while it
+# runs, so the test can see who owned the lock at that moment.
+$stubDir35 = Join-Path $script:root 'shim35'
+New-Item -ItemType Directory -Path $stubDir35 -Force | Out-Null
+function Write-Stub35([string]$SessionId, [bool]$Fail, [bool]$KnowsTurns) {
+  $lines = @('@echo off', 'if "%1"=="--help" (', '  echo --output-format json', '  echo --session-id uuid')
+  # The turn cap must be advertised without angle brackets: in a batch file
+  # "<turns" is an input redirection, the whole echo fails, and the help text
+  # never mentions the flag at all.
+  if ($KnowsTurns) { $lines += '  echo --max-turns turns' }
+  $lines += @('  exit /b 0', ')', 'if exist "%RELAY_TEST_LOCK%" copy /y "%RELAY_TEST_LOCK%" "%RELAY_TEST_MARKER%" >nul 2>&1', ('echo {"type":"result","session_id":"' + $SessionId + '","result":"stub"}'))
+  if ($Fail) { $lines += 'exit /b 1' } else { $lines += 'exit /b 0' }
+  [IO.File]::WriteAllText((Join-Path $stubDir35 'claude.cmd'), (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+}
+function Invoke-Spawn35([string]$SessionId, [bool]$Fail, [bool]$KnowsTurns, [bool]$Execute) {
+  Write-Stub35 $SessionId $Fail $KnowsTurns
+  $marker = Join-Path $script:root ('marker35-' + $SessionId + '.json')
+  if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker -Force }
+  $oldPath = $env:PATH
+  $oldLock = $env:RELAY_TEST_LOCK
+  $oldMarker = $env:RELAY_TEST_MARKER
+  try {
+    $env:PATH = $stubDir35 + [IO.Path]::PathSeparator + $oldPath
+    $env:RELAY_TEST_LOCK = $lockFile35
+    $env:RELAY_TEST_MARKER = $marker
+    $argv = @('-Runtime', 'claude-code', '-PromptFile', $prompt35, '-WorkspaceDir', $repo35, '-SessionId', $SessionId)
+    if ($Execute) { $argv += @('-Execute', '-AdoptLock') }
+    return (Run $spawn35 $argv)
+  } finally {
+    $env:PATH = $oldPath
+    $env:RELAY_TEST_LOCK = $oldLock
+    $env:RELAY_TEST_MARKER = $oldMarker
+  }
+}
+# scene 1: the hand-over happens before the child starts.
+$acq35 = Run $lock35 @('-Action', 'acquire', '-SessionId', 'mvs_b35_old', '-Stage', '0')
+Check 'b35_lock_acquired' ($acq35.Code -eq 0) ('exit=' + $acq35.Code)
+$sid35 = [guid]::NewGuid().ToString()
+$h35 = Invoke-Spawn35 $sid35 $false $false $true
+Check 'b35_handover_exit_zero' ($h35.Code -eq 0) ('exit=' + $h35.Code)
+Check 'b35_handover_pre_adopted' ($h35.Text -match ('SPAWN_LOCK_PRE_ADOPTED session_id=' + [regex]::Escape($sid35) + ' nonce=[0-9a-f]{16}')) ''
+Check 'b35_handover_lock_adopted' ($h35.Text -match ('LOCK_ADOPTED holder=' + [regex]::Escape($sid35) + ' prev_holder=mvs_b35_old')) ''
+$marker35 = Join-Path $script:root ('marker35-' + $sid35 + '.json')
+$seen35 = $null
+if (Test-Path -LiteralPath $marker35) { $seen35 = ([IO.File]::ReadAllText($marker35)) | ConvertFrom-Json }
+Check 'b35_lock_handed_over_before_the_child_started' ($null -ne $seen35 -and [string]$seen35.holder -eq $sid35) ('holder=' + [string]$seen35.holder)
+$rec35 = ([IO.File]::ReadAllText($lockFile35)) | ConvertFrom-Json
+Check 'b35_lock_holder_is_the_new_link' ([string]$rec35.holder -eq $sid35) ('holder=' + [string]$rec35.holder)
+$permit35 = ([IO.File]::ReadAllText($permitFile35)) | ConvertFrom-Json
+Check 'b35_permit_is_consumed_by_the_handover' (([string]$permit35.consumed_by -eq $sid35) -and -not [string]::IsNullOrWhiteSpace([string]$permit35.consumed_at)) ('consumed_by=' + [string]$permit35.consumed_by)
+# scene 2: a child that dies must not leave the lock behind.
+$null = Run $lock35 @('-Action', 'release', '-SessionId', $sid35)
+$null = Run $lock35 @('-Action', 'acquire', '-SessionId', 'mvs_b35_old2', '-Stage', '0')
+$sid35b = [guid]::NewGuid().ToString()
+$f35 = Invoke-Spawn35 $sid35b $true $false $true
+Check 'b35_child_failure_exit_three' ($f35.Code -eq 3) ('exit=' + $f35.Code)
+Check 'b35_child_failure_reports_the_reason' ($f35.Text -match 'FAIL reason=runtime_run_failed') ''
+Check 'b35_child_failure_releases_the_lock' ($f35.Text -match ('SPAWN_LOCK_RELEASED session_id=' + [regex]::Escape($sid35b))) ''
+Check 'b35_no_lock_is_left_behind' (-not (Test-Path -LiteralPath $lockFile35)) ('lock=' + $lockFile35)
+# scene 3: a turn cap is only passed on when the build knows the flag.
+Write-Stub35 ([guid]::NewGuid().ToString()) $false $false
+$oldPath35 = $env:PATH
+try {
+  $env:PATH = $stubDir35 + [IO.Path]::PathSeparator + $oldPath35
+  $t35 = Run $spawn35 @('-Runtime', 'claude-code', '-PromptFile', $prompt35, '-WorkspaceDir', $repo35, '-MaxTurns', '3')
+} finally {
+  $env:PATH = $oldPath35
+}
+$cmdLine35 = (($t35.Text -split "`n") | Where-Object { $_ -match 'SPAWN_COMMAND claude ' } | Select-Object -First 1)
+Check 'b35_unknown_turn_flag_is_not_passed' (-not ($cmdLine35 -match '--max-turns')) ('line=' + $cmdLine35)
+Check 'b35_unknown_turn_flag_is_reported' ($t35.Text -match 'WARN reason=max_turns_flag_unsupported') ''
+Write-Stub35 ([guid]::NewGuid().ToString()) $false $true
+try {
+  $env:PATH = $stubDir35 + [IO.Path]::PathSeparator + $oldPath35
+  $t35b = Run $spawn35 @('-Runtime', 'claude-code', '-PromptFile', $prompt35, '-WorkspaceDir', $repo35, '-MaxTurns', '3')
+} finally {
+  $env:PATH = $oldPath35
+}
+$cmdLine35b = (($t35b.Text -split "`n") | Where-Object { $_ -match 'SPAWN_COMMAND claude ' } | Select-Object -First 1)
+Check 'b35_known_turn_flag_is_passed' ($cmdLine35b -match '--max-turns 3') ('line=' + $cmdLine35b)
+Check 'b35_known_turn_flag_is_not_warned' (-not ($t35b.Text -match 'max_turns_flag_unsupported')) ''
 # --- guard: no script may declare a parameter that shadows the read-only $PID ----
 $lockGuard = [IO.File]::ReadAllText((Join-Path $repoRoot 'tool\templates\relay-lock.ps1'))
 Check 'lock_param_not_shadowing_PID' (-not ($lockGuard -cmatch '\$Pid\b')) ('hits=' + ([regex]::Matches($lockGuard,'\$Pid\b')).Count)

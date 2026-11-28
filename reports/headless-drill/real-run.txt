@@ -1,0 +1,16 @@
+SPAWN_LEDGER status=running path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay.json
+SPAWN_RUNTIME runtime=claude-code
+SPAWN_COMMAND claude --output-format json --session-id e0691cf0-e58e-49a1-8316-737c761d248d --add-dir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo --permission-mode bypassPermissions --allowedTools Bash,Read,Write,Edit,Glob,Grep --settings C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\relay-settings.json --max-budget-usd 0.3 -p <prompt from file>
+SPAWN_PROMPT_FILE file=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\drill-prompt.txt chars=76
+SPAWN_WORKSPACE dir=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo
+SPAWN_SESSION_ID id=e0691cf0-e58e-49a1-8316-737c761d248d source=parameter
+SPAWN_SETTINGS_JSON {"autoQuestion":{"enabled":false},"defaultMode":"bypassPermissions","permissions":{"defaultMode":"bypassPermissions","allow":["Bash","Bash(pwsh:*)","Bash(powershell:*)","Read","Write","Edit","Glob","Grep"]}}
+SPAWN_EPHEMERAL_WORKSPACE=true key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-153344-repo
+SPAWN_SETTINGS_FILE path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\relay-settings.json bytes=207
+LOCK_ADOPTED holder=e0691cf0-e58e-49a1-8316-737c761d248d prev_holder=mvs_headless_drill stage=0 nonce=f46c45adbe6746a5
+SPAWN_LOCK_PRE_ADOPTED session_id=e0691cf0-e58e-49a1-8316-737c761d248d nonce=f46c45adbe6746a5
+SPAWN_EPHEMERAL_SNAPSHOT registry=C:\Users\Duanyi\.claude\projects entries=33 key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-153344-repo
+SPAWN_EPHEMERAL_PROJECT_CLEANED registry=C:\Users\Duanyi\.claude\projects key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-153344-repo moved_to=C:\Users\Duanyi\.claude\_relay-ephemeral\C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-153344-repo-20261128-153417
+SPAWN_OUTPUT_FILE path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\relay-spawn-output\e0691cf0-e58e-49a1-8316-737c761d248d.txt bytes=1014
+SPAWN_LOCK_ADOPTED session_id=e0691cf0-e58e-49a1-8316-737c761d248d mode=pre
+RELAY_SPAWN_OK runtime=claude-code session_id=e0691cf0-e58e-49a1-8316-737c761d248d

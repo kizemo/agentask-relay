@@ -20,7 +20,7 @@ description: Install the unattended relay (auto-advance) kit into any git projec
 | `<repo>\docs\RELAY-ADAPTATION.md` | **本项目裁决骨架**（写集 / 门禁 / 模型策略）；首次运行自动探测默认值 + 生成提问包，答案经 `-AnswersFile` 回填（见「装完之后必须做的两件事」） |
 | `<repo>\AGENTS.md` | 受管家规块 `<!-- BEGIN RELAY-PORT -->`（幂等注入，不重复、不覆盖项目自己写的规则） |
 | `<repo>\docs\plan-relay.md` | 计划文档（未指定 `-PlanDoc` 且未探测到既有计划时自动生成） |
-| `<repo>\docs\relay\ACTIVATION-PROMPT.txt` | **激活包**：起链的四步命令 + 一句话激活语 |
+| `<repo>\docs\relay\ACTIVATION-PROMPT.txt` | **激活包**：目标确认轮（B33）+ 起链的四步命令 + 一句话激活语 |
 | `<repo>\docs\relay\install-report.md` | 安装报告（文件清单、sha16、自检结果） |
 
 **它绝不写 `docs\relay.json`** —— 台账由启动器在激活那一刻创建，安装器只读不碰。
@@ -112,7 +112,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File "<skill目录>\scripts\install-rel
 按 docs\relay\ACTIVATION-PROMPT.txt 启动接力链
 ```
 
-激活包 `docs\relay\ACTIVATION-PROMPT.txt` 里写死了四步：跑启动器 → `session_create` 开第一环 → `relay-lock.ps1 -Action adopt` 转交锁 → `session get` 回读校验。目标项目会话照做即可。
+激活包 `docs\relay\ACTIVATION-PROMPT.txt` 在四步之前还有 **STEP 0 目标确认轮（B33）**；四步本身不变：跑启动器 → `session_create` 开第一环 → `relay-lock.ps1 -Action adopt` 转交锁 → `session get` 回读校验。目标项目会话照做即可。
+
+**目标确认轮（B33）**：跑启动器之前，激活会话先核对目标（激活包 target 行 + 计划文档）。目标明确 ⇒ 直接跑启动器；目标不明确（验收判据不可验证 / 范围有多解 / 与计划或家规矛盾 / 关键输入缺失）⇒ 只做**一轮** `ask_user` 确认（全部目标问题合并成一轮，不重复问适配三项）。用户确认后，把裁决**只追加**进计划文档的「目标确认（B33）」节（时间戳 + 用户裁决原文 + 确认后目标句；不改写、不删除既有计划内容），再以确认后的目标句作 `-Target` 跑启动器，链即无人值守逐环推进直到全部阶段 done（受 `max_stages` 硬上限约束）。一轮之后仍不明确、用户拒答或未答 ⇒ 不起链；计划文档解析不出来 ⇒ 不创建（只有安装器可创建），停下要 `-PlanDoc`。链上各环仍禁止提问、禁止改计划内容；链中途新歧义照旧写 `blocked`。详见协议 §14。
 
 ## 装置契约（实测可用）
 
@@ -232,7 +234,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps
   ```powershell
   pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action doctor
   ```
-- **旧 schema 只给建议、不迁移（R6，只读）**：`-Action migrate-hint` 与 `doctor` 问的不是同一个问题 —— `doctor` 查「台账自相矛盾」，`migrate-hint` 查「形状会让闸门行为变样」：`max_stages` 不是整数（阶段上限无法比较，`item=stage_max_unknown`）、`stages[]` 的身份键不是 `id`（`commit` 只按 `id` 解析 `stage_done`，这类阶段永远关不掉，`item=stage_key_not_id rename_to=id`）、阶段既无 `id` 也无 `stage`（`item=stage_id_missing keys=…`）、阶段状态不在 `pending|in_progress|done`（`set_status=done` 会永远被拒，`item=stage_status_unknown`）。首行 `MIGRATE_STATE path=… sha256=… stages=<n> max_stages=<raw|(none)>`，每条建议一行 `MIGRATE_HINT scope=… item=…`，末行 `MIGRATE_VERDICT none hints=0`（exit 0）或 `MIGRATE_VERDICT suggested hints=<n>`（exit 3）。**它只报不改**：迁移 `docs\relay.json` 是人决定的动作，本动作不取锁、不建目录、不写一个字节。缺 `ledger_docs` / `human_checkpoints` / `stop_conditions` 这类数组**不报** —— `commit` 追加时会自动创建，报了只会让每个老台账全红。
+- **旧 schema 只给建议、不迁移（R6，只读）**：`-Action migrate-hint` 与 `doctor` 问的不是同一个问题 —— `doctor` 查「台账自相矛盾」，`migrate-hint` 查「形状会让闸门行为变样」：`max_stages` 不是整数（阶段上限无法比较，`item=stage_max_unknown`）、`stages[]` 的身份键不是 `id`（`commit` 只按 `id` 解析 `stage_done`，这类阶段永远关不掉，`item=stage_key_not_id rename_to=id`）、阶段既无 `id` 也无 `stage`（`item=stage_id_missing keys=…`）、阶段状态不在 `pending|in_progress|done`（`set_status=done` 会永远被拒，`item=stage_status_unknown`）。首行 `MIGRATE_STATE path=… sha256=… stages=<n> max_stages=<raw|(none)>`，每条建议一行 `MIGRATE_HINT scope=… item=…`，末行 `MIGRATE_VERDICT none hints=0`（exit 0）或 `MIGRATE_VERDICT suggested hints=<n>`（exit 3）。**它只报不改**：迁移 `docs\relay.json` 是人决定的动作，本动作不取锁、不建目录、不写一个字节。
+**B32 起老台账可以直接用**：`commit` 认得阶段键叫 `stage` 的老台账 —— 先按 `id` 匹配，认不到再按旧键 `stage` 唯一匹配；旧键**不改名**、老台账一个字节都不动；新旧同号时以带 `id` 的阶段为准，两个同号候选一律不认（`stage_not_found`）。缺 `ledger_docs` / `human_checkpoints` / `stop_conditions` 这类数组**不报** —— `commit` 追加时会自动创建，报了只会让每个老台账全红。
   ```powershell
   pwsh -NoProfile -ExecutionPolicy Bypass -File '<repo>\docs\relay\relay-ledger.ps1' -Action migrate-hint
   ```

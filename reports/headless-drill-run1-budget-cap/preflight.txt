@@ -1,0 +1,12 @@
+claude_path: C:\Users\Duanyi\.local\bin\claude.exe
+claude_version: 999.0.0-local (Claude Code)
+help_bytes: 8994
+flag --output-format: supported
+flag --session-id: supported
+flag --add-dir: supported
+flag --settings: supported
+flag --permission-mode: supported
+flag --allowedTools: supported
+flag --max-budget-usd: supported
+flag --max-turns: ABSENT
+flag --print: supported

@@ -1,0 +1,2 @@
+LOCK_PERMIT_CLEARED path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\.spawn-permit.json
+LOCK_ACQUIRED holder=mvs_headless_drill stage=0 ttl_s=1800 ttl_source=descriptor path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\.relay.lock

@@ -1,0 +1,34 @@
+drill_stamp=20261128-151748
+drill_claude_version=999.0.0-local (Claude Code)
+drill_max_turns_supported=False
+drill_real_run_exit=3
+drill_pass=25
+drill_fail=3
+fact=drill_claude_cli_present|PASS|999.0.0-local (Claude Code)
+fact=drill_credentials_present|PASS|
+fact=drill_install_exit_zero|PASS|exit=0
+fact=drill_kit_installed|PASS|
+fact=drill_launcher_exit_zero|PASS|exit=0
+fact=drill_launcher_wrote_the_chain_prompt|PASS|chars=7418
+fact=drill_chain_prompt_names_the_spawn_driver|PASS|
+fact=drill_ledger_created|PASS|status=running
+fact=drill_ledger_status_running|PASS|status=running
+fact=drill_lock_taken_by_the_launcher|PASS|holder=start-relay:39516
+fact=drill_stub_run_exit_zero|PASS|exit=0
+fact=drill_stub_pre_adopted|PASS|
+fact=drill_stub_lock_handed_over|PASS|
+fact=drill_stub_prev_holder_named|PASS|
+fact=drill_stub_lock_holder_is_the_new_link|PASS|holder=721e3d79-6d03-408a-a6da-49fe7cc1367f
+fact=drill_stub_output_captured|PASS|
+fact=drill_real_run_exit_zero|FAIL|exit=3 timed_out=False
+fact=drill_real_run_not_timed_out|PASS|timeout_s=300
+fact=drill_real_pre_adopted|PASS|
+fact=drill_real_lock_handed_over|PASS|
+fact=drill_real_session_id_matches_request|FAIL|
+fact=drill_real_output_file_written|PASS|chars=1050
+fact=drill_real_output_carries_the_session_id|PASS|
+fact=drill_real_output_carries_a_result|PASS|
+fact=drill_real_lock_holder_is_the_new_link|FAIL|holder=
+fact=drill_registry_did_not_grow|PASS|before=33 after=33
+fact=drill_fixture_project_not_in_the_registry|PASS|key=C--Users-Duanyi-AppData-Local-Temp-agentask-relay-headless-20261128-151748-repo
+fact=drill_transcript_kept_as_evidence|PASS|

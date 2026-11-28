@@ -1,0 +1,19 @@
+OK workspace=C:/Users/Duanyi/AppData/Local/Temp/agentask-relay-headless/20261128-153344/repo
+OK head=none dirty_files=17
+OK runtime=claude-code source=parameter
+TLAUNCH ttl_s=1800 ttl_source=descriptor
+OK link_mode=cli_driver chain_session_id=efa2f21a-073e-486a-a36a-653b3b949e92
+INFO host_project_key exact_workspace_dir=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo
+OK host_project_expected_matches expected=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo
+OK host_project_value value=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo source=expectation mode=exact
+OK initiator_session=mvs_headless_drill
+OK ledger_absent path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay.json (will bootstrap)
+OK chain_id=relay-chain-20261128-153349 chain_tag=1128-1533
+OK stage_titles source=default
+OK plan_doc=docs\plan-headless.md source=probe bytes=59
+LOCK_ACQUIRED holder=start-relay:145932 stage=1 ttl_s=1800 ttl_source=parameter path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\.relay.lock
+OK ledger_bootstrapped path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay.json bytes=2274
+OK prompt_written path=C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\next-relay-prompt.txt bytes=7418
+NEXT run this command to start the first link: pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\relay-spawn.ps1 -Runtime claude-code -PromptFile C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo\docs\relay\next-relay-prompt.txt -WorkspaceDir C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-headless\20261128-153344\repo -Execute -AdoptLock
+NEXT the driver hands the lock over to the new link before it starts
+DONE exit=0 target=headless drill

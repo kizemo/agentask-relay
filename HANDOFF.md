@@ -2542,3 +2542,423 @@ PUBLISH_EXIT=0 / VERIFY_EXIT=0 / PUBLISH_EXIT=0 / VERIFY_EXIT=0
 1. R6：确认自动迁移口径后，实现 `relay-ledger.ps1 -Action migrate`（默认 dry-run + 写前 CAS + 备份 + 只做机械改名）。
 2. 把 `relay-spawn.ps1` 的新 `prespawn` → `adopt` 链路在真实 CLI 运行时上真跑一次（当前只有干跑与锁侧烟测）。
 3. `migrate-hint` 建议项的批量落地演练（多台账一次扫）。
+## B32（2026-11-28）R6 口径落地：老台账兼容读取（不改用户文件）
+
+### 背景与目标
+
+B31 收口后仓库停在 `b2ffe54`（B31 已提交并推送，基线工作树干净；本轮先在 HEAD 上复跑自测确认 **pass=480 / fail=0**）。
+本轮开头 R6（台账字段自动迁移）是**唯一待人工拍板的口径**：`relay-ledger.ps1 -Action migrate-hint` 只给建议、
+不写盘。旧 kit 写出的台账把阶段编号放在 `stage` 键下而不是 `id`，于是 `commit` 按 `id` 解析 `stage_done`
+时永远认不到那条阶段 —— 链条卡死，而 `doctor` 不报这个毛病（它只查自相矛盾，不查形状）。
+
+本轮目标：①先用只读演练把各条路的真实后果测出来；②按用户拍板的口径实现；③按家规走完
+selftest → publish/verify → 留证 → 本节定稿 → `refresh-manifest.ps1`（必须最后一步）。
+
+### 用户拍板的口径（本轮决策，R6 至此收口为「读得懂，不动手」）
+
+- Q1「别的项目里那些老格式的接力台账，工具该怎么处理？」→ **让工具认得老格式**（兼容读取，不改用户文件）。
+- Q2「老台账里两个阶段都写着 1 号（一老一新），该关掉哪一个？」→ **关掉有新编号的那个**（`id` 永远优先）。
+
+### 只读演练（先测后果，再动手）
+
+演练脚本 `$env:TEMP\relay-r6-drill.ps1` / `relay-r6-drill2.ps1`，产物 `reports\migrate-drill-2026-11-28.md`
+（全部在一次性临时目录，**没有碰任何真实仓库的台账**）。
+
+| 路线 | 实测结果 |
+| --- | --- |
+| 现状 | `stage_done=1` → `LEDGER_FAIL reason=stage_not_found`（exit 3），台账 sha 未变；链视图照常显示 `stages=1:pending,2:pending` |
+| 兼容读取（约 10 行） | 老阶段能关掉；旧键 `stage` 原样保留（`keys=stage,title,status,finished_at`，**没有 `id`**） |
+| 朴素兼容（每个下标各自回退） | 撞车时**关错阶段**：新旧同为 1 号时关掉了老的那条，现代那条仍 `pending`（演练已复现） |
+| 自动改名（写盘） | 今天的闸门**没有任何补丁能表达「改名」**：`stage_fields` 禁写身份键，`stage_done` 又认不到老阶段 ⇒ 要自动改名必须新写一条绕过只追加不变式的路径 |
+
+结论：**兼容读取是唯一能既解冻链条、又不碰用户数据的路**；朴素写法会关错阶段，必须两遍扫描。
+
+### 改动（四处，逐字一致）
+
+| 文件 | 改动 | 字节 | sha16 |
+| --- | --- | --- | --- |
+| `tool\templates\relay-ledger.ps1` + `device\` 同名件 | ①`stage_done` 解析改两遍扫描：`id` 优先，认不到再按旧键 `stage` **唯一**匹配；两个同号候选一律不认（`stage_not_found`）②会话留痕记**解析出的编号**（老阶段不再留空）③`append_stage` 重复编号检查把旧键编号也算作已占用 | 45524 | `C8E393FC848C3D38` |
+| `protocol\AGENT-RELAY.md` + `tool\templates\AGENT-RELAY.md` | 新增 §13「旧台账兼容（B32）」：匹配顺序 / 唯一命中 / 同号优先 / 不改名 / 追加保护 / 留痕口径 | 39040 | `0BD731968ED9FA50` |
+| `tool\SKILL.md` | `migrate-hint` 条目补一句「B32 起老台账可以直接用」 | 32356 | `9C62867E122B823C` |
+| `scripts\selftest.ps1` | 新增 9 条 `b32_*` 用例（含一条「老键优先」的变异体，证明同号判据不是空话） | 180895 | `A57AD99C23437A5E` |
+
+不变式：`device\` 与 `tool\templates\` 的台账脚本**逐字一致**（sha 同为 `C8E393FC848C3D38`）；协议两份**逐字一致**
+（同为 `0BD731968ED9FA50`）；四个 `.ps1` 全部 CR=0 / 无 BOM / nonAscii=0。
+
+### 已验证（全部盘上回读）
+
+- 一键自测：**pass=489 / fail=0**，`CASE_FAIL` 条数 = 0，包装层 `SELFTEST_EXIT=0`。
+  证据 `tool\references\selftest-2026-11-28-b32.txt`（57157 B，sha256 `70FD8F02C1394EC2B251CC6948A56A26870FC430E6E0D0D8ECD136CDFA7AD56E`，CR=0，BOM=False）。
+  自测根 `C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-115006`；
+  `SUITE_END pass=489 fail=0 root=…\20261128-115006`。
+- 新增 9 条用例逐条 PASS：`b32_legacy_stage_can_be_closed`、`b32_legacy_stage_keeps_its_shape`、
+  `b32_legacy_trail_records_the_stage_number`、`b32_other_legacy_stage_is_untouched`、
+  `b32_modern_id_wins_over_legacy_key`、`b32_unknown_stage_is_still_refused`、
+  `b32_mutant_with_legacy_first_closes_the_wrong_stage`、`b32_protocol_documents_the_legacy_compat`、
+  `b32_protocol_copies_are_identical`。
+- publish / verify：`PUBLISH_EXIT=0` / `VERIFY_EXIT=0`，两轮均 `STATUS=OK fail=0 warn=2`（warn 只有 `SNAPSHOT_DRIFT`）。
+- `refresh-manifest.ps1`：`REFRESH_MANIFEST verdict=PASS`，`MD_TXT_CR_TOTAL=0`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`。
+- HEAD 基线复跑：改动前在 `b2ffe54` 上跑过一次，**pass=480 / fail=0**（`reports\selftest-head-b31-20261128-111320.txt`）。
+
+### 三轮自测的过程（产品代码未再动）
+
+首轮 `pass=488 fail=1`：`b32_modern_id_wins_over_legacy_key` 失败（`legacy=in_progress modern=done`）——
+**是断言形状写错**（夹具里老阶段本就是 `in_progress`，却按 `pending` 断言），产品行为正确；同轮自测块误用补丁脚本的
+`$enc` 变量，`WriteAllText` 的 encoding 为 null 直接抛异常并**中断套件**。第二轮 `pass=488 fail=1`：只剩变异体断言同类
+形状错误。第三轮 `pass=489 fail=0`。
+**首轮失败后产品代码一个字节都没动**，三轮失败全是自测脚本自身的问题 —— 正是「先在冻结树上跑出唯一失败项、
+只动那一处、再整轮重跑」的用法。
+
+### 推断（尚未在本轮直接验证）
+
+- 兼容读取只在**自造夹具**上验过：老台账（`stage` 键）、撞号台账、未知阶段号都验过，**没有在真实的老台账上跑过**。
+- 「同号 ⇒ 一律不认」是硬规则：若某个真实老台账里两个阶段带同一个旧键编号，那条阶段将永远关不掉
+  （`stage_not_found`），需要人先把台账整理成唯一编号。
+
+### 未验证 / 风险
+
+- **真链未实测**：本会话不起任何 relay 真链（起环权在目标项目内）；suite 末尾照旧打印 `MANUAL_STEP real_session_activation`。
+- 老 schema 里阶段键叫 `index` 等其它名字，仍只按 `keys=` 报键名，语义不猜，无真实样本。
+- `examples\practilog\docs\relay\` 是历史留证快照，`SNAPSHOT_DRIFT` 按家规 8 只报不同步，**不得为它同步**。
+- 本轮改动**未 commit**（git 写操作是人工验收点），工作树待用户处置。
+
+### 证据路径
+
+- 自测证据：`tool\references\selftest-2026-11-28-b32.txt`（原始日志，每行带 `HH:mm:ss`）
+- 自测留证：`tool\references\selftest-2026-11-28-b32.md`
+- 只读演练报告：`reports\migrate-drill-2026-11-28.md`
+- 基线证据：`reports\selftest-head-b31-20261128-111320.txt`
+- 演练与补丁脚本：`$env:TEMP\relay-r6-drill.ps1`、`relay-r6-drill2.ps1`、`relay-b32-patch.ps1`
+
+### 工具坑
+
+- **断言形状要先看夹具的真实取值**：本轮两次失败都是把夹具里 `in_progress` 的阶段按 `pending` 断言。
+- **`.ps1` 是纯 ASCII 门禁**：自测里直接写中文常量会让 `ps1_ascii_bom_parse` 判红（本轮 `nonAscii=30` 就是协议断言里
+  写了中文标题）；判定协议文档改用 ASCII 标记（如 `B32`）。
+- **编码对象要自己带**：`New-Object Text.UTF8Encoding($false)`；从别的脚本抄一个 `$enc` 过来会变成 null，
+  `WriteAllText` 抛 `Value cannot be null. (Parameter 'encoding')` 并**中断整个套件**（没有 SUITE_END）。
+- 证据文件每行带 `HH:mm:ss`；`SUITE_END` 才是判绿依据，字节数不能当判据。
+- 自测 `-EvidencePath` 不得与 `Tee-Object -FilePath` 同文件。
+
+### 下一段候选
+
+1. `relay-spawn.ps1` 的 `prespawn → adopt -Nonce` 链路在**真实 CLI 运行时**上真跑一次（当前只有干跑与锁侧定点烟测）。
+2. 把 B32 的兼容读取在**真实老台账**上验一次（需要一个真实的 `stage` 键台账样本）。
+3. `migrate-hint` 建议项的批量落地演练（多台账一次扫）只剩人工演练价值：写盘口径已定为「不写」。
+
+## B33（2026-11-28）激活时目标确认轮（STEP 0）：一轮确认 → 追加计划文档 → 起链推进到目标实现
+
+### 背景与目标
+
+用户原话：「在使用 agentask-relay 工具时，在Prompt中罗列任务目标后，如果目标不明确，需要一轮确认动作。
+在目标确认后，是否就可以更新相关计划文档并持续推进任务，直到目标实现？如果不行，请按这个要求再修改优化工具。」
+
+改前口径：链内禁提问、目标不明只能 blocked，激活包里没有确认步骤 ⇒ 需求只**部分成立**。
+B33 把确认轮放在**激活时**（STEP 0，用户在场的激活会话内），补全「一轮确认 → 裁决追加进计划文档 →
+以确认后目标起链持续推进直到全阶段 done」的全流程。
+
+### 口径（本轮决策）
+
+1. 确认轮在激活会话（STEP 0），不在链环内；**一轮为限**，仍不明 / 拒答 / 未答 ⇒ **不起链**。
+2. 链内禁提问不动；中途新歧义走 blocked 安全网。
+3. 确认后裁决**只追加**进计划文档「目标确认（B33）」节；无计划文档 ⇒ **不创建**
+   （启动器绝不创建计划文档的硬规则不动），停下要 `-PlanDoc`。
+4. 以确认后目标句作 `-Target` 起链，直到全阶段 done；`max_stages` 硬上限不变。
+5. 不改启动器 / 锁 / 台账（device 三件一个字节未动）；托管家规块插**无编号段落**，不重编号。
+6. 已装项目传播：托管块默认 `present_kept`，需 `-Force` 重装才拿到新块 / 新激活包。
+
+### 改动（7 文件，指纹两次盘上回读一致）
+
+| 文件 | 改动 | 字节 | sha16 |
+| --- | --- | --- | --- |
+| `protocol\AGENT-RELAY.md` + `tool\templates\AGENT-RELAY.md` | 新增 §14「激活时目标确认轮（B33）」 | 40902 | `F48F2D415CBDF5AF` |
+| `tool\templates\ACTIVATION-PROMPT.md` | 新增 STEP 0（在启动器步骤之前） | 2790 | `DACE0D4547CB86C1` |
+| `tool\templates\RELAY-SOP.md` | §二 新增 1b 确认轮 | 7455 | `882011499729E86C` |
+| `tool\templates\AGENTS-RELAY-BLOCK.md` | 插入无编号确认轮段落（不重编号） | 4468 | `EDA40EE475FDA8C4` |
+| `tool\SKILL.md` | 两处说明确认轮口径 | 33439 | `2BCC5E62BC00DF40` |
+| `scripts\selftest.ps1` | 新增 b33 用例块 10 条（含 1 条变异体） | 183194 | `DBF2F814EF9FE5AD` |
+
+不变式：协议两份逐字一致（同为 `F48F2D415CBDF5AF`）；device 三件 ≡ `tool\templates\` 同名件
+（`A8511A769B3EA351` / `E6720164D93E2027` / `C8E393FC848C3D38`，本轮未动）；
+7 个改动文件 CR=0，`selftest.ps1` nonAscii=0。
+
+### 已验证（全部盘上回读）
+
+- 一键自测（第 2 轮）：**pass=499 / fail=0**，`SELFTEST_EXIT=0`（13:51:43 → 13:56:15）。
+  证据 `tool\references\selftest-2026-11-28-b33.txt`（57821 B，sha256 `5D8A7CF45280E8D562AE138D178542F4F9478D430D1D0420B574FB3EDA2CB1CC`，CR=0，BOM=False）；
+  自测根 `C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-135143`；stderr 落盘件 0 B。
+- b33 新增 10 条用例逐条 PASS（489+10=499），含变异体 `b33_mutant_without_step0_is_detected mutant_i0=-1`
+  （好样本 i0=678，判据有鉴别力）；逐条明细见留证 md。
+- publish / verify：publish#1 `PUBLISH1_EXIT=0`，`DIRECTION=publish STATUS=OK fail=0 warn=2`（warn 只有 `SNAPSHOT_DRIFT`），
+  `tracked_files=112`，skill_root 经 probe 命中 `E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`；
+  publish#2（留证回填后复同步 + 逐件复核）`PUBLISH2_EXIT=0`，同样 `STATUS=OK fail=0 warn=2`，
+  复同步留证 md `CF756F1365383921:6771`，证据 txt `5D8A7CF45280E8D5:57821` 未变。
+- refresh-manifest：refresh#1 `REFRESH_MANIFEST verdict=PASS`、`REFRESH1_EXIT=0`，`FILE_COUNT=198` / `ENTRY_COUNT=198`、
+  `INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、`MANIFEST_BYTES=13018`、`CHANGE_COUNT=11`。
+  本节补记数字后再跑 refresh#2 作为全轮最后一步（MANIFEST 含 HANDOFF 哈希，防过期）。
+
+### 两轮自测的过程（产品与自测代码未再动）
+
+第 1 轮（13:41:04 起）`EXIT=-1` 异常中断，无 SUITE_END：最后输出 13:44:17
+`chain_status_legacy_stage_key_keeps_the_state_line`（`selftest.ps1:1171` 动态拼名），死亡区间锁死 1171→1196 行；
+该段与 B32 绿跑逐字节相同，套件自身无 exit -1 路径，`tool\` 无杀进程代码 ⇒ 疑似 auto_promoted 任务被外部终止。
+中断后代码一个字节未动（单变量复现实验），第 2 轮干净跑过崩溃点（cross 块 / auto_finalize / b25–b33 全绿）
+⇒ **未复现**，按「疑似外部终止」如实记录，不预先修代码。第 1 轮现场临时根 `…\20261128-134104` 仍在盘上。
+
+### 推断（尚未在本轮直接验证）
+
+- STEP 0 是 prompt 级引导：自测只验文本存在 / 顺序 / 变异体鉴别力，真实会话里的确认交互未端到端演练。
+- 第 1 轮中断归因「外部终止」是推断（无终止者的直接证据），依据：死亡区间代码未变 + 套件无 exit -1 路径 + 第 2 轮未复现。
+
+### 未验证 / 风险
+
+- **真链未实测**：本会话不起任何 relay 真链（起环权在目标项目内）；「目标不明 → 一轮确认 → 追加计划文档 → 起链」
+  与「拒答 / 未答 ⇒ 不起链」两条路都待真实项目演练。
+- 已装项目不 `-Force` 重装拿不到新块 / 新激活包（默认 `present_kept` 是既有口径，非缺陷）。
+- `examples\practilog\docs\relay\` 是历史留证快照，`SNAPSHOT_DRIFT` 按家规 8 只报不同步，**不得为它同步**。
+- 本轮改动**未 commit**（git 写操作是人工验收点）；B32+B33 改动均在工作树，待用户处置。
+
+### 证据路径
+
+- 自测证据：`tool\references\selftest-2026-11-28-b33.txt`（原始日志，每行带 `HH:mm:ss`）
+- 自测留证：`tool\references\selftest-2026-11-28-b33.md`
+- stderr：`reports\selftest-b33-run2-stderr.txt`（0 B）
+- 第 1 轮现场：`C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-134104`
+
+### 工具坑
+
+- 长跑用显式 `run_in_background` + timeout：auto_promoted 任务可能被外部终止（EXIT=-1、无 stderr），判绿只认盘上证据。
+- 运行中进程锁住 stderr 重定向文件属正常（`ReadAllBytes` 抛占用异常），终态后可读。
+- 紧轮询 3 次触发提醒：用 `task_output wait_ms=30000` 阻塞等终态，不要连续短轮询。
+- 动态拼名的用例在脚本源码里 grep 全名 0 命中，要 grep 片段；证据日志里才有全名。
+
+### 下一段候选
+
+1. 真实项目端到端演练 STEP 0：「目标不明 → 一轮确认 → 追加计划文档 → 起链」与「拒答 / 未答 ⇒ 不起链」两条路。
+2. 已装项目 `-Force` 重装传播演练（验证新托管块 / 新激活包落地）。
+3. B32 遗留：`relay-spawn.ps1` 的 `prespawn → adopt -Nonce` 在真实 CLI 运行时真跑一次；兼容读取在真实老台账上验一次。
+
+## B34（2026-11-28）-Force 传播缺口 + 真实老台账兼容演练（候选 2 + 3b，产品零改动）
+
+### 背景与目标
+
+B33 下一段候选 2（已装项目 `-Force` 重装传播演练）与候选 3 后半（兼容读取在真实老台账上验一次）。
+B34 把两者折进 `scripts\selftest.ps1` 的 b34 用例块（32 条）：门禁长在部署路径上、可重复，
+不依赖真实项目现场，也不起任何真链。**产品零改动**：本轮只改测试本体，装置 / 模板 / 协议 / SKILL.md 一律未动。
+
+### 口径（本轮决策）
+
+1. 真实老台账演练以 `examples\practilog\docs\relay.json`（22 顶层键、6 stage、sessions[] 为对象条目）的**副本**为靶；
+   原件只读（跑后 sha 不变有专门用例）；selftest 从不 `session_create`。
+2. `-Force` 缺口：此前自测只覆盖首装 / 幂等重跑 / 收编，「旧块旧 packet 换新」的传播路径无门禁；
+   b34(a) 用预置过期块（107 B）+ 过期 packet 的夹具补上。
+3. 红项裁决：测试期望错（非产品 bug）⇒ 按用户偏好直接修断言、不发问卷；修法保住鉴别力（见下）。
+4. 收口序列：selftest 两轮 → publish#1 → 留证 md → publish#2 → refresh#1 → 本节 → refresh#2（全轮最后一步）。
+
+### 改动（1 文件）
+
+| 文件 | 改动 | 字节 | sha16 |
+| --- | --- | --- | --- |
+| `scripts\selftest.ps1` | 新增 b34 用例块 30 条，红项修复后扩为 32 条 | 191770 | `F7A0FC8B3D11430E` |
+
+改前为 B33 的 183194 B / `DBF2F814EF9FE5AD`（refresh#1 的 CHANGED 行两处一致）。
+nonAscii=0、CR=0（纯 ASCII 无 BOM）。device 三件与协议本轮一个字节未动。
+
+### 两轮自测与唯一红项裁决
+
+- run1（红）：14:22:55 → 14:26:49，**pass=528 / fail=1**，`SELFTEST_EXIT=1`，
+  沙箱根 `C:\Users\Duanyi\AppData\Local\Temp\agentask-relay-selftest\20261128-142255`。
+  唯一红项 `b34_real_session_trail_stage_field`。
+- 根因：**测试期望错，不是产品 bug**。真实台账 sessions[] 已含 stage3 会话
+  （sid=`mvs_c65a7cd9bcaa47409abe7dc89ffa7ac8`），session-trail 闸门按文档去重输出
+  `LEDGER_SESSION_ALREADY_REGISTERED`（`device\relay-ledger.ps1:692-693`）是正确行为；
+  初版断言写死期望 `LEDGER_SESSION_REGISTERED ... source=stage_field`。
+- 修法：按 commit 前盘上状态推导期望分支（已含该 sid ⇒ already_registered，否则 registered），
+  新增 `exactly_once`（hits=1）与 `append_delta`（known⇒0 / unknown⇒1）两条；
+  双追加 / 漏登记变异体都会红。b34 30→32 条。
+- run2（绿）：14:31:15 → 14:35:28，**pass=531 / fail=0**，`SELFTEST_EXIT=0`，
+  沙箱根 `…\20261128-143115`；b34 全 32 条 PASS（含 branch=already_registered / hits=1 / delta=0）。
+
+### 已验证（全部盘上回读）
+
+- 绿跑证据 `tool\references\selftest-2026-11-28-b34.txt`：59816 B，
+  sha256 `0BC759567DDF71499CB4FBE77F1CF3766952F7720F0A736D8674BDB65B44324F`，CR=0、BOM=False、mtime=2026-11-28 14:35:28；
+  两轮 stderr 落盘件均 0 B。
+- 红跑留档（绿跑覆盖前先 Copy-Item）：`reports\selftest-b34-run1-red.txt`，59648 B，
+  sha256 `ECC3EF00E8755528BE4F31A1071D620126034C85A12E785BCC1F29FFBFF4B9B2`。
+- 真实样本 `examples\practilog\docs\relay.json`：**66643 B**，sha16 `67E1E5886874CD69`
+  （本轮盘上回读订正：旧压缩摘要的 47661 作废）；`b34_real_original_readonly` PASS，原件未动。
+- publish#1（留证 md 写盘前）：`PUBLISH1_EXIT=0`，`DIRECTION=publish STATUS=OK fail=0 warn=2`，
+  `tracked_files=113`，skill_root 经 probe 命中 `E:\Users\Duanyi\.minimax\.minimax\skills\agentask-relay`；
+  b34.txt 以 `[PUBLISH]`（新件）同步 `0BC759567DDF7149:59816`。
+- publish#2（留证 md 写盘后复同步 + 逐件复核）：`PUBLISH2_EXIT=0`，同样 `STATUS=OK fail=0 warn=2`，
+  `tracked_files=114`；留证 md `[PUBLISH]` `8F1C3C74BE76B97A:7998`，证据 txt 未变。
+- 两次 publish 的 warn 均仅 `SNAPSHOT_DRIFT`（examples 快照 start-relay.ps1 / relay-lock.ps1；
+  relay-ledger.ps1 报 snapshot_absent）——家规 8 只报不同步。
+- refresh#1：`REFRESH_MANIFEST verdict=PASS`、`REFRESH1_EXIT=0`，`FILE_COUNT=203` / `ENTRY_COUNT=203`、
+  `INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、
+  `MANIFEST_BYTES=13334`、`MANIFEST_NON_ASCII=0`、`CHANGE_COUNT=6`
+  （5 新件：b34.md / b34.txt / 红跑留档 / 两个 stderr；1 变更：selftest.ps1）。
+  本节补记后再跑 refresh#2 作为全轮最后一步（MANIFEST 含 HANDOFF 哈希，防过期）。
+- 未动件指纹与 B33 一致（publish 输出核实）：start-relay.ps1 `A8511A769B3EA351:57250`、
+  relay-lock.ps1 `E6720164D93E2027:25728`、relay-ledger.ps1 `C8E393FC848C3D38:45524`、
+  relay-spawn.ps1 `1AC5B6B4B469D709:24478`、AGENT-RELAY.md `F48F2D415CBDF5AF:40902`（协议两份逐字一致）、
+  SKILL.md `2BCC5E62BC00DF40:33439`。
+
+### 推断（尚未在本轮直接验证）
+
+- `-Force` 传播在一次性沙箱夹具上验证；夹具语义与安装器真实路径一致，但真实已装项目的 AGENTS.md
+  可能有更复杂的自有内容，传播行为未在现场演练。
+- 真实老台账演练覆盖 status / commit / session-trail / CAS 冲突四条兼容路径与一组保存不变式；
+  其它老台账形态（如缺 sessions[]、不同键集）未穷举。
+
+### 未验证 / 风险
+
+- **真链未实测**：候选 1（STEP 0 真实项目端到端）须用户在目标项目内指令激活，本会话不能代起；
+  候选 3a（真实 headless claude `prespawn → permit → verify`）属更重独立轮，本轮未做。
+- B32+B33+B34 改动均留工作树**未 commit**（HEAD=`b2ffe54`）；git 写操作是人工验收点，待用户处置。
+- `examples\practilog\docs\relay\` 是历史留证快照，`SNAPSHOT_DRIFT` 按家规 8 只报不同步，不得为它同步。
+
+### 证据路径
+
+- 自测证据：`tool\references\selftest-2026-11-28-b34.txt`（原始日志）
+- 自测留证：`tool\references\selftest-2026-11-28-b34.md`（32 条逐条表 + 指纹 + publish 数字）
+- 红跑留档：`reports\selftest-b34-run1-red.txt`；stderr：`reports\selftest-b34-stderr.txt`、`reports\selftest-b34-run2-stderr.txt`（均 0 B）
+- 真实样本（只读）：`examples\practilog\docs\relay.json`
+
+### 工具坑
+
+- **不从压缩摘要抄数字**：旧摘要说真实样本 47661 B，盘上回读实际 66643 B（sha16 一致）；凡进台账的值当场回读。
+- sessions[] 条目是对象时 `@($j.sessions) -contains $sid` 恒 False，不可作判据；须逐条序列化后匹配 sid 模式。
+- 红跑证据先 Copy-Item 留档再被绿跑覆盖；`reports\` 可写中间产物，`examples\` 不可（家规 8）。
+- 长跑用显式 `run_in_background` + timeout（沿用 B33 口径）；判绿只认盘上证据。
+
+### 下一段候选
+
+1. 真实项目端到端演练 STEP 0（「目标不明 → 一轮确认 → 追加计划文档 → 起链」与「拒答 / 未答 ⇒ 不起链」）——须用户在目标项目内激活。
+2. 候选 3a：`relay-spawn.ps1` 的 `prespawn → adopt -Nonce` 在真实 headless claude 运行时真跑一次（更重独立轮）。
+3. 真实已装项目 `-Force` 传播现场演练（沙箱版已由 b34(a) 覆盖）。
+4. B32+B33+B34 工作树改动的 commit 处置（人工验收点）。
+## B35（2026-11-28）真实 headless claude 链路真跑一次 + `--max-turns` 缺陷修复（候选 3a）
+
+### 本轮目标
+
+HANDOFF B34 节的「候选 3a」：把 `relay-spawn.ps1` 的 `prespawn → adopt -Nonce → 子进程` 这条
+**从未被任何测试执行过**的路径，在**真实 headless `claude` 运行时**下真跑一次，并把它变成常驻门禁。
+
+### 背景（为什么值得单独一轮）
+
+- B32~B34 门禁已覆盖安装器 / 启动器 / 台账 / 锁 / 协议镜像 / 老台账兼容，但**链路最内圈**
+  （装置 spawn 出一个真实子进程、并把锁交给它）始终是纸面推断。
+- `relay-spawn.ps1 -AdoptLock` 的组合路径：case 27 只跑**不带** `-AdoptLock` 的 `-Execute`；
+  b25 只在**锁脚本层**测 `prespawn/verify`；装置层的「先取许可 → 再用 nonce 移交锁 → 失败时释放」
+  一次都没被跑过。
+
+### 已做
+
+(a) **装置修复（真实 build 暴露的产品缺陷）**：本机 `claude 999.0.0-local (Claude Code)` 的
+`--help` **没有 `--max-turns`**，而装置原逻辑在 `-MaxTurns>0` 时硬塞该参数 ⇒ 每一环都会在开跑前
+直接失败（未知参数 → 整条命令报错）。改法（`tool\templates\relay-spawn.ps1` =
+`device\relay-spawn.ps1`，逐字一致，sha16 `01A9F10BD3D898EA`）：先问一次 build 的 `--help`，
+认识该 flag 才下发，不认识则丢弃并告警
+`WARN reason=max_turns_flag_unsupported flag=--max-turns requested=N action=dropped
+hint=the_budget_cap_still_applies`（**预算上限仍然生效**）。默认路径（`-MaxTurns=0`）零探测。
+
+(b) **常驻门禁**：`scripts\selftest.ps1` 新增 b35 用例块（**17 条**，桩 `claude.cmd`）。
+覆盖：安装 / 取锁 / 起子进程 / `SPAWN_LOCK_PRE_ADOPTED`（nonce 16 hex）/ `LOCK_ADOPTED
+holder=<新> prev_holder=<旧>` / **子进程启动瞬间锁主人已是新 session** / 运行后锁主人=新 session /
+permit 被消费且 `consumed_by`=新 session / 子进程失败 ⇒ exit=3 + `FAIL reason=runtime_run_failed`
++ `SPAWN_LOCK_RELEASED` + 锁文件不残留 / 未知 flag 不下发且告警 / 已知 flag 下发 `--max-turns 3`
+且不告警。
+
+(c) **真实 headless 演练（一次性证据，不进门禁）**：新增 `tool\scripts\relay-headless-drill.ps1`
+（21429 B，纯 ASCII 无 BOM，parse_errors=0，随 publish 进全局 skill 的 `scripts\`）。
+三幕：① 零成本 wiring（用启动器**真实生成**的链路 prompt + 桩 runtime）② 真实 runtime（真 `claude`、
+最小 prompt、预算封顶）③ 卫生检查（用户项目登记册不得增长、临时项目须被挪进留证区）。
+自带 preflight（`claude --version`、`--help` 里各 flag 支持情况、凭据存在与否）。
+
+### 已验证（全部盘上回读）
+
+- 自测绿跑 `tool\references\selftest-2026-11-28-b35.txt`：61840 B，sha256
+  `FF55F6A78B5DA367FCE07E0776FA81DEB1A13EDB1C8444018A48238064F1DDBE`，CR=0、BOM=False；
+  `SUITE_END pass=548 fail=0`（15:24:32 → 15:29:13，沙箱 root `20261128-152432`）。
+- 红跑留档（绿跑覆盖前先 Copy-Item）：`reports\selftest-b35-run1-red.txt`，61826 B，sha256
+  `4E72C15E26FCDD008E74F553C37777D1714FBA366FA101AC431F91EAE365EE8A`；
+  `SUITE_END pass=546 fail=2`（15:18:12 → 15:23:17，root `20261128-151812`）。
+- 真实演练（用**最终版脚本**重跑一遍，证据由出厂件直接产出）：`reports\headless-drill\summary.txt`
+  1709 B / sha16 `83F9F3BBCE452C74` ⇒ `drill_pass=29 drill_fail=0`；`claude 999.0.0-local (Claude Code)`；
+  `--max-turns=ABSENT`（其余 8 个 flag supported）；真实一环
+  `RELAY_SPAWN_OK runtime=claude-code session_id=e0691cf0-e58e-49a1-8316-737c761d248d`、
+  输出 1014 B 含 session_id 与 result；`LOCK_ADOPTED holder=e0691cf0-... prev_holder=mvs_headless_drill
+  nonce=f46c45adbe6746a5`；`DRILL_COST usd=0.26217`。
+- 演练卫生：登记册 `before=33 after=33`；临时 key 不在登记册；转录留证落在
+  `C:\Users\Duanyi\.claude\_relay-ephemeral\<key>-<ts>`；证据文件 0 个含 CR。
+- publish#4（留证 md 定稿后）：`PUBLISH4_EXIT=0`，`DIRECTION=publish STATUS=OK fail=0 warn=2`，
+  tracked_files=117；`scripts\relay-headless-drill.ps1` 同步 `9FBB3AE0DD7565E6:21429`，
+  `references\selftest-2026-11-28-b35.md` 同步 `EB88FEF62BD2EDAF:11315`。
+  两次 warn 均仅 `SNAPSHOT_DRIFT`（examples 快照 start-relay.ps1 / relay-lock.ps1）——家规 8 只报不同步。
+- refresh#1c：`REFRESH_MANIFEST verdict=PASS`、`REFRESH1C_EXIT=0`，`FILE_COUNT=247` / `ENTRY_COUNT=247`、
+  `INVARIANT_OK=True`、`BOM_FILES=0`、`PS1_NON_ASCII_FILES=0`、`MD_TXT_CR_TOTAL=0`、
+  `MANIFEST_BYTES=16268`、`MANIFEST_NON_ASCII=0`、`CHANGE_COUNT=3`。
+  本节补记后再跑 refresh#2 作为**全轮最后一步**（MANIFEST 含 HANDOFF 哈希，防过期）。
+- 指纹：`tool\scripts\relay-headless-drill.ps1` = 21429 B / sha16 `9FBB3AE0DD7565E6`；
+  `scripts\selftest.ps1` = 198686 B / sha16 `BEFE0CBDE524EEB6`；
+  `tool\templates\relay-spawn.ps1` = `device\relay-spawn.ps1` = 25437 B / sha16 `01A9F10BD3D898EA`
+  （旧值 `1AC5B6B4B469D709:24478`）；留证 md = 11315 B / sha16 `EB88FEF62BD2EDAF`。
+- 未动件指纹与 B34 一致：start-relay.ps1 `A8511A769B3EA351:57250`、relay-lock.ps1
+  `E6720164D93E2027:25728`、relay-ledger.ps1 `C8E393FC848C3D38:45524`、
+  AGENT-RELAY.md `F48F2D415CBDF5AF:40902`、SKILL.md `2BCC5E62BC00DF40:33439`。
+
+### 推断（尚未在本轮直接验证）
+
+- `--max-turns` 探测只读 `--help` 的标准输出/错误流合并；若某个 build 把该 flag 写在别处
+  （如子命令帮助），探测会误判为「不支持」并降级——降级是安全方向（宁可少一个 flag，不可整条命令失败）。
+- 演练成本区间 $0.09~$0.26 取自同机两次同 prompt 观测，波动来自全局上下文 / 缓存 / 全局 hook；
+  真实链路每环成本并不稳定，**上线前应按最坏值设预算**。
+
+### 未验证 / 风险
+
+- **真链仍未实测**：本轮只验到「装置 spawn 出真实 `claude` 子进程并完成锁移交」这一层，
+  **没有**让真实 `claude` 去起下一环（那会让每环递归自增成本）。候选 1（真实项目 STEP 0 端到端）
+  仍须用户在目标项目内指令激活，本会话不能代起。
+- 真实演练**不进常规 selftest**（要钱、要登录、会碰用户级登记册），常驻门禁覆盖的是**桩**运行时；
+  两者之间的差异（真 build 的参数解析细节）只能靠按需重跑演练来发现。
+- B32+B33+B34+B35 改动均留工作树**未 commit**（HEAD=`b2ffe54`）；git 写操作是人工验收点。
+- `examples\practilog\docs\relay\` 是历史留证快照，`SNAPSHOT_DRIFT` 按家规 8 只报不同步，不得为它同步。
+
+### 证据路径
+
+- 自测证据：`tool\references\selftest-2026-11-28-b35.txt`（原始日志）
+- 自测留证：`tool\references\selftest-2026-11-28-b35.md`（17 条逐条表 + 11 行指纹 + publish 数字）
+- 红跑留档：`reports\selftest-b35-run1-red.txt`
+- 真实演练：`reports\headless-drill\`（preflight / install / launcher / stub-run / real-run / summary / flags + 各 .err.txt）
+- 演练作废轮（预算封顶 0.05 被撞穿）：`reports\headless-drill-run1-budget-cap\`
+- 门禁/发布/刷新日志：`reports\selftest-b35-console-run2.txt`、`reports\publish-b35-run1..4.txt`、
+  `reports\refresh-b35-run1.txt`、`reports\refresh-b35-run1b.txt`、`reports\refresh-b35-run1c.txt`
+- 真实样本（只读）：`examples\practilog\docs\relay.json`（66643 B / sha16 `67E1E5886874CD69`）
+
+### 本轮工具坑
+
+- **批处理里的 `echo --max-turns <turns>` 不是 help 文本，是语法错误**：cmd.exe 把 `<turns` 当
+  **输入重定向**，整条 echo 以「The syntax of the command is incorrect.」失败退出 ⇒ help 里没有该 flag
+  ⇒ 装置如实降级 ⇒ 断言红。**造桩时凡带 `<` `>` 都要先确认 cmd 怎么解析**。
+- `Start-Process -ArgumentList` **不会**给含空格的值加引号 ⇒ 必须自己加引号（本轮演练第一版因此把
+  `drill` 吞成计划文档路径，启动器 `FAIL reason=plan_doc_not_found` exit=2）。
+- `Start-Process -RedirectStandardOutput` 落的子进程输出是 **CRLF**；仓库 `.md`/`.txt` 必须 LF
+  ⇒ 家规 4 的 `MD_TXT_CR_TOTAL` 会从 0 变成上千。演练脚本已自带 `Normalize-Lf` 归一。
+- 真 claude 一环的成本不固定（实测 $0.09 与 $0.26217 两次），**预算封顶低于最坏值会把链路腰斩**
+  （首次演练 0.05 被撞穿 ⇒ `error_max_budget_usd` ⇒ 装置 exit=3）。默认封顶已提到 0.60。
+- `CLAUDE_CONFIG_DIR` 隔离实测无效（真 claude 仍写用户 profile 的 `.claude\projects`），
+  `-EphemeralWorkspace` 才是有效清理手段。
+- 桩 `claude.cmd` 必须在 PATH 最前，且其 JSON 里的 `session_id` 要与 `-SessionId` 一致，
+  否则装置「移交的锁主人」与「上报的 session_id」会分叉。
+- 读 `sessions[]`（对象数组）判断是否含某 sid 时，不能用 `@($j.sessions) -contains $sid`，须逐条序列化匹配。
+- **不从压缩摘要抄数字**：本轮所有进台账的值（字节数 / sha / pass 数 / 成本）一律当场回读盘上产物。
+
+### 下一段候选
+
+1. **候选 1（仍是最高价值）**：真实项目端到端演练 STEP 0（「目标不明 → 一轮确认 → 追加计划文档 → 起链」
+   与「拒答 / 未答 ⇒ 不起链」）——须用户在目标项目内指令激活。
+2. **真链两环**：让真实 `claude` 起下一环（成本会递归自增，先设计好封顶与停止条件）。
+3. 真实已装项目 `-Force` 传播现场演练（沙箱版已由 b34(a) 覆盖）。
+4. B32+B33+B34+B35 工作树改动的 commit 处置（人工验收点）。

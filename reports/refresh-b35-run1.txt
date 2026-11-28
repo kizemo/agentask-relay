@@ -1,0 +1,50 @@
+FILE_COUNT=243 (MANIFEST excluded)
+ENTRY_COUNT=243
+INVARIANT_OK=True
+BOM_FILES=0 PS1_NON_ASCII_FILES=0 MD_TXT_CR_TOTAL=1823
+MANIFEST_BYTES=16047 MANIFEST_NON_ASCII=0
+CHANGE_COUNT=43
+  CHANGED device\relay-spawn.ps1 : 1AC5B6B4B469D709/24478 -> 01A9F10BD3D898EA/25437
+  NEW_ENTRY reports\headless-drill-console.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\acquire.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\acquire.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\flags.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\install.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\install.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\launcher.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\launcher.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\preflight.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\real-run.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\real-run.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\release.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\release.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\stub-run.err.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\stub-run.txt
+  NEW_ENTRY reports\headless-drill-run1-budget-cap\summary.txt
+  NEW_ENTRY reports\headless-drill-run1-console.txt
+  NEW_ENTRY reports\headless-drill\acquire.err.txt
+  NEW_ENTRY reports\headless-drill\acquire.txt
+  NEW_ENTRY reports\headless-drill\flags.txt
+  NEW_ENTRY reports\headless-drill\install.err.txt
+  NEW_ENTRY reports\headless-drill\install.txt
+  NEW_ENTRY reports\headless-drill\launcher.err.txt
+  NEW_ENTRY reports\headless-drill\launcher.txt
+  NEW_ENTRY reports\headless-drill\preflight.txt
+  NEW_ENTRY reports\headless-drill\real-run.err.txt
+  NEW_ENTRY reports\headless-drill\real-run.txt
+  NEW_ENTRY reports\headless-drill\release.err.txt
+  NEW_ENTRY reports\headless-drill\release.txt
+  NEW_ENTRY reports\headless-drill\stub-run.err.txt
+  NEW_ENTRY reports\headless-drill\stub-run.txt
+  NEW_ENTRY reports\headless-drill\summary.txt
+  NEW_ENTRY reports\publish-b35-run1.txt
+  NEW_ENTRY reports\publish-b35-run2.txt
+  NEW_ENTRY reports\selftest-b35-console-run2.txt
+  NEW_ENTRY reports\selftest-b35-console.txt
+  NEW_ENTRY reports\selftest-b35-run1-red.txt
+  CHANGED scripts\selftest.ps1 : F7A0FC8B3D11430E/191770 -> BEFE0CBDE524EEB6/198686
+  NEW_ENTRY tool\references\selftest-2026-11-28-b35.md
+  NEW_ENTRY tool\references\selftest-2026-11-28-b35.txt
+  NEW_ENTRY tool\scripts\relay-headless-drill.ps1
+  CHANGED tool\templates\relay-spawn.ps1 : 1AC5B6B4B469D709/24478 -> 01A9F10BD3D898EA/25437
+REFRESH_MANIFEST verdict=PASS

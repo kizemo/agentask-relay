@@ -1,0 +1,9 @@
+--output-format=supported
+--session-id=supported
+--add-dir=supported
+--settings=supported
+--permission-mode=supported
+--allowedTools=supported
+--max-budget-usd=supported
+--max-turns=ABSENT
+--print=supported

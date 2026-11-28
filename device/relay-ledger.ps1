@@ -570,18 +570,39 @@ try {
     if (-not [int]::TryParse([string]$p.stage_done, [ref]$doneNum)) {
       Fail 'stage_done_not_an_integer' ("value=" + [string]$p.stage_done + " hint=use_the_numeric_id_of_a_stage_in_the_ledger") 2
     }
+    # B32: a ledger written by an older kit keyed its stages by stage, not by
+    # id. Such a stage could never be closed by a patch, so the chain stalled on
+    # a ledger doctor called healthy. The decision is to learn the old shape,
+    # not to rewrite the file: pass 1 stays authoritative on id - a stage that
+    # has an id is only ever matched by that id - and pass 2 then looks at
+    # id-less stages whose legacy stage key carries that number, but only when
+    # exactly one such stage matches. Two candidates with the same number stay
+    # unclosed on purpose: guessing there would close the wrong stage.
+    $resolvedStageText = ''
     $stageRef = @($new.stages)
+    $idHit = -1
     for ($i = 0; $i -lt $stageRef.Count; $i++) {
-      # A stage with no id can never be named by stage_done. [int]$null is 0, so
-      # an id-less first stage used to match stage_done=0 and be written to done
-      # by a patch that named no stage at all. Skipping it turns that silent
-      # misfire into stage_not_found.
-      if ([string]::IsNullOrWhiteSpace([string]$stageRef[$i].id)) { continue }
       $stageIdNum = 0
-      if (-not [int]::TryParse([string]$stageRef[$i].id, [ref]$stageIdNum)) { continue }
-      if ($stageIdNum -eq $doneNum) { $ownedIndex = $i; break }
+      if (-not [int]::TryParse(([string]$stageRef[$i].id).Trim(), [ref]$stageIdNum)) { continue }
+      if ($stageIdNum -eq $doneNum) { $idHit = $i; break }
+    }
+    if ($idHit -ge 0) { $ownedIndex = $idHit }
+    if ($ownedIndex -lt 0) {
+      $legacyHit = -1
+      $legacyCount = 0
+      for ($i = 0; $i -lt $stageRef.Count; $i++) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$stageRef[$i].id)) { continue }
+        $legacyNum = 0
+        if (-not [int]::TryParse(([string]$stageRef[$i].stage).Trim(), [ref]$legacyNum)) { continue }
+        if ($legacyNum -eq $doneNum) { $legacyHit = $i; $legacyCount++ }
+      }
+      if ($legacyCount -eq 1) { $ownedIndex = $legacyHit }
     }
     if ($ownedIndex -lt 0) { Fail 'stage_not_found' ("stage_done=" + $doneNum + " hint=append_stage_first_or_use_an_id_already_in_the_ledger") }
+    # The stage number that was actually resolved, so the session trail never
+    # records an empty stage for a legacy stage that carries no id.
+    $resolvedStageText = ([string](@($new.stages)[$ownedIndex].id)).Trim()
+    if ($resolvedStageText -eq '') { $resolvedStageText = [string]$doneNum }
   }
   if ($null -ne $p.stage_fields -and $ownedIndex -lt 0) {
     Fail 'stage_fields_without_stage_done' 'hint=stage_fields_only_applies_to_the_stage_named_by_stage_done' 2
@@ -646,9 +667,9 @@ try {
       }
     }
     if ($sessionSkip -ne '') {
-      Say ("LEDGER_SESSION_SKIPPED stage=" + [string]$doneStage.id + " reason=" + $sessionSkip)
+      Say ("LEDGER_SESSION_SKIPPED stage=" + $resolvedStageText + " reason=" + $sessionSkip)
     } elseif ([string]::IsNullOrWhiteSpace($sessionId)) {
-      Say ("LEDGER_SESSION_SKIPPED stage=" + [string]$doneStage.id + " reason=no_session_id")
+      Say ("LEDGER_SESSION_SKIPPED stage=" + $resolvedStageText + " reason=no_session_id")
     } else {
       $known = $false
       $knownPattern = '"' + [regex]::Escape($sessionId) + '"'
@@ -673,7 +694,7 @@ try {
       } else {
         Set-NoteProp -Target $new -Name 'sessions' -Value (@(@(Get-Elements $new.sessions) + @($sessionId)))
         Say ("LEDGER_SESSION_REGISTERED session=" + $sessionId +
-          " stage=" + [string]$doneStage.id + " source=" + $sessionSource)
+          " stage=" + $resolvedStageText + " source=" + $sessionSource)
       }
     }
   }
@@ -688,7 +709,12 @@ try {
     $ids = @()
     foreach ($s in @(Get-Elements $new.stages)) {
       $sid = 0
-      if ([int]::TryParse(([string]$s.id).Trim(), [ref]$sid)) { $ids += $sid }
+      if ([int]::TryParse(([string]$s.id).Trim(), [ref]$sid)) { $ids += $sid; continue }
+      # B32: a legacy stage carries its number under stage, not id. Count that
+      # number as taken too, so appending an id that collides with it cannot
+      # build a ledger where two stages claim the same number.
+      $legacyNum = 0
+      if ([int]::TryParse(([string]$s.stage).Trim(), [ref]$legacyNum)) { $ids += $legacyNum }
     }
     $appendNum = 0
     if (-not [int]::TryParse(([string]$p.append_stage.id).Trim(), [ref]$appendNum)) {
